@@ -57,20 +57,22 @@ def record_heartbeat():
             shutdown_timer.cancel()
             shutdown_timer = None
 
-def schedule_shutdown(delay: float = 45.0, reason: str = "웹 대시보드가 닫혔습니다."):
+def schedule_shutdown(delay: float = 5.0, reason: str = "웹 대시보드가 닫혔습니다."):
     global shutdown_timer
-    # Ignore spurious pagehide/disconnect within first 15 seconds of server start
-    if (time.time() - server_start_time) < 15.0:
+    # Ignore spurious pagehide/disconnect within first 10 seconds of server start
+    if (time.time() - server_start_time) < 10.0:
         return
+    # If a background task is running, signal abort so actions wind down cleanly
     if is_busy:
-        return
+        try:
+            manager_instance.request_abort()
+            cli_instance.stop_action()
+        except Exception:
+            pass
     with shutdown_timer_lock:
         if shutdown_timer is not None:
             shutdown_timer.cancel()
         def _trigger():
-            if is_busy:
-                print("\n⏳ [자동 종료 보류] 백그라운드 작업이 진행 중이므로 서버 종료를 보류합니다.")
-                return
             print(f"\n🔌 [자동 종료] {reason} 서버를 종료합니다.")
             shutdown_server()
         shutdown_timer = threading.Timer(delay, _trigger)
@@ -83,10 +85,24 @@ def shutdown_server():
         return
     is_shutting_down = True
     print("\n=========================================================")
-    print("🔌 [서버 자동 종료] 웹 대시보드가 종료되어 서버를 안전하게 종료합니다.")
+    print("🔌 [서버 자동 종료] 웹 대시보드가 종료되어 서버와 프로세스를 안전하게 정리합니다.")
     print("=========================================================\n")
     def _do_shutdown():
-        time.sleep(0.5)
+        try:
+            manager_instance.request_abort()
+        except Exception:
+            pass
+        try:
+            cli_instance.stop_action()
+        except Exception:
+            pass
+        time.sleep(0.3)
+        # Kill any orphaned MabinogiMobile_CLI.exe child processes
+        if sys.platform == "win32":
+            try:
+                subprocess.run(["taskkill", "/F", "/T", "/IM", "MabinogiMobile_CLI.exe"], capture_output=True, timeout=2)
+            except Exception:
+                pass
         if server_instance:
             try:
                 server_instance.shutdown()
@@ -97,18 +113,16 @@ def shutdown_server():
 
 def watchdog_loop():
     while not is_shutting_down:
-        time.sleep(3)
+        time.sleep(2)
         now = time.time()
-        # Give 30 seconds grace period after server start before requiring heartbeats
-        if (now - server_start_time) < 30.0:
+        # Give 20 seconds grace period after server start before requiring heartbeats
+        if (now - server_start_time) < 20.0:
             continue
         if not has_client_connected:
             continue
-        if is_busy:
-            continue
-        # If no heartbeat or request for more than 180 seconds (3 minutes) after client connected
-        if (now - last_heartbeat_time) > 180.0:
-            print("\n🔌 [연결 끊김 감지] 3분 이상 활성 대시보드 신호가 없어 서버를 자동으로 종료합니다...")
+        # If no heartbeat or request for more than 15 seconds after client connected
+        if (now - last_heartbeat_time) > 15.0:
+            print("\n🔌 [연결 끊김 감지] 15초 이상 활성 대시보드 신호가 없어 안전하게 종료합니다...")
             shutdown_server()
             break
 
