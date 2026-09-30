@@ -8,7 +8,7 @@
 
 파이썬(Python) 설치 없이 윈도우 환경에서 즉시 사용할 수 있는 독립 실행형 패키지입니다.
 
-1. **[최신 버전 릴리즈 (GitHub Releases)](https://github.com/rahw96m/Mobi_Living_Supporter/releases/latest)** 페이지에서 `Mobi_Living_Supporter_v1.0.0.zip`을 다운로드합니다.
+1. **[최신 버전 릴리즈 (GitHub Releases)](https://github.com/rahw96m/Mobi_Living_Supporter/releases/latest)** 페이지에서 `Mobi_Living_Supporter_v0.1.0.zip`을 다운로드합니다.
 2. 다운로드한 ZIP 파일의 압축을 원하는 폴더에 해제합니다.
 3. 폴더 내의 **`모비노기_생활_지원도구.exe`**를 실행하거나, **`바탕화면_바로가기_만들기.bat`**을 실행하여 바탕화면에 바로가기를 만듭니다.
 4. 브라우저에서 전용 웹 대시보드가 자동으로 열립니다! (브라우저 창을 닫으면 백그라운드 서버도 안전하게 자동 종료됩니다.)
