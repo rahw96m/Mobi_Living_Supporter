@@ -15,7 +15,7 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "배포용_Mobi_Living_Supporter")
 VERSION_INFO = os.path.join(BASE_DIR, "file_version_info.txt")
 
 print("=" * 65)
-print("📦 [Mobi_Living_Supporter] 배포 패키지 빌드 시작")
+print("📦 [모비노기 생활 지원도구] 배포 패키지 빌드 시작")
 print("   - 빌드 방식: PyInstaller --onedir (폴더형 독립 패키지)")
 print("   - 장점: 실시간 임시폴더 압축해제(Dropper 행위)가 없어 백신 오탐 대폭 방지 및 초고속 실행")
 print("=" * 65)
@@ -52,7 +52,7 @@ shutil.copytree(DIST_BUILD_DIR, OUTPUT_DIR)
 
 # 3. 한글 이름 실행 파일도 추가 제공 (사용자 편의)
 exe_src = os.path.join(OUTPUT_DIR, "Mobi_Living_Supporter.exe")
-exe_kr = os.path.join(OUTPUT_DIR, "마비노기_모바일_생활_서포터.exe")
+exe_kr = os.path.join(OUTPUT_DIR, "모비노기_생활_지원도구.exe")
 if os.path.exists(exe_src):
     shutil.copy2(exe_src, exe_kr)
 
@@ -64,15 +64,15 @@ if os.path.exists(RECIPE_SRC):
 shortcut_bat_content = """@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-echo 📌 바탕화면에 '마비노기 모바일 헬퍼' 바로가기를 생성합니다...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $target = Join-Path $pwd '마비노기_모바일_헬퍼.exe'; if (-not (Test-Path $target)) { $target = Join-Path $pwd 'Mabinogi_Helper.exe' }; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), '마비노기 모바일 헬퍼.lnk')); $s.TargetPath = $target; $s.WorkingDirectory = $pwd; $s.Description = '마비노기 모바일 주간 납품 및 제작 헬퍼'; $s.Save()"
+echo 📌 바탕화면에 '모비노기 생활 지원도구' 바로가기를 생성합니다...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $target = Join-Path $pwd '모비노기_생활_지원도구.exe'; if (-not (Test-Path $target)) { $target = Join-Path $pwd 'Mobi_Living_Supporter.exe' }; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), '모비노기 생활 지원도구.lnk')); $s.TargetPath = $target; $s.WorkingDirectory = $pwd; $s.Description = '모비노기 생활 지원도구'; $s.Save()"
 if %errorlevel% equ 0 (
     echo.
-    echo ✅ 바탕화면에 '마비노기 모바일 헬퍼' 바로가기가 생성되었습니다!
+    echo ✅ 바탕화면에 '모비노기 생활 지원도구' 바로가기가 생성되었습니다!
     echo.
 ) else (
     echo.
-    echo ❌ 바로가기 생성 중 오류가 발생했습니다. 직접 '마비노기_모바일_헬퍼.exe'를 우클릭하여 바로가기를 만들어주세요.
+    echo ❌ 바로가기 생성 중 오류가 발생했습니다. 직접 '모비노기_생활_지원도구.exe'를 우클릭하여 바로가기를 만들어주세요.
     echo.
 )
 pause
@@ -81,11 +81,11 @@ with open(os.path.join(OUTPUT_DIR, "바탕화면_바로가기_만들기.bat"), "
     f.write(shortcut_bat_content)
 
 # 6. 사용방법 안내 텍스트 파일 작성
-guide_text = """[ 🗡️ 마비노기 모바일 - 주간 납품 & 일괄 제작 헬퍼 ]
+guide_text = """[ 🗡️ 모비노기 생활 지원도구 ]
 
 ■ 실행 방법:
 1. 배포받은 압축(ZIP) 파일을 원하는 폴더에 압축 해제합니다.
-2. 폴더 내의 '마비노기_모바일_헬퍼.exe' (또는 'Mabinogi_Helper.exe')를 더블클릭하여 실행합니다.
+2. 폴더 내의 '모비노기_생활_지원도구.exe'를 더블클릭하여 실행합니다.
    * 바탕화면에 아이콘을 두고 쓰시려면 '바탕화면_바로가기_만들기.bat'을 더블클릭하시면 됩니다!
 3. 브라우저 전용 대시보드가 자동으로 열립니다. 창을 닫으면 프로그램도 안전하게 자동 종료됩니다.
 
@@ -101,7 +101,7 @@ guide_text = """[ 🗡️ 마비노기 모바일 - 주간 납품 & 일괄 제작
 - 만약 실행 파일이 바로 차단되거나 삭제된다면, ZIP 파일 우클릭 → [속성] → 맨 아래 [차단 해제] 체크 후 확인을 누르고 압축을 풀어주세요.
 
 ■ C드라이브가 아닌 D: 드라이브 등에 게임이 설치된 경우:
-- 헬퍼가 컴퓨터 내 모든 드라이브 및 실행 중인 게임을 자동 탐색하여 연결합니다.
+- 프로그램이 컴퓨터 내 모든 드라이브 및 실행 중인 게임을 자동 탐색하여 연결합니다.
 - 만약 대시보드 상단에 'CLI 미발견'이 나타날 경우, 상단의 [⚙️ 연결 설정] 버튼을 눌러 마비노기 모바일 설치 폴더(예: D:\\Nexon\\MabinogiMobile)를 입력하고 [저장 & 연결]을 눌러주시면 됩니다.
 
 ■ 백그라운드 사용 시 팁:
@@ -121,7 +121,7 @@ print("\n🗜️ 배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
 print("\n" + "=" * 65)
-print("🎉 [성공] 배포 패키지 구성 및 압축 완료!")
+print("🎉 [성공] 모비노기 생활 지원도구 배포 패키지 구성 및 압축 완료!")
 print(f"📁 배포 폴더: {OUTPUT_DIR}")
 print(f"📦 압축 파일: {zip_path}")
 print(f"💡 안내: 위 ZIP 파일({os.path.basename(zip_path)}) 하나만 그대로 전달하시면 됩니다!")

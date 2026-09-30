@@ -7,16 +7,13 @@ __pycache__/
 build/
 dist/
 *.spec
-배포용_마비노기_헬퍼/
-배포용_마비노기_헬퍼.zip
-배포용_Mobi_Living_Supporter/
-배포용_Mobi_Living_Supporter.zip
+배포용_*/
+*.zip
 Mobi_Living_Supporter/
-Mobi_Living_Supporter.zip
 
 # Browser / App runtime data
-.mabi_helper_browser_data/
-mabi_helper_config.json
+.mabi_*browser_data/
+mabi_*config.json
 
 # Scratch & Temporary test files
 scratch_*.json

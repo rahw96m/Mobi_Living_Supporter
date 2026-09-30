@@ -13,7 +13,7 @@ if sys.platform == "win32":
 def print_banner():
     banner = """
 ===============================================================
-       Mabinogi Mobile - 주간 납품 & 제작 도우미 (AI Connector)
+               모비노기 생활 지원도구 (AI Connector)
 ===============================================================
 """
     print(banner)
@@ -183,7 +183,7 @@ def run_interactive(dm: DeliveryManager):
             break
 
 def main():
-    parser = argparse.ArgumentParser(description="Mabinogi Mobile Delivery Helper")
+    parser = argparse.ArgumentParser(description="모비노기 생활 지원도구")
     parser.add_argument("item", nargs="?", help="제작할 아이템 이름")
     parser.add_argument("count", nargs="?", type=int, default=1, help="제작할 수량")
     parser.add_argument("--web", action="store_true", help="웹 UI 실행")

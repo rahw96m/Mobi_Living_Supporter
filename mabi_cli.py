@@ -15,7 +15,8 @@ if getattr(sys, "frozen", False):
 else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CONFIG_FILE = os.path.join(APP_DIR, "mabi_helper_config.json")
+CONFIG_FILE = os.path.join(APP_DIR, "mabi_config.json")
+LEGACY_CONFIG_FILE = os.path.join(APP_DIR, "mabi_helper_config.json")
 
 
 def _normalize_cli_path(p: Optional[str]) -> Optional[str]:
@@ -42,21 +43,22 @@ def _normalize_cli_path(p: Optional[str]) -> Optional[str]:
 
 
 def get_saved_cli_path() -> Optional[str]:
-    """Reads configured cli_path from mabi_helper_config.json."""
-    if os.path.isfile(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                cand = _normalize_cli_path(data.get("cli_path"))
-                if cand:
-                    return cand
-        except Exception:
-            pass
+    """Reads configured cli_path from mabi_config.json."""
+    for cfg_path in (CONFIG_FILE, LEGACY_CONFIG_FILE):
+        if os.path.isfile(cfg_path):
+            try:
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    cand = _normalize_cli_path(data.get("cli_path"))
+                    if cand:
+                        return cand
+            except Exception:
+                pass
     return None
 
 
 def save_configured_cli_path(path: str) -> bool:
-    """Saves the given path to mabi_helper_config.json."""
+    """Saves the given path to mabi_config.json."""
     cand = _normalize_cli_path(path)
     if not cand:
         return False
@@ -65,6 +67,12 @@ def save_configured_cli_path(path: str) -> bool:
         if os.path.isfile(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+            except Exception:
+                cfg = {}
+        elif os.path.isfile(LEGACY_CONFIG_FILE):
+            try:
+                with open(LEGACY_CONFIG_FILE, "r", encoding="utf-8") as f:
                     cfg = json.load(f)
             except Exception:
                 cfg = {}

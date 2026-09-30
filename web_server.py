@@ -809,7 +809,7 @@ def _get_app_data_dir() -> str:
         base = os.path.dirname(sys.executable)
     else:
         base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, ".mabi_helper_browser_data")
+    return os.path.join(base, ".mabi_supporter_browser_data")
 
 def _cleanup_browser_locks(data_dir: str):
     """
@@ -923,7 +923,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mobi_Living_Supporter - 마비노기 모바일 생활 & 납품 서포터</title>
+  <title>모비노기 생활 지원도구</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -1293,8 +1293,8 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="logo-area">
         <div class="logo-icon">⚔️</div>
         <div class="title">
-          <h1>Mobi_Living_Supporter</h1>
-          <p>마비노기 모바일 생활 & 주간 납품 통합 서포터 (MabinogiMobile_CLI)</p>
+          <h1>모비노기 생활 지원도구</h1>
+          <p>마비노기 모바일 AI 커넥터 연동</p>
         </div>
       </div>
       <div class="status-pills" id="status-pills">
@@ -2301,7 +2301,7 @@ HTML_PAGE = """<!DOCTYPE html>
       Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
           alert('📢 브라우저 푸시 알림이 허용되었습니다! 가공이 완료되면 알림창이 뜹니다.');
-          new Notification('마비노기 모바일 헬퍼', { body: '주간 납품 가공 완료 알림이 활성화되었습니다!' });
+          new Notification('모비노기 생활 지원도구', { body: '주간 납품 가공 완료 알림이 활성화되었습니다!' });
         } else {
           alert('알림 권한이 거부되었거나 설정되지 않았습니다.');
         }
@@ -2535,8 +2535,8 @@ HTML_PAGE = """<!DOCTYPE html>
           changed = true;
           playChime();
           showPushNotification(`🔔 [${al.facility}] 마지막 가공 완료!`, `[${al.facility}] 모든 가공 작업이 완료되었습니다! (${al.item}) 지금 바로 수령하세요.`);
-          document.title = `🔔 [${al.facility} 가공 완료!] 마비노기 모바일 헬퍼`;
-          setTimeout(() => { document.title = '마비노기 모바일 - 주간 납품 자동화 & 일괄 제작 플래너'; }, 8000);
+          document.title = `🔔 [${al.facility} 가공 완료!] 모비노기 생활 지원도구`;
+          setTimeout(() => { document.title = '모비노기 생활 지원도구'; }, 8000);
         }
       });
       if (changed) renderAlarms();
