@@ -2565,10 +2565,17 @@ HTML_PAGE = """<!DOCTYPE html>
         const data = await res.json();
         cachedQuickPlan = data;
 
+        if (data.error) {
+          container.innerHTML = `<p style="color: #f87171; font-size: 13px;">⚠️ 계획 분석 오류: ${data.error}</p>`;
+          if (execBtn) execBtn.disabled = true;
+          return;
+        }
+
         const categories = data.categories || {};
         const catKeys = Object.keys(categories);
         if (catKeys.length === 0) {
           container.innerHTML = '<p style="color: #64748b; font-size: 13px;">선택된 가공대 정보가 없습니다.</p>';
+          if (execBtn) execBtn.disabled = true;
           return;
         }
 

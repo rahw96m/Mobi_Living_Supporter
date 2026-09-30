@@ -3015,6 +3015,9 @@ class DeliveryManager:
 
                         incoming = pending_yields.get(m_name, 0)
                         total_owned = inv_owned + stor_owned
+                        already_used = allocated_materials.get(m_name, 0)
+                        if already_used == 0 and clean_m in allocated_materials:
+                            already_used = allocated_materials[clean_m]
                         effective_owned = max(0, total_owned + incoming - already_used)
 
                         deficit = max(0, req - effective_owned)
