@@ -462,6 +462,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     self._send_error("올바른 아이템 이름과 수량을 입력해주세요.", 400)
                     return
 
+                manager_instance.reset_abort()
+
                 def worker():
                     global is_busy, current_task_info, last_execution_summary, last_summary_id
                     is_busy = True
@@ -502,6 +504,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             if is_busy:
                 self._send_error("이미 다른 작업이 진행 중입니다.", 409)
                 return
+
+            manager_instance.reset_abort()
 
             def batch_worker():
                 global is_busy, current_task_info, last_execution_summary, last_summary_id
@@ -558,6 +562,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
                 category = req_json.get("category", "all")
+
+                manager_instance.reset_abort()
 
                 def quick_alter_worker():
                     global is_busy, current_task_info, last_execution_summary, last_summary_id

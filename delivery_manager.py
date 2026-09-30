@@ -2220,6 +2220,7 @@ class DeliveryManager:
            - Does NOT halt even if altering was queued; immediately crafts everything possible.
         6. Summarizes completed crafts, running alters, and deferred tasks.
         """
+        self.reset_abort()
         self.log("🚀 [통합 일괄 납품 파이프라인 가동] 전체 주간 납품 목표 최적화 제작을 시작합니다.", "action", callback)
 
         start_time = time.time()
@@ -2644,6 +2645,7 @@ class DeliveryManager:
 
     def resolve_and_produce(self, item_name: str, target_count: int, callback: Optional[LogCallback] = None) -> Dict[str, Any]:
         """Single-item production pipeline with recursive BOM and upfront gathering support."""
+        self.reset_abort()
         self.log(f"🚀 [개별 제작 파이프라인 시작] 목표: '{item_name}' {target_count}개", "info", callback)
 
         start_time = time.time()
