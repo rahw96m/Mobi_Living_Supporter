@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller / Build artifacts
+build/
+dist/
+*.spec
+배포용_마비노기_헬퍼/
+배포용_마비노기_헬퍼.zip
+배포용_Mobi_Living_Supporter/
+배포용_Mobi_Living_Supporter.zip
+Mobi_Living_Supporter/
+Mobi_Living_Supporter.zip
+
+# Browser / App runtime data
+.mabi_helper_browser_data/
+mabi_helper_config.json
+
+# Scratch & Temporary test files
+scratch_*.json
+scratch_*.txt
+scratch_*.py
+test_*.py
+
+# Operating System files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

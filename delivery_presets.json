@@ -1,0 +1,94 @@
+{
+  "주간 납품1": {
+    "name": "주간 납품1",
+    "items": [
+      {
+        "item_name": "로터스 힐링 완드",
+        "goal": 6,
+        "quest_title": "로터스 힐링 완드 만들기"
+      },
+      {
+        "item_name": "론 엣지소드S",
+        "goal": 6,
+        "quest_title": "론 엣지소드S 만들기"
+      },
+      {
+        "item_name": "마블 힐링 완드S",
+        "goal": 6,
+        "quest_title": "마블 힐링 완드S 만들기"
+      },
+      {
+        "item_name": "비늘 갑옷 신발S",
+        "goal": 6,
+        "quest_title": "비늘 갑옷 신발S 만들기"
+      },
+      {
+        "item_name": "달걀프라이",
+        "goal": 15,
+        "quest_title": "달걀프라이 만들기"
+      },
+      {
+        "item_name": "가죽 갑옷 신발S",
+        "goal": 6,
+        "quest_title": "가죽 갑옷 신발S 만들기"
+      },
+      {
+        "item_name": "그랜드 크로스보우",
+        "goal": 6,
+        "quest_title": "그랜드 크로스보우 만들기"
+      },
+      {
+        "item_name": "두꺼운 가죽 갑옷 신발",
+        "goal": 6,
+        "quest_title": "두꺼운 가죽 갑옷 신발 만들기"
+      },
+      {
+        "item_name": "두꺼운 전투복 신발",
+        "goal": 6,
+        "quest_title": "두꺼운 전투복 신발 만들기"
+      },
+      {
+        "item_name": "라이트 크로스보우S",
+        "goal": 6,
+        "quest_title": "라이트 크로스보우S 만들기"
+      },
+      {
+        "item_name": "마법 유탄 부품",
+        "goal": 30,
+        "quest_title": "마법 유탄 부품 만들기"
+      },
+      {
+        "item_name": "사슬 갑옷 신발",
+        "goal": 6,
+        "quest_title": "사슬 갑옷 신발 만들기"
+      },
+      {
+        "item_name": "전문 캠프파이어 키트",
+        "goal": 9,
+        "quest_title": "전문 캠프파이어 키트 만들기"
+      },
+      {
+        "item_name": "전투복 신발S",
+        "goal": 6,
+        "quest_title": "전투복 신발S 만들기"
+      },
+      {
+        "item_name": "크레센트 엣지소드",
+        "goal": 6,
+        "quest_title": "크레센트 엣지소드 만들기"
+      },
+      {
+        "item_name": "달걀",
+        "goal": 30,
+        "quest_title": "달걀 구하기"
+      },
+      {
+        "item_name": "우유",
+        "goal": 30,
+        "quest_title": "우유 구하기"
+      }
+    ],
+    "created_at": 1790603022447,
+    "updated_at": 1790603022447
+  }
+}

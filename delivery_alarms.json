@@ -1,0 +1,14 @@
+{
+  "금속 가공 시설": {
+    "key": "금속 가공 시설",
+    "facility": "금속 가공 시설",
+    "item": "합금강괴 (7슬롯)",
+    "targetTimestamp": 1790795089029,
+    "total_remaining_seconds": 19367,
+    "source": "가공 알람",
+    "worksCount": 7,
+    "isDeliveryTarget": false,
+    "notified": false,
+    "createdAt": 1790769890236
+  }
+}
