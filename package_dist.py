@@ -56,9 +56,13 @@ exe_kr = os.path.join(OUTPUT_DIR, "모비노기_생활_지원도구.exe")
 if os.path.exists(exe_src):
     shutil.copy2(exe_src, exe_kr)
 
-# 4. 레시피 캐시 복사
+# 4. 레시피 캐시 및 기본 프리셋 복사
 if os.path.exists(RECIPE_SRC):
     shutil.copy2(RECIPE_SRC, os.path.join(OUTPUT_DIR, "recipes_cache.json"))
+
+preset_src = os.path.join(BASE_DIR, "delivery_presets.json")
+if os.path.exists(preset_src):
+    shutil.copy2(preset_src, os.path.join(OUTPUT_DIR, "delivery_presets.json"))
 
 # 5. 바탕화면 바로가기 생성기(무설치 배치파일) 추가
 shortcut_bat_content = """@echo off
@@ -120,9 +124,14 @@ with open(os.path.join(OUTPUT_DIR, "사용방법.txt"), "w", encoding="utf-8") a
 print("\n🗜️ 배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
+# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v1.0.0.zip)
+github_zip_path = os.path.join(BASE_DIR, "Mobi_Living_Supporter_v1.0.0.zip")
+shutil.copy2(zip_path, github_zip_path)
+
 print("\n" + "=" * 65)
 print("🎉 [성공] 모비노기 생활 지원도구 배포 패키지 구성 및 압축 완료!")
 print(f"📁 배포 폴더: {OUTPUT_DIR}")
 print(f"📦 압축 파일: {zip_path}")
-print(f"💡 안내: 위 ZIP 파일({os.path.basename(zip_path)}) 하나만 그대로 전달하시면 됩니다!")
+print(f"📦 깃허브 릴리즈용: {github_zip_path}")
+print(f"💡 안내: 위 ZIP 파일 중 하나를 그대로 공유하거나 깃허브 릴리즈에 첨부하시면 됩니다!")
 print("=" * 65 + "\n")
