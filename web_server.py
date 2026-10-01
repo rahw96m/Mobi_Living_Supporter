@@ -1350,7 +1350,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="logo-area">
         <div class="logo-icon">⚔️</div>
         <div class="title">
-          <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.2.0</span></h1>
+          <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.2.1</span></h1>
           <p>마비노기 모바일 AI 커넥터 연동</p>
         </div>
       </div>
