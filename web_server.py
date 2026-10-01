@@ -160,6 +160,9 @@ def get_cached_status() -> Dict[str, Any]:
                 try:
                     cached_character_info = cli_instance.get_my_info()
                     cached_character_time = now
+                except MabinogiCLIError:
+                    cached_character_info = None
+                    raise
                 except Exception:
                     pass
 
@@ -182,10 +185,10 @@ def get_cached_status() -> Dict[str, Any]:
                 "discovery_source": getattr(cli_instance, "discovery_source", "")
             }
             cached_status_data = data
-            cached_status_time = now
+            cached_status_time = time.time()
             return data
         except MabinogiCLIError as e:
-            return {
+            err_data = {
                 "connected": False,
                 "error": str(e),
                 "error_code": e.error_code or "CLI_ERROR",
@@ -196,8 +199,11 @@ def get_cached_status() -> Dict[str, Any]:
                 "last_summary": last_execution_summary,
                 "last_summary_id": last_summary_id
             }
+            cached_status_data = err_data
+            cached_status_time = time.time()
+            return err_data
         except Exception as e:
-            return {
+            err_data = {
                 "connected": False,
                 "error": str(e),
                 "error_code": "UNKNOWN",
@@ -208,6 +214,9 @@ def get_cached_status() -> Dict[str, Any]:
                 "last_summary": last_execution_summary,
                 "last_summary_id": last_summary_id
             }
+            cached_status_data = err_data
+            cached_status_time = time.time()
+            return err_data
 
 class RequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
