@@ -3045,7 +3045,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     async function resetAllTargetsCurrent() {
-      if (!confirm('등록된 모든 주간 납품 목표의 현재 보유 수량을 0개로 초기화할까요?\n\n(새로운 주간 퀘스트를 시작하거나 목표 품목들을 처음부터 제작하고자 할 때 유용합니다)')) return;
+      if (!confirm('등록된 모든 주간 납품 목표의 현재 보유 수량을 0개로 초기화할까요?\\n\\n(새로운 주간 퀘스트를 시작하거나 목표 품목들을 처음부터 제작하고자 할 때 유용합니다)')) return;
       try {
         const res = await fetch('/api/reset_delivery_targets_current', { method: 'POST' });
         const d = await res.json();
@@ -3063,9 +3063,9 @@ HTML_PAGE = """<!DOCTYPE html>
 
     async function loadPreset(name) {
       const resetCurrent = confirm(
-        `'${name}' 프리셋의 납품 목표를 불러옵니다.\n\n` +
-        `• [확인] 누름: 보유 수량을 0개로 초기화하여 새로 시작 (추천: 새 주간 퀘스트)\n` +
-        `• [취소] 누름: 기존에 등록/제작된 보유 수량을 유지하며 불러오기`
+        "'" + name + "' 프리셋의 납품 목표를 불러옵니다.\\n\\n" +
+        "• [확인] 누름: 보유 수량을 0개로 초기화하여 새로 시작 (추천: 새 주간 퀘스트)\\n" +
+        "• [취소] 누름: 기존에 등록/제작된 보유 수량을 유지하며 불러오기"
       );
       try {
         const res = await fetch('/api/load_delivery_preset', {
