@@ -681,10 +681,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                 item_name = req_json.get("item_name", "").strip()
                 goal = int(req_json.get("goal", 1))
                 quest_title = req_json.get("quest_title", "주간 납품")
+                req_current = req_json.get("current")
                 if not item_name or goal <= 0:
                     self._send_error("올바른 아이템명과 수량을 입력해주세요.", 400)
                     return
-                cur = manager_instance.get_effective_owned(item_name)
+                existing_entry = delivery_target_store.targets.get(item_name, {})
+                prev_cur = int(existing_entry.get("current", 0))
+                eff_cur = manager_instance.get_effective_owned(item_name)
+                if req_current is not None and str(req_current).strip() != "":
+                    try:
+                        cur = max(0, int(req_current))
+                    except Exception:
+                        cur = max(prev_cur, eff_cur)
+                else:
+                    cur = max(prev_cur, eff_cur)
                 entry = delivery_target_store.add_or_update(item_name, goal, cur, quest_title)
                 add_log("success", f"🎯 [납품 목표 등록] '{item_name}' (목표: {goal}개 / 현재: {cur}개) 등록 완료")
                 self._send_json({"status": "success", "target": entry})
@@ -708,6 +718,15 @@ class RequestHandler(BaseHTTPRequestHandler):
                     self._send_json({"status": "success", "target": entry})
                 else:
                     self._send_error("해당 아이템을 찾을 수 없습니다.", 404)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/reset_delivery_targets_current":
+            try:
+                reset_count = delivery_target_store.reset_all_current()
+                add_log("info", f"🔄 [보유 수량 초기화] 등록된 {reset_count}개 납품 품목의 보유 수량이 모두 0개로 초기화되었습니다.")
+                self._send_json({"status": "success", "reset_count": reset_count})
             except Exception as e:
                 self._send_error(e)
             return
@@ -777,11 +796,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 req_json = json.loads(body_bytes.decode("utf-8"))
                 preset_name = req_json.get("name", "")
+                reset_current = bool(req_json.get("reset_current", False))
                 preset = delivery_preset_store.get_preset(preset_name)
                 if not preset:
                     self._send_error(f"'{preset_name}' 프리셋을 찾을 수 없습니다.", 404)
                     return
-                # Clear current targets and load preset items
+                # Backup previous target currents if not resetting
+                prev_targets = {t["item_name"]: t for t in delivery_target_store.get_all()}
                 delivery_target_store.clear()
                 loaded_count = 0
                 for item in preset.get("items", []):
@@ -789,11 +810,18 @@ class RequestHandler(BaseHTTPRequestHandler):
                     goal = int(item.get("goal", 1))
                     quest_title = item.get("quest_title", "주간 납품")
                     if item_name and goal > 0:
-                        cur = manager_instance.get_effective_owned(item_name)
+                        if reset_current:
+                            cur = 0
+                        else:
+                            prev_entry = prev_targets.get(item_name, {})
+                            prev_cur = int(prev_entry.get("current", 0))
+                            eff_cur = manager_instance.get_effective_owned(item_name)
+                            cur = max(prev_cur, eff_cur)
                         delivery_target_store.add_or_update(item_name, goal, cur, quest_title)
                         loaded_count += 1
-                add_log("success", f"📂 [프리셋 불러오기] '{preset_name}' ({loaded_count}개 항목) 프리셋이 납품 목표로 등록되었습니다.")
-                self._send_json({"status": "success", "loaded_count": loaded_count})
+                mode_str = " (보유 수량 0개로 초기화)" if reset_current else " (기존 보유 수량 승계)"
+                add_log("success", f"📂 [프리셋 불러오기] '{preset_name}' ({loaded_count}개 항목) 프리셋이 등록되었습니다.{mode_str}")
+                self._send_json({"status": "success", "loaded_count": loaded_count, "reset_current": reset_current})
             except Exception as e:
                 self._send_error(e)
             return
@@ -1313,7 +1341,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="logo-area">
         <div class="logo-icon">⚔️</div>
         <div class="title">
-          <h1>모비노기 생활 지원도구</h1>
+          <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.2.0</span></h1>
           <p>마비노기 모바일 AI 커넥터 연동</p>
         </div>
       </div>
@@ -1463,6 +1491,9 @@ HTML_PAGE = """<!DOCTYPE html>
           <button class="btn btn-sm btn-primary" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 읽어 목록에 추가합니다">
             ➕ 현재 퀘스트 등록
           </button>
+          <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" style="color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.1);" title="새 주간 퀘스트를 시작할 때 모든 등록 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">
+            🔄 수량 0개로 초기화
+          </button>
           <button class="btn btn-sm" onclick="clearDeliveryTargets()" style="color: #f87171; border-color: rgba(248,113,113,0.3);">
             🗑️ 전체 비우기
           </button>
@@ -1474,13 +1505,17 @@ HTML_PAGE = """<!DOCTYPE html>
 
       <!-- Quick Manual Add Input Form -->
       <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
-        <div style="flex: 2; min-width: 180px;">
+        <div style="flex: 2; min-width: 170px;">
           <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
           <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
         </div>
-        <div style="flex: 1; min-width: 90px;">
+        <div style="flex: 1; min-width: 80px;">
           <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
-          <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="4" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+          <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="6" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+        </div>
+        <div style="flex: 1; min-width: 90px;">
+          <label style="font-size: 11.5px; color: #38bdf8; font-weight: 600; margin-bottom: 4px; display: block;">현재 보유 (선택)</label>
+          <input type="number" id="target-input-current" class="input-number" min="0" max="100" placeholder="자동 감지" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
         </div>
         <div>
           <button class="btn btn-emerald" style="height: 38px; padding: 0 18px; font-size: 13px; font-weight: 700;" onclick="addManualTarget()">
@@ -2844,6 +2879,7 @@ HTML_PAGE = """<!DOCTYPE html>
     async function addManualTarget() {
       const itemEl = document.getElementById('target-input-item');
       const goalEl = document.getElementById('target-input-goal');
+      const currentEl = document.getElementById('target-input-current');
       if (!itemEl || !goalEl) return;
       const itemName = itemEl.value.trim();
       const goal = parseInt(goalEl.value, 10);
@@ -2851,18 +2887,26 @@ HTML_PAGE = """<!DOCTYPE html>
         alert('올바른 아이템명과 목표 수량을 입력해주세요.');
         return;
       }
+      const payload = { item_name: itemName, goal: goal };
+      if (currentEl && currentEl.value.trim() !== '') {
+        const curVal = parseInt(currentEl.value, 10);
+        if (!isNaN(curVal) && curVal >= 0) {
+          payload.current = curVal;
+        }
+      }
 
       try {
         const res = await fetch('/api/add_delivery_target', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item_name: itemName, goal: goal })
+          body: JSON.stringify(payload)
         });
         const d = await res.json();
         if (d.error) {
           alert('등록 실패: ' + d.error);
         } else {
           itemEl.value = '';
+          if (currentEl) currentEl.value = '';
           pollLogs();
           loadDeliveryTargets();
           loadBatchPlan();
@@ -3000,13 +3044,34 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    async function resetAllTargetsCurrent() {
+      if (!confirm('등록된 모든 주간 납품 목표의 현재 보유 수량을 0개로 초기화할까요?\n\n(새로운 주간 퀘스트를 시작하거나 목표 품목들을 처음부터 제작하고자 할 때 유용합니다)')) return;
+      try {
+        const res = await fetch('/api/reset_delivery_targets_current', { method: 'POST' });
+        const d = await res.json();
+        if (d.status === 'success') {
+          pollLogs();
+          loadDeliveryTargets();
+          loadBatchPlan();
+        } else {
+          alert('초기화 실패: ' + (d.error || '알 수 없는 오류'));
+        }
+      } catch (e) {
+        alert('초기화 요청 실패: ' + e);
+      }
+    }
+
     async function loadPreset(name) {
-      if (!confirm(`'${name}' 프리셋의 납품 목표를 불러올까요?\\n(기존에 등록된 목표 목록이 이 프리셋의 내용으로 교체됩니다)`)) return;
+      const resetCurrent = confirm(
+        `'${name}' 프리셋의 납품 목표를 불러옵니다.\n\n` +
+        `• [확인] 누름: 보유 수량을 0개로 초기화하여 새로 시작 (추천: 새 주간 퀘스트)\n` +
+        `• [취소] 누름: 기존에 등록/제작된 보유 수량을 유지하며 불러오기`
+      );
       try {
         const res = await fetch('/api/load_delivery_preset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name })
+          body: JSON.stringify({ name: name, reset_current: resetCurrent })
         });
         const d = await res.json();
         if (d.error) {

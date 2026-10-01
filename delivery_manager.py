@@ -481,12 +481,24 @@ def get_facility_for_material(name: str) -> str:
     return "가공 시설"
 
 EQUIPMENT_KEYWORDS = [
-    "완드", "소드", "검", "활", "크로스보우", "갑옷", "투구", "신발", "장갑", "로브", "방패",
-    "의복", "전투복", "모자", "옷", "너클", "둔기", "도끼", "스태프", "랜스", "체인"
+    # 무기류
+    "완드", "소드", "검", "활", "크로스보우", "너클", "둔기", "도끼", "스태프", "랜스", "체인",
+    "실린더", "가드실린더", "핸들", "듀얼건", "마도서", "표창", "아틀라틀", "방패",
+    # 방어구 및 의복류
+    "갑옷", "투구", "신발", "장갑", "로브", "의복", "전투복", "모자", "옷", "드레스", "슈트",
+    "자켓", "코트", "팬츠", "스커트", "부츠", "건틀렛", "그리브",
+    # 장신구 및 머리장식
+    "서클릿", "헤어밴드", "안경", "베일", "티아라", "가발", "링", "목걸이", "귀걸이", "벨트",
+    # 악기류
+    "악기", "리라", "만돌린", "플루트", "샬루모", "휘슬", "튜바", "피아노", "드럼", "바이올린", "첼로",
+    # 특수 완제품 (get_items에서 누락되는 완제품류)
+    "키트", "캠프파이어"
 ]
 
 def is_equipment_item(item_name: str) -> bool:
-    """Returns True if item_name is an equipment/weapon/armor piece."""
+    """Returns True if item_name is an equipment/weapon/armor piece or special finished good."""
+    if not item_name:
+        return False
     return any(k in item_name for k in EQUIPMENT_KEYWORDS)
 
 class DeliveryTask:
@@ -707,6 +719,20 @@ class RegisteredDeliveryStore:
     def clear(self):
         self.targets = {}
         self.save()
+
+    def reset_all_current(self) -> int:
+        """Resets the current count of all registered targets to 0."""
+        count = 0
+        for item_name, t in self.targets.items():
+            goal = int(t.get("goal", 1))
+            t["current"] = 0
+            t["needed"] = goal
+            t["is_completed"] = False
+            t["inventory_count"] = 0
+            t["updated_at"] = int(time.time() * 1000)
+            count += 1
+        self.save()
+        return count
 
     def get_all(self) -> List[Dict[str, Any]]:
         return list(self.targets.values())
@@ -1055,52 +1081,67 @@ class DeliveryManager:
     def detect_delivery_quests(self) -> List[DeliveryTask]:
         """
         Scans active quest tracker entries for delivery objectives like:
-        '<color=orange>아이템명</color> 보유 3/6'
+        '<color=orange>아이템명</color> 보유 3/6', '아이템명 제작 0/6', etc.
+        Also parses quest title as fallback when description is just '3/6'.
         """
         quests = self.cli.get_quests()
         tasks: List[DeliveryTask] = []
-        pattern = re.compile(r"(.+?)\s*보유\s*(\d+)/(\d+)")
+        pattern = re.compile(r"(.+?)\s*(?:보유|제작|만들기|납품|전달|수집|구하기)?\s*(\d+)\s*/\s*(\d+)")
+        number_only_pattern = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
 
         for q in quests:
             quest_title = self.clean_text(q.get("QuestTitle", ""))
+            title_candidate = re.sub(r"\s*(?:만들기|구하기|제작|납품|전달)$", "", quest_title).strip()
             objectives = q.get("Objectives", [])
             for obj in objectives:
                 desc = self.clean_text(obj.get("Description", ""))
                 match = pattern.search(desc)
-                if match:
+                if match and match.group(1).strip():
                     item_name = match.group(1).strip()
+                    # Clean any leading/trailing keywords
+                    item_name = re.sub(r"^(?:보유|제작|만들기|납품|전달|수집|구하기)\s*", "", item_name).strip()
                     current = int(match.group(2))
                     goal = int(match.group(3))
                     is_completed = obj.get("IsCompleted", current >= goal)
                     tasks.append(DeliveryTask(quest_title, item_name, current, goal, is_completed))
+                else:
+                    num_match = number_only_pattern.search(desc)
+                    if num_match and title_candidate:
+                        current = int(num_match.group(1))
+                        goal = int(num_match.group(2))
+                        is_completed = obj.get("IsCompleted", current >= goal)
+                        tasks.append(DeliveryTask(quest_title, title_candidate, current, goal, is_completed))
 
         return tasks
 
     def get_effective_owned(self, item_name: str, include_storage: bool = True) -> int:
         """
         Returns how many of item_name the player owns (in bag, character storage, and account storage).
-        For equipment (which get_items omits), checks active quest objective count if available,
+        For equipment/finished goods (which get_items omits), checks active quest objective count if available,
         or falls back to persistent registered target count if present.
         """
         total_count = self.cli.count_item(item_name, include_storage=include_storage)
         if total_count > 0:
             return total_count
 
+        quest_current = 0
         for task in self.detect_delivery_quests():
             if task.item_name == item_name:
-                return task.current
+                quest_current = max(quest_current, task.current)
 
         # Fallback to persistent registered target count if recorded
+        store_current = 0
         if item_name in delivery_target_store.targets:
-            return int(delivery_target_store.targets[item_name].get("current", 0))
+            store_current = int(delivery_target_store.targets[item_name].get("current", 0))
 
-        return 0
+        return max(quest_current, store_current)
 
     def get_registered_deliveries_with_status(self) -> List[Dict[str, Any]]:
         """
         Returns all registered weekly delivery targets, with real-time current counts
         (including inventory, character storage, and account storage) queried from the game client.
-        Preserves existing counts for equipment items when quest is unpinned in-game.
+        CRITICAL: Never overwrites a known positive count (from previous craft or manual edit)
+        with 0 when an item is unpinned or not returned by get_items.
         """
         targets = delivery_target_store.get_all()
         updated_list = []
@@ -1114,19 +1155,29 @@ class DeliveryManager:
             breakdown = self.cli.get_item_location_breakdown(item_name)
             detected_current = breakdown["total"]
 
-            # If not detected by get_items (equipment items), check active quest tracker
-            if detected_current == 0 and item_name in active_delivery_tasks:
-                detected_current = active_delivery_tasks[item_name].current
+            # Check active quest tracker
+            quest_detected = 0
+            if item_name in active_delivery_tasks:
+                quest_detected = active_delivery_tasks[item_name].current
+                detected_current = max(detected_current, quest_detected)
 
-            # For equipment items (get_items cannot query equipment):
-            # If quest is unpinned (detected_current == 0), DO NOT overwrite a known positive count with 0!
-            if is_equipment_item(item_name):
-                if detected_current > 0:
-                    current = detected_current
-                else:
-                    current = prev_current
+            # Determine final current count safely:
+            # 1. If get_items explicitly found it in bag/storage, trust breakdown["total"]
+            # 2. Else if active quest tracker has a count, take max(prev_current, quest_detected)
+            # 3. Else (detected_current == 0, unpinned equipment or unlisted good):
+            #    PRESERVE prev_current so crafted or manually registered count is NEVER wiped out!
+            if breakdown["total"] > 0:
+                current = breakdown["total"]
+            elif quest_detected > 0:
+                current = max(prev_current, quest_detected)
             else:
-                current = detected_current
+                # If unpinned or equipment, retain positive prev_current
+                if prev_current > 0:
+                    current = prev_current
+                elif is_equipment_item(item_name):
+                    current = prev_current
+                else:
+                    current = 0
 
             needed = max(0, goal - current)
             is_completed = (current >= goal)
@@ -1134,7 +1185,7 @@ class DeliveryManager:
             t["current"] = current
             t["needed"] = needed
             t["is_completed"] = is_completed
-            t["inventory_count"] = max(breakdown["inventory"], current if is_equipment_item(item_name) else 0)
+            t["inventory_count"] = max(breakdown["inventory"], current if (is_equipment_item(item_name) or breakdown["total"] == 0) else 0)
             t["character_storage_count"] = breakdown["character_storage"]
             t["account_storage_count"] = breakdown["account_storage"]
             t["storage_count"] = breakdown["storage_total"]
@@ -1147,11 +1198,13 @@ class DeliveryManager:
         """
         Scans currently active quests via detect_delivery_quests() and adds or updates
         them in the persistent registered delivery targets store.
+        Preserves existing positive counts if quest is temporarily displaying 0.
         """
         detected = self.detect_delivery_quests()
         added = []
         for q in detected:
             cur = self.get_effective_owned(q.item_name)
+            cur = max(cur, q.current)
             entry = delivery_target_store.add_or_update(
                 item_name=q.item_name,
                 goal=q.goal,
@@ -1166,6 +1219,11 @@ class DeliveryManager:
         res = self.cli.get_craftable_items(item_name)
         for item in res.get("items", []):
             if item.get("DisplayName") == item_name:
+                # Dynamically cache ProducedPerCraft if provided by CLI
+                if "ProducedPerCraft" in item:
+                    ppc = int(item.get("ProducedPerCraft", 1))
+                    if ppc > 0:
+                        PRODUCED_PER_CRAFT[item_name] = ppc
                 # Dynamically update recipe cache if MissingIngredients present (merge, don't overwrite)
                 missing = item.get("MissingIngredients", [])
                 if missing:
@@ -1182,6 +1240,15 @@ class DeliveryManager:
         """Returns how many pieces 1 craft produces (e.g. 마법 유탄 부품 = 5)."""
         if item_name in PRODUCED_PER_CRAFT:
             return PRODUCED_PER_CRAFT[item_name]
+        try:
+            recipe_data = self.find_craft_recipe(item_name)
+            if recipe_data and "ProducedPerCraft" in recipe_data:
+                ppc = int(recipe_data.get("ProducedPerCraft", 1))
+                if ppc > 0:
+                    PRODUCED_PER_CRAFT[item_name] = ppc
+                    return ppc
+        except Exception:
+            pass
         return 1
 
     def get_recipe_ingredients(self, item_name: str) -> Dict[str, int]:
@@ -1737,13 +1804,24 @@ class DeliveryManager:
         return coll_res
 
     def auto_craft(self, item_name: str, craft_count: int, callback: Optional[LogCallback] = None) -> int:
-        """Crafts item_name with batching support and fallback."""
-        remaining = craft_count
-        batch = remaining
+        """
+        Crafts item_name with batching support, dynamic ProducedPerCraft ratio,
+        and immediate early-exit once the required quantity is fulfilled to prevent over-crafting.
+        """
+        needed_target = max(1, craft_count)
+        produced_per_craft = max(1, self.get_produced_per_craft(item_name))
         total_produced = 0
+        remaining_needed = needed_target
 
-        while remaining > 0:
-            self.log(f"🔨 [제작 시작] '{item_name}' {batch}회 제작 시도...", "action", callback)
+        while remaining_needed > 0:
+            crafts_needed = math.ceil(remaining_needed / produced_per_craft)
+            batch = crafts_needed
+            self.log(
+                f"🔨 [제작 시작] '{item_name}' {batch}회 제작 시도... "
+                f"(필요: {remaining_needed}개, 1회당 산출: {produced_per_craft}개)",
+                "action",
+                callback
+            )
             try:
                 res = self.cli.execute_crafting(item_name, craft_count=batch)
                 produced_now = 0
@@ -1754,67 +1832,104 @@ class DeliveryManager:
                     if r.get("Name") == item_name:
                         produced_now += r.get("Amount", 0)
 
-                items_made = max(produced_now, batch)
+                items_made = max(produced_now, batch * produced_per_craft)
                 total_produced += items_made
-                self.log(f"🔨 [제작 성공] {batch}회 제작 완료 (산출: {items_made}개)", "success", callback)
+                self.log(f"🔨 [제작 성공] {batch}회 제작 완료 (산출: +{items_made}개 / 누적: {total_produced}/{needed_target}개)", "success", callback)
 
-                remaining -= batch
-                batch = remaining
+                remaining_needed = max(0, needed_target - total_produced)
+                if remaining_needed <= 0:
+                    self.log(f"🎯 [목표 달성] '{item_name}' 필요 수량({needed_target}개) 제작이 완료되어 추가 제작을 종료합니다.", "success", callback)
+                    break
             except MabinogiCLIError as err:
                 data = err.response_data or {}
                 err_code = data.get("error") if isinstance(data, dict) else ""
 
                 if err_code == "invalid_count":
                     max_count = data.get("maxCount", 1)
-                    batch = min(remaining, max_count)
-                    self.log(f"⚠️ 1회 최대 제작량 제한({max_count}개)으로 분할 제작합니다.", "warn", callback)
-                    continue
+                    batch = min(crafts_needed, max_count)
+                    self.log(f"⚠️ 1회 최대 제작량 제한({max_count}회)으로 분할 제작합니다.", "warn", callback)
+                    try:
+                        res = self.cli.execute_crafting(item_name, craft_count=batch)
+                        produced_now = 0
+                        for r in res.get("rewards", []):
+                            if r.get("Name") == item_name:
+                                produced_now += r.get("Amount", 0)
+                        for r in res.get("criticalRewards", []):
+                            if r.get("Name") == item_name:
+                                produced_now += r.get("Amount", 0)
+                        items_made = max(produced_now, batch * produced_per_craft)
+                        total_produced += items_made
+                        remaining_needed = max(0, needed_target - total_produced)
+                        self.log(f"🔨 [분할 제작 성공] {batch}회 완료 (산출: +{items_made}개 / 누적: {total_produced}/{needed_target}개)", "success", callback)
+                        if remaining_needed <= 0:
+                            break
+                        continue
+                    except Exception as retry_err:
+                        self.log(f"⚠️ 분할 제작 시도 중 오류: {retry_err}", "warn", callback)
+                        raise retry_err
                 elif err_code == "not_enough_ingredient":
                     if batch > 1:
                         batch = max(1, batch // 2)
-                        self.log(f"⚠️ 재료 부족으로 제작 수량을 {batch}개로 낮추어 재시도합니다.", "warn", callback)
-                        continue
+                        self.log(f"⚠️ 재료 부족으로 제작 수량을 {batch}회로 낮추어 재시도합니다.", "warn", callback)
+                        try:
+                            res = self.cli.execute_crafting(item_name, craft_count=batch)
+                            produced_now = 0
+                            for r in res.get("rewards", []):
+                                if r.get("Name") == item_name:
+                                    produced_now += r.get("Amount", 0)
+                            for r in res.get("criticalRewards", []):
+                                if r.get("Name") == item_name:
+                                    produced_now += r.get("Amount", 0)
+                            items_made = max(produced_now, batch * produced_per_craft)
+                            total_produced += items_made
+                            remaining_needed = max(0, needed_target - total_produced)
+                            self.log(f"🔨 [감소 제작 성공] {batch}회 완료 (산출: +{items_made}개)", "success", callback)
+                            if remaining_needed <= 0:
+                                break
+                            continue
+                        except Exception:
+                            pass
+                    # Self-healing for crafting:
+                    recipe = self.get_recipe_ingredients(item_name)
+                    healed = False
+                    if recipe:
+                        for ing_name, per_craft in recipe.items():
+                            inv_cnt = self.cli.count_item(ing_name, include_storage=False)
+                            if inv_cnt < per_craft:
+                                deficit_for_one = per_craft - inv_cnt
+                                is_gath, _ = self.is_gatherable(ing_name)
+                                if is_gath:
+                                    self.log(
+                                        f"💡 [전송기 보충 채집] 가방에 '{ing_name}'이(가) {inv_cnt}개 남아 1회분({per_craft}개) 합산 결제가 지연되었습니다. "
+                                        f"가방 보충을 위해 부족분 {deficit_for_one}개를 즉시 현장 채집합니다.",
+                                        "action",
+                                        callback
+                                    )
+                                    gather_res = self.auto_gather(ing_name, deficit_for_one, is_delivery=False, callback=callback)
+                                    if gather_res.get("gained", 0) > 0 or gather_res.get("status") == "success":
+                                        healed = True
+                    if healed:
+                        try:
+                            res = self.cli.execute_crafting(item_name, craft_count=1)
+                            produced_now = 0
+                            for r in res.get("rewards", []):
+                                if r.get("Name") == item_name:
+                                    produced_now += r.get("Amount", 0)
+                            for r in res.get("criticalRewards", []):
+                                if r.get("Name") == item_name:
+                                    produced_now += r.get("Amount", 0)
+                            items_made = max(produced_now, produced_per_craft)
+                            total_produced += items_made
+                            remaining_needed = max(0, needed_target - total_produced)
+                            self.log(f"🔨 [전송기 보충 후 제작 성공] 1회 제작 완료 (산출: +{items_made}개)", "success", callback)
+                            if remaining_needed <= 0:
+                                break
+                            continue
+                        except MabinogiCLIError as retry_err:
+                            self.log(f"⚠️ 보충 후 제작 재시도 실패 ({retry_err})", "warn", callback)
+                            raise retry_err
                     else:
-                        # Self-healing for crafting:
-                        recipe = self.get_recipe_ingredients(item_name)
-                        healed = False
-                        if recipe:
-                            for ing_name, per_craft in recipe.items():
-                                inv_cnt = self.cli.count_item(ing_name, include_storage=False)
-                                if inv_cnt < per_craft:
-                                    deficit_for_one = per_craft - inv_cnt
-                                    is_gath, _ = self.is_gatherable(ing_name)
-                                    if is_gath:
-                                        self.log(
-                                            f"💡 [전송기 보충 채집] 가방에 '{ing_name}'이(가) {inv_cnt}개 남아 1회분({per_craft}개) 합산 결제가 지연되었습니다. "
-                                            f"가방 보충을 위해 부족분 {deficit_for_one}개를 즉시 현장 채집합니다.",
-                                            "action",
-                                            callback
-                                        )
-                                        gather_res = self.auto_gather(ing_name, deficit_for_one, is_delivery=False, callback=callback)
-                                        if gather_res.get("gained", 0) > 0 or gather_res.get("status") == "success":
-                                            healed = True
-                        if healed:
-                            try:
-                                res = self.cli.execute_crafting(item_name, craft_count=1)
-                                produced_now = 0
-                                for r in res.get("rewards", []):
-                                    if r.get("Name") == item_name:
-                                        produced_now += r.get("Amount", 0)
-                                for r in res.get("criticalRewards", []):
-                                    if r.get("Name") == item_name:
-                                        produced_now += r.get("Amount", 0)
-                                items_made = max(produced_now, 1)
-                                total_produced += items_made
-                                self.log(f"🔨 [전송기 보충 후 제작 성공] 1회 제작 완료 (산출: {items_made}개)", "success", callback)
-                                remaining -= 1
-                                batch = remaining
-                                continue
-                            except MabinogiCLIError as retry_err:
-                                self.log(f"⚠️ 보충 후 제작 재시도 실패 ({retry_err})", "warn", callback)
-                                raise retry_err
-                        else:
-                            raise err
+                        raise err
                 else:
                     raise err
 
@@ -1827,10 +1942,11 @@ class DeliveryManager:
             t["current"] = new_cur
             t["needed"] = max(0, goal - new_cur)
             t["is_completed"] = (new_cur >= goal)
+            t["last_crafted_at"] = time.time()
             t["updated_at"] = int(time.time() * 1000)
             delivery_target_store.targets[item_name] = t
             delivery_target_store.save()
-            self.log(f"📊 [납품 목표 갱신] '{item_name}' 제작 완료({total_produced}개 산출) 반영 ➔ 현재 {new_cur}/{goal}개", "info", callback)
+            self.log(f"📊 [납품 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 ➔ 현재 {new_cur}/{goal}개", "info", callback)
 
         return total_produced
 
@@ -2593,8 +2709,16 @@ class DeliveryManager:
                     self.log("🛑 [사용자 중지] 완제품 제작이 중단되었습니다.", "warn", callback)
                     break
                 item_name = t["item_name"]
-                needed = t["needed"]
-                self.log(f"🔨 [완제품 제작 시작] '{item_name}' {needed}개 제작 진행...", "action", callback)
+                goal = int(t.get("goal", 1))
+                cur_owned = self.get_effective_owned(item_name)
+                if cur_owned >= goal:
+                    self.log(f"🎉 '{item_name}'은(는) 이미 목표 수량({cur_owned}/{goal}개)을 보유 중이므로 제작을 건너뜁니다.", "success", callback)
+                    craft_results.append({"item_name": item_name, "crafted": 0, "status": "already_completed"})
+                    continue
+                needed = max(0, goal - cur_owned)
+                if needed <= 0:
+                    continue
+                self.log(f"🔨 [완제품 제작 시작] '{item_name}' {needed}개 제작 진행... (현재 보유: {cur_owned}/{goal}개)", "action", callback)
                 try:
                     crafted_count = self.auto_craft(item_name, needed, callback=callback)
                     craft_results.append({"item_name": item_name, "crafted": crafted_count, "status": "success"})
@@ -2845,6 +2969,26 @@ class DeliveryManager:
         craft_recipe = self.find_craft_recipe(item_name)
         if not craft_recipe:
             raise MabinogiCLIError(f"'{item_name}'에 대한 제작 레시피를 찾을 수 없습니다.")
+
+        # Re-check current owned before proceeding with final craft
+        owned = self.get_effective_owned(item_name)
+        if owned >= target_count:
+            self.log(f"🎉 '{item_name}'은(는) 이미 목표 수량({owned}/{target_count}개)을 보유하여 추가 제작이 불필요합니다!", "success", callback)
+            final_wings = self._safe_get_wings(initial_wings)
+            summary = self.format_and_log_summary(
+                summary_title=f"'{item_name}' 이미 보유 충족",
+                initial_wings=initial_wings,
+                final_wings=final_wings,
+                gathered_list=gathered_list,
+                altered_list=altered_list,
+                crafted_list=craft_results,
+                collected_facilities=collected_facilities_all,
+                duration_sec=time.time() - start_time,
+                status="completed",
+                callback=callback
+            )
+            return {"status": "already_satisfied", "item": item_name, "owned": owned, "target": target_count, "summary": summary}
+        needed = max(0, target_count - owned)
 
         ingredients = self.get_recipe_ingredients(item_name)
         for ing_name, per_craft in ingredients.items():
