@@ -30,6 +30,12 @@ build_cmd = [
     "--noconsole",
     "--name",
     "Mobi_Living_Supporter",
+    "--icon",
+    os.path.join(BASE_DIR, "app_icon.ico"),
+    "--add-data",
+    f"{os.path.join(BASE_DIR, 'app_icon.ico')};.",
+    "--add-data",
+    f"{os.path.join(BASE_DIR, 'app_icon.png')};.",
     "--clean",
     "-y",
     "--version-file",
@@ -64,12 +70,18 @@ preset_src = os.path.join(BASE_DIR, "delivery_presets.json")
 if os.path.exists(preset_src):
     shutil.copy2(preset_src, os.path.join(OUTPUT_DIR, "delivery_presets.json"))
 
+# 아이콘 파일 복사
+for icon_name in ("app_icon.ico", "app_icon.png"):
+    src_icon = os.path.join(BASE_DIR, icon_name)
+    if os.path.exists(src_icon):
+        shutil.copy2(src_icon, os.path.join(OUTPUT_DIR, icon_name))
+
 # 5. 바탕화면 바로가기 생성기(무설치 배치파일) 추가
 shortcut_bat_content = """@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
 echo 📌 바탕화면에 '모비노기 생활 지원도구' 바로가기를 생성합니다...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $target = Join-Path $pwd '모비노기_생활_지원도구.exe'; if (-not (Test-Path $target)) { $target = Join-Path $pwd 'Mobi_Living_Supporter.exe' }; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), '모비노기 생활 지원도구.lnk')); $s.TargetPath = $target; $s.WorkingDirectory = $pwd; $s.Description = '모비노기 생활 지원도구'; $s.Save()"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $target = Join-Path $pwd '모비노기_생활_지원도구.exe'; if (-not (Test-Path $target)) { $target = Join-Path $pwd 'Mobi_Living_Supporter.exe' }; $ico = Join-Path $pwd 'app_icon.ico'; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), '모비노기 생활 지원도구.lnk')); $s.TargetPath = $target; $s.WorkingDirectory = $pwd; if (Test-Path $ico) { $s.IconLocation = \\"$ico,0\\" } else { $s.IconLocation = \\"$target,0\\" }; $s.Description = '모비노기 생활 지원도구'; $s.Save()"
 if %errorlevel% equ 0 (
     echo.
     echo ✅ 바탕화면에 '모비노기 생활 지원도구' 바로가기가 생성되었습니다!
@@ -124,8 +136,8 @@ with open(os.path.join(OUTPUT_DIR, "사용방법.txt"), "w", encoding="utf-8") a
 print("\n🗜️ 배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
-# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v0.2.1.zip)
-VERSION = "v0.2.1"
+# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v0.3.0.zip)
+VERSION = "v0.3.0"
 github_zip_path = os.path.join(BASE_DIR, f"Mobi_Living_Supporter_{VERSION}.zip")
 shutil.copy2(zip_path, github_zip_path)
 

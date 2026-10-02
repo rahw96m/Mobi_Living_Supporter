@@ -30,6 +30,25 @@ import subprocess
 from mabi_cli import MabinogiCLI, MabinogiCLIError, get_saved_cli_path, find_cli_path
 from delivery_manager import DeliveryManager, DeliveryTask, alarm_store, delivery_target_store, delivery_preset_store, get_facility_for_material
 
+BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+EXE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
+
+def get_icon_bytes(format_type="png"):
+    filename = "app_icon.png" if format_type == "png" else "app_icon.ico"
+    candidates = [
+        os.path.join(BASE_DIR, filename),
+        os.path.join(EXE_DIR, filename),
+        os.path.join(os.getcwd(), filename),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            try:
+                with open(c, "rb") as f:
+                    return f.read()
+            except Exception:
+                pass
+    return None
+
 cli_instance = MabinogiCLI()
 manager_instance = DeliveryManager(cli=cli_instance)
 
@@ -260,6 +279,22 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/heartbeat":
             self._send_json({"status": "alive"})
+            return
+
+        if path == "/favicon.ico":
+            icon_data = get_icon_bytes("ico") or get_icon_bytes("png")
+            if icon_data:
+                self._send_data(200, icon_data, "image/x-icon")
+            else:
+                self._send_data(404, b"")
+            return
+
+        if path in ("/api/icon", "/app_icon.png"):
+            icon_data = get_icon_bytes("png") or get_icon_bytes("ico")
+            if icon_data:
+                self._send_data(200, icon_data, "image/png")
+            else:
+                self._send_data(404, b"")
             return
 
         if path in ("/", "/index.html"):
@@ -981,6 +1016,8 @@ HTML_PAGE = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>모비노기 생활 지원도구</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/api/icon">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -1348,9 +1385,11 @@ HTML_PAGE = """<!DOCTYPE html>
   <div class="container">
     <header>
       <div class="logo-area">
-        <div class="logo-icon">⚔️</div>
+        <div class="logo-icon" style="padding: 2px; overflow: hidden; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);">
+          <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
+        </div>
         <div class="title">
-          <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.2.1</span></h1>
+          <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.3.0</span></h1>
           <p>마비노기 모바일 AI 커넥터 연동</p>
         </div>
       </div>

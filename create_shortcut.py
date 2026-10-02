@@ -14,8 +14,15 @@ def create_desktop_shortcut():
         shortcut = shell.CreateShortCut(shortcut_path)
         shortcut.TargetPath = "wscript.exe"
         shortcut.Arguments = f'"{vbs_path}"'
-        shortcut.WorkingDirectory = target_dir
-        shortcut.IconLocation = "shell32.dll,24"
+        ico_path = os.path.join(target_dir, "app_icon.ico")
+        if os.path.exists(ico_path):
+            shortcut.IconLocation = f"{ico_path},0"
+        else:
+            exe_path = os.path.join(target_dir, "모비노기_생활_지원도구.exe")
+            if os.path.exists(exe_path):
+                shortcut.IconLocation = f"{exe_path},0"
+            else:
+                shortcut.IconLocation = "shell32.dll,24"
         shortcut.Description = "모비노기 생활 지원도구"
         shortcut.Save()
 
