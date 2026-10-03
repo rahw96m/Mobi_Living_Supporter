@@ -1054,9 +1054,8 @@ HTML_PAGE = """<!DOCTYPE html>
       top: 12px;
       z-index: 1000;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 16px 24px;
+      flex-direction: column;
+      padding: 14px 22px;
       background: rgba(15, 23, 42, 0.92);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
@@ -1064,25 +1063,134 @@ HTML_PAGE = """<!DOCTYPE html>
       border-radius: 18px;
       margin-bottom: 24px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      gap: 10px;
     }
-    .logo-area { display: flex; align-items: center; gap: 14px; }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap-reverse;
+      gap: 10px;
+    }
+    .logo-area { display: flex; align-items: center; gap: 13px; }
     .logo-icon {
-      width: 44px; height: 44px; border-radius: 12px;
+      width: 42px; height: 42px; border-radius: 12px;
       background: linear-gradient(135deg, #6366f1, #38bdf8);
       display: flex; align-items: center; justify-content: center;
-      font-size: 22px; box-shadow: 0 4px 15px var(--accent-glow);
+      font-size: 21px; box-shadow: 0 4px 15px var(--accent-glow);
+      flex-shrink: 0;
     }
-    .title h1 { font-size: 19px; font-weight: 800; letter-spacing: -0.5px; }
-    .title p { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
-    .status-pills { display: flex; gap: 10px; align-items: center; }
+    .title h1 {
+      font-size: 18.5px;
+      font-weight: 800;
+      letter-spacing: -0.4px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .title p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    /* Header Action Buttons (연결설정, 최근 작업 리포트, 서버 종료) */
+    .header-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .header-action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 5px 11px;
+      font-size: 11.5px;
+      font-weight: 700;
+      border-radius: 9999px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+      line-height: 1.3;
+      user-select: none;
+    }
+    .header-action-btn .btn-icon {
+      font-size: 12px;
+      line-height: 1;
+    }
+    .header-action-btn.btn-settings {
+      background: rgba(99, 102, 241, 0.16);
+      color: #a5b4fc;
+      border-color: rgba(99, 102, 241, 0.35);
+    }
+    .header-action-btn.btn-settings:hover {
+      background: rgba(99, 102, 241, 0.3);
+      color: #e0e7ff;
+      transform: translateY(-1px);
+    }
+    .header-action-btn.btn-summary {
+      background: rgba(59, 130, 246, 0.16);
+      color: #60a5fa;
+      border-color: rgba(59, 130, 246, 0.35);
+    }
+    .header-action-btn.btn-summary:hover {
+      background: rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+      transform: translateY(-1px);
+    }
+    .header-action-btn.btn-shutdown {
+      background: rgba(239, 68, 68, 0.14);
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .header-action-btn.btn-shutdown:hover {
+      background: rgba(239, 68, 68, 0.25);
+      color: #fca5a5;
+      transform: translateY(-1px);
+    }
+
+    /* 상단/하단 영역 구분선 */
+    .header-divider {
+      height: 1px;
+      width: 100%;
+      background: linear-gradient(90deg, rgba(99, 102, 241, 0.3) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(99, 102, 241, 0.05) 100%);
+      margin: 1px 0;
+    }
+
+    /* 하단 상태 바 (서버 연결 상태, 날개, 무게) */
+    .header-status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .status-pills { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .pill {
-      padding: 6px 12px; border-radius: 20px; font-size: 12.5px; font-weight: 600;
+      padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
       display: flex; align-items: center; gap: 6px; transition: all 0.3s;
+      white-space: nowrap;
     }
     .pill.online { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
     .pill.offline { background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3); }
     .pill.wings { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
     .pill.weight { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+    /* 반응형: 가로폭이 좁아질 때 아이콘만 남겨 공간 확보 */
+    @media (max-width: 860px) {
+      .header-action-btn {
+        padding: 5px 9px;
+      }
+      .header-action-btn .btn-label {
+        display: none;
+      }
+    }
+    @media (max-width: 640px) {
+      .header-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+    }
 
     /* Layout */
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
@@ -1384,22 +1492,38 @@ HTML_PAGE = """<!DOCTYPE html>
 <body>
   <div class="container">
     <header>
-      <div class="logo-area">
-        <div class="logo-icon" style="padding: 2px; overflow: hidden; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);">
-          <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
+      <!-- 1층: 좌측(로고, 제목) / 우측(연결설정, 최근 작업 리포트, 서버 종료) -->
+      <div class="header-top">
+        <div class="logo-area">
+          <div class="logo-icon" style="padding: 2px; overflow: hidden; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);">
+            <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
+          </div>
+          <div class="title">
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.3.0</span></h1>
+            <p>마비노기 모바일 AI 커넥터 연동</p>
+          </div>
         </div>
-        <div class="title">
-          <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.3.0</span></h1>
-          <p>마비노기 모바일 AI 커넥터 연동</p>
+        <div class="header-actions">
+          <button class="header-action-btn btn-settings" onclick="openCliModal()" title="게임 CLI 설치 경로 및 연결 설정">
+            <span class="btn-icon">⚙️</span><span class="btn-label">연결 설정</span>
+          </button>
+          <button id="btn-show-summary" class="header-action-btn btn-summary" style="display: none;" onclick="openSummaryModal()" title="최근 완료된 작업의 채집, 가공, 제작, 날개 소모 결과를 확인합니다">
+            <span class="btn-icon">📊</span><span class="btn-label">최근 작업 리포트</span>
+          </button>
+          <button class="header-action-btn btn-shutdown" onclick="manualServerShutdown()" title="웹 대시보드와 백그라운드 서버를 종료합니다">
+            <span class="btn-icon">🔌</span><span class="btn-label">서버 종료</span>
+          </button>
         </div>
       </div>
-      <div class="status-pills" id="status-pills">
+
+      <!-- 구분 선 -->
+      <div class="header-divider"></div>
+
+      <!-- 2층: 서버 연결 상태, 날개, 무게만 깔끔하게 표시 -->
+      <div class="header-status-bar status-pills" id="status-pills">
         <div class="pill online" id="pill-status" onclick="openCliModal()" style="cursor: pointer;" title="클릭하여 연결 상태 및 설정 확인">● 커넥터 연결 확인 중</div>
         <div class="pill wings" id="pill-wings">🪽 날개: -</div>
         <div class="pill weight" id="pill-weight">📦 무게: -</div>
-        <button class="btn btn-sm" onclick="openCliModal()" style="padding: 4px 11px; font-size: 11.5px; font-weight: 700; background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 9999px; cursor: pointer;" title="게임 CLI 설치 경로 및 연결 설정">⚙️ 연결 설정</button>
-        <button id="btn-show-summary" class="btn btn-sm" style="display: none; padding: 4px 11px; font-size: 11.5px; font-weight: 700; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 9999px; cursor: pointer;" onclick="openSummaryModal()" title="최근 완료된 작업의 채집, 가공, 제작, 날개 소모 결과를 확인합니다">📊 최근 작업 리포트</button>
-        <button class="btn btn-sm" style="padding: 4px 11px; font-size: 11.5px; font-weight: 700; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 9999px; cursor: pointer;" onclick="manualServerShutdown()" title="웹 대시보드와 백그라운드 서버를 종료합니다">🔌 서버 종료</button>
       </div>
     </header>
 
