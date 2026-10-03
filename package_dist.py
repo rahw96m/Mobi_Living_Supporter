@@ -61,6 +61,12 @@ exe_src = os.path.join(OUTPUT_DIR, "Mobi_Living_Supporter.exe")
 exe_kr = os.path.join(OUTPUT_DIR, "모비노기_생활_지원도구.exe")
 if os.path.exists(exe_src):
     shutil.copy2(exe_src, exe_kr)
+    try:
+        os.utime(exe_kr, None)
+        import ctypes
+        ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
+    except Exception:
+        pass
 
 # 4. 레시피 캐시 및 기본 프리셋 복사
 if os.path.exists(RECIPE_SRC):
