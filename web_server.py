@@ -1381,6 +1381,131 @@ HTML_PAGE = """<!DOCTYPE html>
       padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04);
     }
 
+    /* Main Execution Mode Switcher Tabs */
+    .main-mode-switcher-container {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 16px;
+      padding: 6px;
+      margin-bottom: 22px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+    .main-mode-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    @media(max-width: 768px) {
+      .main-mode-tabs {
+        grid-template-columns: 1fr;
+      }
+    }
+    .main-mode-tab {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      color: #94a3b8;
+      position: relative;
+      user-select: none;
+    }
+    .main-mode-tab:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: #cbd5e1;
+      transform: translateY(-1px);
+    }
+    .main-mode-tab .tab-icon-wrap {
+      width: 44px;
+      height: 44px;
+      border-radius: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+      transition: transform 0.25s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .main-mode-tab:hover .tab-icon-wrap {
+      transform: scale(1.05);
+    }
+    .main-mode-tab .tab-text-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+      flex: 1;
+    }
+    .main-mode-tab .tab-main-title {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #cbd5e1;
+      transition: color 0.2s ease;
+    }
+    .main-mode-tab .tab-sub-desc {
+      font-size: 11.5px;
+      color: #64748b;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: color 0.2s ease;
+    }
+
+    /* Active Tab: Delivery Mode */
+    .main-mode-tab.active#btn-mode-delivery {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.18) 0%, rgba(99, 102, 241, 0.14) 100%);
+      border: 1px solid rgba(168, 85, 247, 0.45);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(168, 85, 247, 0.22);
+    }
+    .main-mode-tab.active#btn-mode-delivery .tab-main-title {
+      color: #f3e8ff;
+    }
+    .main-mode-tab.active#btn-mode-delivery .tab-sub-desc {
+      color: #c4b5fd;
+    }
+    .main-mode-tab.active#btn-mode-delivery .tab-icon-wrap {
+      box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4);
+    }
+
+    /* Active Tab: Quick Alter Mode */
+    .main-mode-tab.active#btn-mode-quick-alter {
+      background: linear-gradient(135deg, rgba(2, 132, 199, 0.2) 0%, rgba(37, 99, 235, 0.14) 100%);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(2, 132, 199, 0.22);
+    }
+    .main-mode-tab.active#btn-mode-quick-alter .tab-main-title {
+      color: #e0f2fe;
+    }
+    .main-mode-tab.active#btn-mode-quick-alter .tab-sub-desc {
+      color: #7dd3fc;
+    }
+    .main-mode-tab.active#btn-mode-quick-alter .tab-icon-wrap {
+      box-shadow: 0 4px 16px rgba(2, 132, 199, 0.4);
+    }
+
+    /* Tab Content Animation */
+    .mode-tab-content {
+      animation: tabFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes tabFadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     /* Execution Summary Modal Overlay */
     .modal-overlay {
       position: fixed;
@@ -1499,7 +1624,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
           </div>
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.3.1</span></h1>
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.4.0</span></h1>
             <p>마비노기 모바일 AI 커넥터 연동</p>
           </div>
         </div>
@@ -1596,201 +1721,238 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 7-Slot Max Level Alteration Bench Quick Run Card -->
-    <div class="card" id="quick-alter-main-card" style="margin-bottom: 24px; border-color: rgba(56, 189, 248, 0.4); background: linear-gradient(180deg, rgba(23, 31, 51, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);">
-      <div class="card-title" style="margin-bottom: 0;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span>⚡ 7슬롯 최고 레벨 가공대 빠른 실행</span>
-          <span class="badge" style="background: rgba(56, 189, 248, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">7슬롯 최적화</span>
-        </div>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn btn-sm" onclick="loadQuickAlterPlan()">계획 새로고침</button>
-          <button class="btn btn-sm" id="btn-toggle-quick-alter" onclick="toggleQuickAlterView()">접어두기 ▲</button>
-        </div>
-      </div>
-
-      <!-- Collapsed Compact Bar (shown when collapsed) -->
-      <div id="quick-alter-collapsed-bar" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer;" onclick="toggleQuickAlterView()">
-        <span id="quick-alter-quick-summary">7슬롯 가공대 빠른 실행 계획 요약...</span>
-        <span style="float: right; color: #38bdf8; font-weight: 600;">펼치기 ▼</span>
-      </div>
-
-      <!-- Expanded Content -->
-      <div id="quick-alter-expanded-content" style="margin-top: 12px;">
-        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.6;">
-          완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 최고 티어 재료부터 순서대로 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>
-        </p>
-
-        <!-- Category Filter Tabs -->
-        <div style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
-          <button class="btn btn-sm quick-tab active" id="tab-cat-all" onclick="selectQuickCategory('all')">⚡ 전체 가공대 일괄</button>
-          <button class="btn btn-sm quick-tab" id="tab-cat-금속" onclick="selectQuickCategory('금속')">🪙 금속 (백금강괴 ~ 철괴)</button>
-          <button class="btn btn-sm quick-tab" id="tab-cat-목재" onclick="selectQuickCategory('목재')">🪵 목재 (특급목재 ~ 목재)</button>
-          <button class="btn btn-sm quick-tab" id="tab-cat-가죽" onclick="selectQuickCategory('가죽')">🦊 가죽 (특급가죽 ~ 가죽)</button>
-          <button class="btn btn-sm quick-tab" id="tab-cat-옷감" onclick="selectQuickCategory('옷감')">🧶 옷감 (특급옷감 ~ 옷감)</button>
-        </div>
-
-        <!-- Quick Alter Plan Container -->
-        <div id="quick-alter-plan-container" style="display: flex; flex-direction: column; gap: 14px;">
-          <p style="color: #64748b; font-size: 13px;">가공대 상태 및 고티어 계획을 분석 중입니다...</p>
-        </div>
-
-        <!-- Bottom Action Bar -->
-        <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
-          <div id="quick-gather-summary" style="font-size: 12.5px; color: var(--cyan); display: flex; align-items: center; gap: 6px;">
-            <!-- Gathering summary populated by JS -->
+    <!-- Main Execution Mode Selector Tab Bar -->
+    <div class="main-mode-switcher-container">
+      <div class="main-mode-tabs" role="tablist">
+        <button class="main-mode-tab active" id="btn-mode-delivery" role="tab" aria-selected="true" onclick="switchMainMode('delivery')">
+          <div class="tab-icon-wrap" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.35), rgba(99, 102, 241, 0.35));">
+            🎯
           </div>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <button id="btn-quick-alter-abort" class="btn" style="display: none; padding: 12px 20px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; border-radius: 8px; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); cursor: pointer;" onclick="abortQuickAlter()">
-              🛑 작업 즉시 중지
-            </button>
-            <button id="btn-quick-alter-execute" class="btn btn-primary" style="padding: 12px 24px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #2563eb); box-shadow: 0 4px 15px rgba(2, 132, 199, 0.4);" onclick="executeQuickAlter()">
-              🚀 7슬롯 빠른 가공 시작 (수령 ➔ 채집 ➔ 가공)
-            </button>
+          <div class="tab-text-group">
+            <div class="tab-main-title">
+              <span>주간 납품 관리 & 일괄 실행</span>
+              <span id="tab-delivery-pill" class="badge delivery" style="font-size: 11px; padding: 2px 8px;">0개 등록</span>
+            </div>
+            <div class="tab-sub-desc">주간 퀘스트 목표 누적 등록 · 자재 소요 분석(BOM) · 부족 재료 일괄 제작</div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Weekly Delivery Targets Manager Card (주간 납품 목표 누적 등록 및 관리) -->
-    <div class="card" style="margin-bottom: 24px; border-color: rgba(168, 85, 247, 0.45); background: linear-gradient(180deg, rgba(30, 27, 75, 0.35) 0%, rgba(15, 23, 42, 0.6) 100%);">
-      <div class="card-title">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span>🎯 주간 납품 목표 등록 & 관리</span>
-          <span id="target-count-badge" class="badge delivery">0개 등록됨</span>
-        </div>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn btn-sm btn-primary" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 읽어 목록에 추가합니다">
-            ➕ 현재 퀘스트 등록
-          </button>
-          <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" style="color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.1);" title="새 주간 퀘스트를 시작할 때 모든 등록 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">
-            🔄 수량 0개로 초기화
-          </button>
-          <button class="btn btn-sm" onclick="clearDeliveryTargets()" style="color: #f87171; border-color: rgba(248,113,113,0.3);">
-            🗑️ 전체 비우기
-          </button>
-          <button class="btn btn-sm" onclick="loadDeliveryTargets()">
-            새로고침
-          </button>
-        </div>
-      </div>
-
-      <!-- Quick Manual Add Input Form -->
-      <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
-        <div style="flex: 2; min-width: 170px;">
-          <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
-          <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
-        </div>
-        <div style="flex: 1; min-width: 80px;">
-          <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
-          <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="6" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
-        </div>
-        <div style="flex: 1; min-width: 90px;">
-          <label style="font-size: 11.5px; color: #38bdf8; font-weight: 600; margin-bottom: 4px; display: block;">현재 보유 (선택)</label>
-          <input type="number" id="target-input-current" class="input-number" min="0" max="100" placeholder="자동 감지" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
-        </div>
-        <div>
-          <button class="btn btn-emerald" style="height: 38px; padding: 0 18px; font-size: 13px; font-weight: 700;" onclick="addManualTarget()">
-            ➕ 직접 추가
-          </button>
-        </div>
-        <div style="width: 100%; font-size: 11.5px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
-          <span>💡 <strong>사용 방법:</strong> 인게임에서 주간 퀘스트를 하나씩 추적하면서 <strong style="color: #c7d2fe;">[➕ 현재 퀘스트 등록]</strong>을 누르거나, 여기서 아이템명과 수량을 직접 입력해 목록에 등록하세요. 아래 통합 플래너가 모든 목표를 한 번에 합산해 최적화 제작합니다!</span>
-        </div>
-      </div>
-
-      <!-- Preset Save/Load Section -->
-      <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-weight: 700; font-size: 13px; color: #c4b5fd;">💾 주간 납품 프리셋 (퀘스트 조합 저장)</span>
-            <span id="preset-count-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c4b5fd;">0개 저장됨</span>
-          </div>
-          <div style="display: flex; gap: 6px; align-items: center;">
-            <input type="text" id="preset-save-name" class="input-text" placeholder="프리셋 이름 (예: 대장간 세트)" style="height: 32px; padding: 4px 10px; font-size: 12px; width: 160px;">
-            <button class="btn btn-sm" style="padding: 4px 12px; font-size: 11.5px; background: rgba(168, 85, 247, 0.2); color: #c4b5fd; border: 1px solid rgba(168, 85, 247, 0.35);" onclick="saveCurrentAsPreset()">💾 현재 목록 저장</button>
-          </div>
-        </div>
-        <div id="preset-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 28px;">
-          <span style="color: #64748b; font-size: 12px;">저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
-        </div>
-      </div>
-
-      <!-- Registered Delivery Targets Grid / List -->
-      <div id="delivery-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
-        <p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 주간 납품 목표가 없습니다.</p>
-      </div>
-    </div>
-
-    <!-- Unified Batch Planner Card (Global MRP for All Delivery Quests) -->
-    <div class="card" style="margin-bottom: 24px; border-color: rgba(99,102,241,0.35);">
-      <div class="card-title">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span>⚡ 주간 납품 통합 플래너 (일괄 자재 소요 분석 & 원스톱 제작)</span>
-          <span class="badge delivery">최적화 일괄 모드</span>
-        </div>
-        <button class="btn btn-sm" onclick="loadBatchPlan()">재료 분석 새로고침</button>
-      </div>
-
-      <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px;">
-        <!-- Left: Target Quest Summary -->
-        <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
-          <h4 style="font-size: 13px; color: #a5b4fc; margin-bottom: 8px;">🎯 진행 중인 주간 납품 목표</h4>
-          <div id="batch-tasks-container" style="display: flex; flex-direction: column; gap: 8px;">
-            <p style="color: #64748b; font-size: 12px;">납품 퀘스트를 분석 중입니다...</p>
-          </div>
-        </div>
-
-        <!-- Right: Aggregated Intermediate Materials Table -->
-        <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h4 style="font-size: 13px; color: #34d399;">📊 전체 통합 필요 1차 가공품 분석표</h4>
-            <span id="batch-status-text" style="font-size: 12px; color: var(--text-muted);">계산 중...</span>
-          </div>
-          <table class="bom-table">
-            <thead>
-              <tr>
-                <th>가공 재료명</th>
-                <th>가공 시설</th>
-                <th>총 소요</th>
-                <th>가방 보유</th>
-                <th>창고 보관</th>
-                <th>가공 대기열</th>
-                <th>추가 가공</th>
-                <th>상태</th>
-              </tr>
-            </thead>
-            <tbody id="bom-table-body">
-              <tr><td colspan="8" style="text-align: center; color: #64748b;">분석 데이터를 불러오는 중...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Facility Slot Status & Warning -->
-      <div id="facility-slots-section" style="margin-top: 14px; display: none;">
-        <div style="background: rgba(0,0,0,0.25); border-radius: 10px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.06);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-size: 12.5px; font-weight: 700; color: #a5b4fc;">🏭 시설별 가공 슬롯 현황 (시설당 7슬롯)</span>
-            <span id="slot-summary-badge" style="font-size: 11.5px; color: #94a3b8;"></span>
-          </div>
-          <div id="facility-slots-container" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
-        </div>
-      </div>
-
-      <div id="slot-warnings-banner" style="margin-top: 10px; display: none; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 10px; padding: 12px 16px;">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-          <span style="font-size: 16px;">⚠️</span>
-          <span style="font-size: 13px; font-weight: 700; color: #fbbf24;">가공 슬롯 부족 사전 안내</span>
-        </div>
-        <div id="slot-warnings-list" style="font-size: 12px; color: #fde68a; line-height: 1.7;"></div>
-      </div>
-
-      <!-- Action Button for Batch Pipeline -->
-      <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 10px;">
-        <button id="btn-batch-execute" class="btn btn-emerald" style="padding: 12px 24px; font-size: 14px; font-weight: 700;" onclick="executeBatchPipeline()">
-          ⚡ 전체 납품 재료 일괄 가공 & 제작 시작
         </button>
+
+        <button class="main-mode-tab" id="btn-mode-quick-alter" role="tab" aria-selected="false" onclick="switchMainMode('quick_alter')">
+          <div class="tab-icon-wrap" style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.35), rgba(37, 99, 235, 0.35));">
+            ⚡
+          </div>
+          <div class="tab-text-group">
+            <div class="tab-main-title">
+              <span>7슬롯 가공대 빠른 실행</span>
+              <span id="tab-quick-alter-pill" class="badge" style="font-size: 11px; padding: 2px 8px; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">7슬롯 최적화</span>
+            </div>
+            <div class="tab-sub-desc">완료 가공품 일괄 수령 · 부족 원자재 자동 사전 채집 · 최고 티어 1슬롯씩 대기열 가공</div>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mode 1: 주간 납품 관리 & 일괄 실행 탭 컨텐츠 (기본 활성) -->
+    <div id="tab-content-delivery" class="mode-tab-content">
+      <!-- Weekly Delivery Targets Manager Card (주간 납품 목표 누적 등록 및 관리) -->
+      <div class="card" style="margin-bottom: 24px; border-color: rgba(168, 85, 247, 0.45); background: linear-gradient(180deg, rgba(30, 27, 75, 0.35) 0%, rgba(15, 23, 42, 0.6) 100%);">
+        <div class="card-title">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span>🎯 주간 납품 목표 등록 & 관리</span>
+            <span id="target-count-badge" class="badge delivery">0개 등록됨</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-sm btn-primary" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 읽어 목록에 추가합니다">
+              ➕ 현재 퀘스트 등록
+            </button>
+            <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" style="color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.1);" title="새 주간 퀘스트를 시작할 때 모든 등록 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">
+              🔄 수량 0개로 초기화
+            </button>
+            <button class="btn btn-sm" onclick="clearDeliveryTargets()" style="color: #f87171; border-color: rgba(248,113,113,0.3);">
+              🗑️ 전체 비우기
+            </button>
+            <button class="btn btn-sm" onclick="loadDeliveryTargets()">
+              새로고침
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Manual Add Input Form -->
+        <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+          <div style="flex: 2; min-width: 170px;">
+            <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
+            <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+          </div>
+          <div style="flex: 1; min-width: 80px;">
+            <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
+            <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="6" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+          </div>
+          <div style="flex: 1; min-width: 90px;">
+            <label style="font-size: 11.5px; color: #38bdf8; font-weight: 600; margin-bottom: 4px; display: block;">현재 보유 (선택)</label>
+            <input type="number" id="target-input-current" class="input-number" min="0" max="100" placeholder="자동 감지" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+          </div>
+          <div>
+            <button class="btn btn-emerald" style="height: 38px; padding: 0 18px; font-size: 13px; font-weight: 700;" onclick="addManualTarget()">
+              ➕ 직접 추가
+            </button>
+          </div>
+          <div style="width: 100%; font-size: 11.5px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
+            <span>💡 <strong>사용 방법:</strong> 인게임에서 주간 퀘스트를 하나씩 추적하면서 <strong style="color: #c7d2fe;">[➕ 현재 퀘스트 등록]</strong>을 누르거나, 여기서 아이템명과 수량을 직접 입력해 목록에 등록하세요. 아래 통합 플래너가 모든 목표를 한 번에 합산해 최적화 제작합니다!</span>
+          </div>
+        </div>
+
+        <!-- Preset Save/Load Section -->
+        <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 700; font-size: 13px; color: #c4b5fd;">💾 주간 납품 프리셋 (퀘스트 조합 저장)</span>
+              <span id="preset-count-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c4b5fd;">0개 저장됨</span>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <input type="text" id="preset-save-name" class="input-text" placeholder="프리셋 이름 (예: 대장간 세트)" style="height: 32px; padding: 4px 10px; font-size: 12px; width: 160px;">
+              <button class="btn btn-sm" style="padding: 4px 12px; font-size: 11.5px; background: rgba(168, 85, 247, 0.2); color: #c4b5fd; border: 1px solid rgba(168, 85, 247, 0.35);" onclick="saveCurrentAsPreset()">💾 현재 목록 저장</button>
+            </div>
+          </div>
+          <div id="preset-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 28px;">
+            <span style="color: #64748b; font-size: 12px;">저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
+          </div>
+        </div>
+
+        <!-- Registered Delivery Targets Grid / List -->
+        <div id="delivery-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
+          <p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 주간 납품 목표가 없습니다.</p>
+        </div>
+      </div>
+
+      <!-- Unified Batch Planner Card (Global MRP for All Delivery Quests) -->
+      <div class="card" style="margin-bottom: 24px; border-color: rgba(99,102,241,0.35);">
+        <div class="card-title">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span>⚡ 주간 납품 통합 플래너 (일괄 자재 소요 분석 & 원스톱 제작)</span>
+            <span class="badge delivery">최적화 일괄 모드</span>
+          </div>
+          <button class="btn btn-sm" onclick="loadBatchPlan()">재료 분석 새로고침</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px;">
+          <!-- Left: Target Quest Summary -->
+          <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
+            <h4 style="font-size: 13px; color: #a5b4fc; margin-bottom: 8px;">🎯 진행 중인 주간 납품 목표</h4>
+            <div id="batch-tasks-container" style="display: flex; flex-direction: column; gap: 8px;">
+              <p style="color: #64748b; font-size: 12px;">납품 퀘스트를 분석 중입니다...</p>
+            </div>
+          </div>
+
+          <!-- Right: Aggregated Intermediate Materials Table -->
+          <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h4 style="font-size: 13px; color: #34d399;">📊 전체 통합 필요 1차 가공품 분석표</h4>
+              <span id="batch-status-text" style="font-size: 12px; color: var(--text-muted);">계산 중...</span>
+            </div>
+            <table class="bom-table">
+              <thead>
+                <tr>
+                  <th>가공 재료명</th>
+                  <th>가공 시설</th>
+                  <th>총 소요</th>
+                  <th>가방 보유</th>
+                  <th>창고 보관</th>
+                  <th>가공 대기열</th>
+                  <th>추가 가공</th>
+                  <th>상태</th>
+                </tr>
+              </thead>
+              <tbody id="bom-table-body">
+                <tr><td colspan="8" style="text-align: center; color: #64748b;">분석 데이터를 불러오는 중...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Facility Slot Status & Warning -->
+        <div id="facility-slots-section" style="margin-top: 14px; display: none;">
+          <div style="background: rgba(0,0,0,0.25); border-radius: 10px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 12.5px; font-weight: 700; color: #a5b4fc;">🏭 시설별 가공 슬롯 현황 (시설당 7슬롯)</span>
+              <span id="slot-summary-badge" style="font-size: 11.5px; color: #94a3b8;"></span>
+            </div>
+            <div id="facility-slots-container" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+          </div>
+        </div>
+
+        <div id="slot-warnings-banner" style="margin-top: 10px; display: none; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 10px; padding: 12px 16px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <span style="font-size: 16px;">⚠️</span>
+            <span style="font-size: 13px; font-weight: 700; color: #fbbf24;">가공 슬롯 부족 사전 안내</span>
+          </div>
+          <div id="slot-warnings-list" style="font-size: 12px; color: #fde68a; line-height: 1.7;"></div>
+        </div>
+
+        <!-- Action Button for Batch Pipeline -->
+        <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 10px;">
+          <button id="btn-batch-execute" class="btn btn-emerald" style="padding: 12px 24px; font-size: 14px; font-weight: 700;" onclick="executeBatchPipeline()">
+            ⚡ 전체 납품 재료 일괄 가공 & 제작 시작
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode 2: 7슬롯 가공대 빠른 실행 탭 컨텐츠 -->
+    <div id="tab-content-quick-alter" class="mode-tab-content" style="display: none;">
+      <!-- 7-Slot Max Level Alteration Bench Quick Run Card -->
+      <div class="card" id="quick-alter-main-card" style="margin-bottom: 24px; border-color: rgba(56, 189, 248, 0.4); background: linear-gradient(180deg, rgba(23, 31, 51, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);">
+        <div class="card-title" style="margin-bottom: 0;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span>⚡ 7슬롯 최고 레벨 가공대 빠른 실행</span>
+            <span class="badge" style="background: rgba(56, 189, 248, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">7슬롯 최적화</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-sm" onclick="loadQuickAlterPlan()">계획 새로고침</button>
+            <button class="btn btn-sm" id="btn-toggle-quick-alter" onclick="toggleQuickAlterView()">접어두기 ▲</button>
+          </div>
+        </div>
+
+        <!-- Collapsed Compact Bar (shown when collapsed) -->
+        <div id="quick-alter-collapsed-bar" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer;" onclick="toggleQuickAlterView()">
+          <span id="quick-alter-quick-summary">7슬롯 가공대 빠른 실행 계획 요약...</span>
+          <span style="float: right; color: #38bdf8; font-weight: 600;">펼치기 ▼</span>
+        </div>
+
+        <!-- Expanded Content -->
+        <div id="quick-alter-expanded-content" style="margin-top: 12px;">
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.6;">
+            완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 최고 티어 재료부터 순서대로 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>
+          </p>
+
+          <!-- Category Filter Tabs -->
+          <div style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
+            <button class="btn btn-sm quick-tab active" id="tab-cat-all" onclick="selectQuickCategory('all')">⚡ 전체 가공대 일괄</button>
+            <button class="btn btn-sm quick-tab" id="tab-cat-금속" onclick="selectQuickCategory('금속')">🪙 금속 (백금강괴 ~ 철괴)</button>
+            <button class="btn btn-sm quick-tab" id="tab-cat-목재" onclick="selectQuickCategory('목재')">🪵 목재 (특급목재 ~ 목재)</button>
+            <button class="btn btn-sm quick-tab" id="tab-cat-가죽" onclick="selectQuickCategory('가죽')">🦊 가죽 (특급가죽 ~ 가죽)</button>
+            <button class="btn btn-sm quick-tab" id="tab-cat-옷감" onclick="selectQuickCategory('옷감')">🧶 옷감 (특급옷감 ~ 옷감)</button>
+          </div>
+
+          <!-- Quick Alter Plan Container -->
+          <div id="quick-alter-plan-container" style="display: flex; flex-direction: column; gap: 14px;">
+            <p style="color: #64748b; font-size: 13px;">가공대 상태 및 고티어 계획을 분석 중입니다...</p>
+          </div>
+
+          <!-- Bottom Action Bar -->
+          <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
+            <div id="quick-gather-summary" style="font-size: 12.5px; color: var(--cyan); display: flex; align-items: center; gap: 6px;">
+              <!-- Gathering summary populated by JS -->
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btn-quick-alter-abort" class="btn" style="display: none; padding: 12px 20px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; border-radius: 8px; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); cursor: pointer;" onclick="abortQuickAlter()">
+                🛑 작업 즉시 중지
+              </button>
+              <button id="btn-quick-alter-execute" class="btn btn-primary" style="padding: 12px 24px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #2563eb); box-shadow: 0 4px 15px rgba(2, 132, 199, 0.4);" onclick="executeQuickAlter()">
+                🚀 7슬롯 빠른 가공 시작 (수령 ➔ 채집 ➔ 가공)
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2437,6 +2599,51 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    function switchMainMode(mode) {
+      const btnDelivery = document.getElementById('btn-mode-delivery');
+      const btnQuickAlter = document.getElementById('btn-mode-quick-alter');
+      const contentDelivery = document.getElementById('tab-content-delivery');
+      const contentQuickAlter = document.getElementById('tab-content-quick-alter');
+
+      if (!btnDelivery || !btnQuickAlter || !contentDelivery || !contentQuickAlter) return;
+
+      if (mode === 'quick_alter') {
+        btnDelivery.classList.remove('active');
+        btnDelivery.setAttribute('aria-selected', 'false');
+        btnQuickAlter.classList.add('active');
+        btnQuickAlter.setAttribute('aria-selected', 'true');
+
+        contentDelivery.style.display = 'none';
+        contentQuickAlter.style.display = 'block';
+        safeSetStorage('mabi_main_mode_tab', 'quick_alter');
+
+        if (typeof loadQuickAlterPlan === 'function') {
+          loadQuickAlterPlan();
+        }
+      } else {
+        btnQuickAlter.classList.remove('active');
+        btnQuickAlter.setAttribute('aria-selected', 'false');
+        btnDelivery.classList.add('active');
+        btnDelivery.setAttribute('aria-selected', 'true');
+
+        contentQuickAlter.style.display = 'none';
+        contentDelivery.style.display = 'block';
+        safeSetStorage('mabi_main_mode_tab', 'delivery');
+
+        if (typeof loadBatchPlan === 'function') {
+          loadBatchPlan();
+        }
+        if (typeof loadDeliveryTargets === 'function') {
+          loadDeliveryTargets();
+        }
+      }
+    }
+
+    function applyMainModeView() {
+      const savedMode = safeGetStorage('mabi_main_mode_tab', 'delivery');
+      switchMainMode(savedMode);
+    }
+
     function toggleQuickAlterView() {
       const exp = document.getElementById('quick-alter-expanded-content');
       const bar = document.getElementById('quick-alter-collapsed-bar');
@@ -2896,15 +3103,32 @@ HTML_PAGE = """<!DOCTYPE html>
           execBtn.disabled = !data.can_start || isCurrentlyBusy;
         }
 
+        let totalPlanned = 0;
+        let totalCompleted = 0;
+        catKeys.forEach(k => {
+          totalPlanned += (categories[k].planned_tiers || []).length;
+          totalCompleted += (categories[k].completed_count || 0);
+        });
+
+        // Update mode tab badge
+        const quickTabPill = document.getElementById('tab-quick-alter-pill');
+        if (quickTabPill) {
+          if (data.can_start) {
+            quickTabPill.innerText = `${totalPlanned}건 계획`;
+            quickTabPill.style.background = 'rgba(16, 185, 129, 0.2)';
+            quickTabPill.style.color = '#34d399';
+            quickTabPill.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+          } else {
+            quickTabPill.innerText = '7슬롯 최적화';
+            quickTabPill.style.background = 'rgba(56, 189, 248, 0.2)';
+            quickTabPill.style.color = '#38bdf8';
+            quickTabPill.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+          }
+        }
+
         // Update collapsed summary bar
         const quickSummaryEl = document.getElementById('quick-alter-quick-summary');
         if (quickSummaryEl) {
-          let totalPlanned = 0;
-          let totalCompleted = 0;
-          catKeys.forEach(k => {
-            totalPlanned += (categories[k].planned_tiers || []).length;
-            totalCompleted += (categories[k].completed_count || 0);
-          });
           const canStartTag = data.can_start ? '<span style="color:#34d399; font-weight:600;">실행 가능</span>' : '<span style="color:#94a3b8;">가공 예정 없음</span>';
           quickSummaryEl.innerHTML = `⚡ <strong>7슬롯 가공 빠른 실행:</strong> 가공 예정 <span style="color: #38bdf8; font-weight:600;">${totalPlanned}건</span> | 완료 수령 대기 <span style="color: #34d399; font-weight:600;">${totalCompleted}건</span> | 상태: ${canStartTag}`;
         }
@@ -2977,6 +3201,10 @@ HTML_PAGE = """<!DOCTYPE html>
         const badge = document.getElementById('target-count-badge');
         if (badge) {
           badge.innerText = `${targets.length}개 등록됨`;
+        }
+        const tabDeliveryPill = document.getElementById('tab-delivery-pill');
+        if (tabDeliveryPill) {
+          tabDeliveryPill.innerText = `${targets.length}개 등록`;
         }
         if (!container) return;
         if (targets.length === 0) {
@@ -3827,6 +4055,7 @@ HTML_PAGE = """<!DOCTYPE html>
     function initAll() {
       try { applyAlteringView(); } catch(e) { console.error('applyAlteringView error:', e); }
       try { applyQuickAlterView(); } catch(e) { console.error('applyQuickAlterView error:', e); }
+      try { applyMainModeView(); } catch(e) { console.error('applyMainModeView error:', e); }
       try { updateStatus(); } catch(e) { console.error('updateStatus error:', e); }
       try { loadDeliveryTargets(); } catch(e) { console.error('loadDeliveryTargets error:', e); }
       try { loadPresets(); } catch(e) { console.error('loadPresets error:', e); }
