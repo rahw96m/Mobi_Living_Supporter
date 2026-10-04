@@ -20,6 +20,7 @@ scratch_*.json
 scratch_*.txt
 scratch_*.py
 test_*.py
+app_icon_backup.*
 
 # Operating System files
 Thumbs.db
