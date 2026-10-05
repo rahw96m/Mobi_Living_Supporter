@@ -1043,6 +1043,7 @@ HTML_PAGE = """<!DOCTYPE html>
         radial-gradient(at 90% 80%, rgba(16, 185, 129, 0.12) 0px, transparent 50%);
       color: var(--text);
       font-family: 'Pretendard', -apple-system, sans-serif;
+      word-break: keep-all;
       min-height: 100vh;
       padding: 24px;
     }
@@ -1208,10 +1209,12 @@ HTML_PAGE = """<!DOCTYPE html>
     .card-title {
       font-size: 15.5px; font-weight: 700; margin-bottom: 14px;
       display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 10px;
     }
     .badge {
       font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: 700;
       background: rgba(99, 102, 241, 0.2); color: #a5b4fc;
+      white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;
     }
     .badge.delivery {
       background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(245,158,11,0.3));
@@ -1227,6 +1230,7 @@ HTML_PAGE = """<!DOCTYPE html>
       font-weight: 600; font-size: 12.5px; transition: all 0.2s;
       display: inline-flex; align-items: center; gap: 6px;
       background: #1e293b; color: #f1f5f9; border: 1px solid rgba(255,255,255,0.1);
+      white-space: nowrap; flex-shrink: 0; user-select: none;
     }
     .btn:hover { background: #334155; transform: translateY(-1px); }
     .btn-sm { padding: 4px 10px; font-size: 11.5px; border-radius: 7px; }
@@ -1345,10 +1349,12 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     .bom-table th {
       background: rgba(0,0,0,0.3); color: var(--text-muted); text-align: left;
-      padding: 8px 10px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 9px 12px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.08);
+      white-space: nowrap;
     }
     .bom-table td {
-      padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.04);
+      padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.04);
+      white-space: nowrap;
     }
     .bom-table tr:hover { background: rgba(255,255,255,0.02); }
 
@@ -1772,34 +1778,34 @@ HTML_PAGE = """<!DOCTYPE html>
     <div id="tab-content-delivery" class="mode-tab-content">
       <!-- Weekly Delivery Targets Manager Card (주간 납품 목표 누적 등록 및 관리) -->
       <div class="card" id="delivery-targets-main-card" style="margin-bottom: 24px; border-color: rgba(168, 85, 247, 0.45); background: linear-gradient(180deg, rgba(30, 27, 75, 0.35) 0%, rgba(15, 23, 42, 0.6) 100%);">
-        <div class="card-title" style="margin-bottom: 0;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span>🎯 주간 납품 목표 등록 & 관리</span>
+        <div class="card-title" style="margin-bottom: 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+            <span style="font-size: 15.5px; font-weight: 700; color: #f1f5f9; white-space: nowrap;">🎯 주간 납품 목표 등록 & 관리</span>
             <span id="target-count-badge" class="badge delivery">0개 등록됨</span>
           </div>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-sm btn-primary" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 읽어 목록에 추가합니다">
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+            <button class="btn btn-sm btn-primary" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 읽어 목록에 추가합니다" style="padding: 6px 12px;">
               ➕ 현재 퀘스트 등록
             </button>
-            <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" style="color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.1);" title="새 주간 퀘스트를 시작할 때 모든 등록 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">
+            <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" style="color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.1); padding: 6px 12px;" title="새 주간 퀘스트를 시작할 때 모든 등록 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">
               🔄 수량 0개로 초기화
             </button>
-            <button class="btn btn-sm" onclick="clearDeliveryTargets()" style="color: #f87171; border-color: rgba(248,113,113,0.3);">
+            <button class="btn btn-sm" onclick="clearDeliveryTargets()" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 6px 12px;">
               🗑️ 전체 비우기
             </button>
-            <button class="btn btn-sm" onclick="loadDeliveryTargets()">
+            <button class="btn btn-sm" onclick="loadDeliveryTargets()" style="padding: 6px 12px;">
               새로고침
             </button>
-            <button class="btn btn-sm" id="btn-toggle-delivery-targets" onclick="toggleDeliveryTargetsView()">
+            <button class="btn btn-sm" id="btn-toggle-delivery-targets" onclick="toggleDeliveryTargetsView()" style="background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: #e9d5ff; padding: 6px 12px;">
               접어두기 ▲
             </button>
           </div>
         </div>
 
         <!-- Collapsed Compact Bar (shown when collapsed) -->
-        <div id="delivery-targets-collapsed-bar" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer;" onclick="toggleDeliveryTargetsView()">
-          <span id="delivery-targets-quick-summary">등록된 주간 납품 목표 요약 정보...</span>
-          <span style="float: right; color: #c4b5fd; font-weight: 600;">펼치기 ▼</span>
+        <div id="delivery-targets-collapsed-bar" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer; align-items: center; justify-content: space-between; gap: 12px; word-break: keep-all;" onclick="toggleDeliveryTargetsView()">
+          <span id="delivery-targets-quick-summary" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">등록된 주간 납품 목표 요약 정보...</span>
+          <span style="color: #c4b5fd; font-weight: 600; white-space: nowrap; flex-shrink: 0;">펼치기 ▼</span>
         </div>
 
         <!-- Expanded Content (shown by default) -->
@@ -1855,46 +1861,40 @@ HTML_PAGE = """<!DOCTYPE html>
       <!-- Unified Batch Planner Card (Global MRP for All Delivery Quests) -->
       <div class="card" style="margin-bottom: 24px; border-color: rgba(99,102,241,0.35);">
         <div class="card-title">
-          <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <span>⚡ 주간 납품 통합 플래너 (일괄 자재 소요 분석 & 원스톱 제작)</span>
             <span class="badge delivery">최적화 일괄 모드</span>
           </div>
           <button class="btn btn-sm" onclick="loadBatchPlan()">재료 분석 새로고침</button>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px;">
-          <!-- Left: Target Quest Summary -->
-          <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
-            <h4 style="font-size: 13px; color: #a5b4fc; margin-bottom: 8px;">🎯 진행 중인 주간 납품 목표</h4>
-            <div id="batch-tasks-container" style="display: flex; flex-direction: column; gap: 8px;">
-              <p style="color: #64748b; font-size: 12px;">납품 퀘스트를 분석 중입니다...</p>
-            </div>
-          </div>
-
-          <!-- Right: Aggregated Intermediate Materials Table -->
-          <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <h4 style="font-size: 13px; color: #34d399;">📊 전체 통합 필요 1차 가공품 분석표</h4>
+        <!-- Full-Width Aggregated Materials Table Container -->
+        <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); overflow-x: auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h4 style="font-size: 14px; font-weight: 700; color: #34d399; margin: 0;">📊 전체 통합 필요 1차 가공품 분석표</h4>
               <span id="batch-status-text" style="font-size: 12px; color: var(--text-muted);">계산 중...</span>
             </div>
-            <table class="bom-table">
-              <thead>
-                <tr>
-                  <th>가공 재료명</th>
-                  <th>가공 시설</th>
-                  <th>총 소요</th>
-                  <th>가방 보유</th>
-                  <th>창고 보관</th>
-                  <th>가공 대기열</th>
-                  <th>추가 가공</th>
-                  <th>상태</th>
-                </tr>
-              </thead>
-              <tbody id="bom-table-body">
-                <tr><td colspan="8" style="text-align: center; color: #64748b;">분석 데이터를 불러오는 중...</td></tr>
-              </tbody>
-            </table>
+            <!-- Hidden compatibility container for batch-tasks-container -->
+            <div id="batch-tasks-container" style="display: none;"></div>
           </div>
+          <table class="bom-table">
+            <thead>
+              <tr>
+                <th style="min-width: 120px;">재료명</th>
+                <th style="min-width: 65px; text-align: center;">시설</th>
+                <th style="min-width: 75px; text-align: right;">총 소요</th>
+                <th style="min-width: 65px; text-align: right;">가방</th>
+                <th style="min-width: 95px;">창고</th>
+                <th style="min-width: 95px;">대기열</th>
+                <th style="min-width: 85px; text-align: right;">추가 가공</th>
+                <th style="min-width: 130px;">상태</th>
+              </tr>
+            </thead>
+            <tbody id="bom-table-body">
+              <tr><td colspan="8" style="text-align: center; color: #64748b; padding: 14px;">분석 데이터를 불러오는 중...</td></tr>
+            </tbody>
+          </table>
         </div>
 
         <!-- Facility Slot Status & Warning -->
@@ -2579,6 +2579,12 @@ HTML_PAGE = """<!DOCTYPE html>
       { name: '식품 가공 시설', icon: '🍖' }
     ];
 
+    function formatFacilityShort(fac) {
+      if (!fac) return '-';
+      if (fac.includes('채집')) return '채집';
+      return fac.replace(/\\s*가공\\s*시설|\\s*시설/g, '').trim();
+    }
+
     function toggleAlteringView() {
       const exp = document.getElementById('altering-expanded-content');
       const bar = document.getElementById('altering-collapsed-bar');
@@ -2588,7 +2594,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
       if (isExpanded) {
         exp.style.display = 'none';
-        bar.style.display = 'block';
+        bar.style.display = 'flex';
         btn.innerText = '펼치기 ▼';
         safeSetStorage('mabi_altering_collapsed', 'true');
       } else {
@@ -2607,7 +2613,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (!exp || !bar || !btn) return;
       if (isCollapsed) {
         exp.style.display = 'none';
-        bar.style.display = 'block';
+        bar.style.display = 'flex';
         btn.innerText = '펼치기 ▼';
       } else {
         exp.style.display = 'block';
@@ -2670,7 +2676,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
       if (isExpanded) {
         exp.style.display = 'none';
-        bar.style.display = 'block';
+        bar.style.display = 'flex';
         btn.innerText = '펼치기 ▼';
         safeSetStorage('mabi_quick_alter_collapsed', 'true');
       } else {
@@ -2689,7 +2695,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (!exp || !bar || !btn) return;
       if (isCollapsed) {
         exp.style.display = 'none';
-        bar.style.display = 'block';
+        bar.style.display = 'flex';
         btn.innerText = '펼치기 ▼';
       } else {
         exp.style.display = 'block';
@@ -2707,7 +2713,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
       if (isExpanded) {
         exp.style.display = 'none';
-        bar.style.display = 'block';
+        bar.style.display = 'flex';
         btn.innerText = '펼치기 ▼';
         safeSetStorage('mabi_delivery_targets_collapsed', 'true');
       } else {
@@ -2726,7 +2732,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (!exp || !bar || !btn) return;
       if (isCollapsed) {
         exp.style.display = 'none';
-        bar.style.display = 'block';
+        bar.style.display = 'flex';
         btn.innerText = '펼치기 ▼';
       } else {
         exp.style.display = 'block';
@@ -2897,7 +2903,7 @@ HTML_PAGE = """<!DOCTYPE html>
           gridHtml += `
             <div class="facility-card">
               <div class="facility-header">
-                <span class="facility-title">${fac.icon} ${fac.name}</span>
+                <span class="facility-title">${fac.icon} ${formatFacilityShort(fac.name)}</span>
                 ${collectBtn}
               </div>
               <div class="facility-items">
@@ -2967,7 +2973,7 @@ HTML_PAGE = """<!DOCTYPE html>
         html += `
           <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
-              <span class="${badgeClass}">🏭 ${al.facility}</span>
+              <span class="${badgeClass}">🏭 ${formatFacilityShort(al.facility)}</span>
               <span style="font-weight:700; color:#e0e7ff; font-size:13px;">${al.item}</span>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
@@ -3652,13 +3658,13 @@ HTML_PAGE = """<!DOCTYPE html>
             reqs.forEach(r => {
               let statusBadge = '';
               if (r.status === 'satisfied') {
-                statusBadge = '<span style="color:#34d399; font-weight:700;">● 준비 완료</span>';
+                statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>';
               } else if (r.status === 'needs_alter') {
-                statusBadge = `<span style="color:#f43f5e; font-weight:700;">▲ ${r.works_needed}회 가공 필요</span>`;
+                statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">▲ ${r.works_needed}회 가공 필요</span>`;
               } else if (r.status === 'in_queue') {
-                statusBadge = `<span style="color:#fbbf24; font-weight:700;">⏳ 대기열 진행 중 (${r.queued_works_count}회)</span>`;
+                statusBadge = `<span style="color:#fbbf24; font-weight:700; white-space:nowrap;">⏳ 대기열 (${r.queued_works_count}회)</span>`;
               } else if (r.status === 'ready_to_collect') {
-                statusBadge = `<span style="color:#38bdf8; font-weight:700;">🎁 수령 가능 (${r.completed_works_count}회)</span>`;
+                statusBadge = `<span style="color:#38bdf8; font-weight:700; white-space:nowrap;">🎁 수령 가능 (${r.completed_works_count}회)</span>`;
               }
 
               let storageNote = '<span style="color:#64748b;">0개</span>';
@@ -3671,16 +3677,24 @@ HTML_PAGE = """<!DOCTYPE html>
                 storageNote = `<span style="color:#38bdf8; font-weight:600;">${r.storage_count}개</span> <small style="color:#94a3b8; font-size:10px;">(${subDetails.join(', ')})</small>`;
               }
 
+              const facShort = formatFacilityShort(r.facility);
+              const queuedText = r.queued_works_count > 0 
+                ? `${r.queued_works_count}회 (${r.queued_yield}개)` 
+                : '<span style="color:#64748b;">-</span>';
+              const addText = r.works_needed > 0 
+                ? `<strong style="color:#f43f5e;">▲ ${r.works_needed}회</strong>` 
+                : '<span style="color:#34d399; font-weight:600;">완료</span>';
+
               rowsHtml += `
                 <tr>
-                  <td style="font-weight:700; color:#e0e7ff;">${r.item_name}</td>
-                  <td style="color:#94a3b8; font-size:11.5px;">${r.facility}</td>
-                  <td style="font-weight:700; color:#fbbf24;">${r.total_needed}개</td>
-                  <td>${r.inventory_count}개</td>
-                  <td>${storageNote}</td>
-                  <td>${r.queued_works_count}회 (${r.queued_yield}개)</td>
-                  <td style="font-weight:700; color:${r.works_needed > 0 ? '#f43f5e' : '#34d399'};">${r.works_needed}회</td>
-                  <td>${statusBadge}</td>
+                  <td style="font-weight:700; color:#e0e7ff; white-space:nowrap;">${r.item_name}</td>
+                  <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(255,255,255,0.06); color:#cbd5e1; padding:2px 7px; font-size:11px;">${facShort}</span></td>
+                  <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${r.total_needed}개</td>
+                  <td style="text-align:right; white-space:nowrap;">${r.inventory_count}개</td>
+                  <td style="white-space:nowrap;">${storageNote}</td>
+                  <td style="white-space:nowrap;">${queuedText}</td>
+                  <td style="text-align:right; white-space:nowrap;">${addText}</td>
+                  <td style="white-space:nowrap;">${statusBadge}</td>
                 </tr>
               `;
             });
@@ -3688,11 +3702,11 @@ HTML_PAGE = """<!DOCTYPE html>
               plan.raw_materials.forEach(rm => {
                 let statusBadge = '';
                 if (rm.deficit === 0) {
-                  statusBadge = '<span style="color:#34d399; font-weight:700;">● 준비 완료</span>';
+                  statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>';
                 } else if (rm.tool_ok) {
-                  statusBadge = `<span style="color:#34d399; font-weight:700;">🌿 ${rm.deficit}개 자동 채집</span>`;
+                  statusBadge = `<span style="color:#34d399; font-weight:700; white-space:nowrap;">🌿 ${rm.deficit}개 자동 채집</span>`;
                 } else {
-                  statusBadge = `<span style="color:#f43f5e; font-weight:700;">⚠️ 도구 필요 (${rm.deficit}개 부족)</span>`;
+                  statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">⚠️ 도구 필요 (${rm.deficit}개 부족)</span>`;
                 }
 
                 let storageNote = '<span style="color:#64748b;">0개</span>';
@@ -3700,16 +3714,20 @@ HTML_PAGE = """<!DOCTYPE html>
                   storageNote = `<span style="color:#38bdf8; font-weight:600;" title="가방으로 꺼내오시면 채집 수량을 절약할 수 있습니다">${rm.storage_count}개</span> <small style="color:#94a3b8; font-size:10px;">(보관)</small>`;
                 }
 
+                const rawAddText = rm.deficit > 0 
+                  ? `<strong style="color:#34d399;">🌿 ${rm.deficit}개 채집</strong>` 
+                  : '<span style="color:#34d399; font-weight:600;">완료</span>';
+
                 rowsHtml += `
                   <tr style="background: rgba(16, 185, 129, 0.05); border-left: 2px solid #34d399;">
-                    <td style="font-weight:700; color:#a7f3d0;">🌿 ${rm.item_name}</td>
-                    <td style="color:#34d399; font-size:11.5px;">필드 채집</td>
-                    <td style="font-weight:700; color:#fbbf24;">${rm.total_needed}개</td>
-                    <td>${rm.inventory_count || 0}개</td>
-                    <td>${storageNote}</td>
-                    <td style="color:#64748b;">-</td>
-                    <td style="font-weight:700; color:${rm.deficit > 0 ? '#34d399' : '#64748b'};">${rm.deficit > 0 ? rm.deficit + '개 채집' : '완료'}</td>
-                    <td>${statusBadge}</td>
+                    <td style="font-weight:700; color:#a7f3d0; white-space:nowrap;">🌿 ${rm.item_name}</td>
+                    <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; padding:2px 7px; font-size:11px;">채집</span></td>
+                    <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
+                    <td style="text-align:right; white-space:nowrap;">${rm.inventory_count || 0}개</td>
+                    <td style="white-space:nowrap;">${storageNote}</td>
+                    <td style="color:#64748b; white-space:nowrap;">-</td>
+                    <td style="text-align:right; white-space:nowrap;">${rawAddText}</td>
+                    <td style="white-space:nowrap;">${statusBadge}</td>
                   </tr>
                 `;
               });
