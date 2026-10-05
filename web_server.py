@@ -1391,15 +1391,23 @@ HTML_PAGE = """<!DOCTYPE html>
       padding: 6px;
       margin-bottom: 22px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      box-sizing: border-box;
+      width: 100%;
+      overflow: hidden;
     }
     .main-mode-tabs {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
+      width: 100%;
+      box-sizing: border-box;
     }
-    @media(max-width: 768px) {
+    @media(max-width: 960px) {
       .main-mode-tabs {
         grid-template-columns: 1fr;
+      }
+      .main-mode-tab {
+        padding: 10px 14px;
       }
     }
     .main-mode-tab {
@@ -1416,6 +1424,10 @@ HTML_PAGE = """<!DOCTYPE html>
       color: #94a3b8;
       position: relative;
       user-select: none;
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
     }
     .main-mode-tab:hover {
       background: rgba(255, 255, 255, 0.04);
@@ -1443,15 +1455,18 @@ HTML_PAGE = """<!DOCTYPE html>
       gap: 3px;
       min-width: 0;
       flex: 1;
+      overflow: hidden;
     }
     .main-mode-tab .tab-main-title {
       font-size: 15px;
       font-weight: 700;
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 8px;
       color: #cbd5e1;
       transition: color 0.2s ease;
+      min-width: 0;
     }
     .main-mode-tab .tab-sub-desc {
       font-size: 11.5px;
@@ -1461,6 +1476,7 @@ HTML_PAGE = """<!DOCTYPE html>
       overflow: hidden;
       text-overflow: ellipsis;
       transition: color 0.2s ease;
+      min-width: 0;
     }
 
     /* Active Tab: Delivery Mode */
@@ -1755,8 +1771,8 @@ HTML_PAGE = """<!DOCTYPE html>
     <!-- Mode 1: 주간 납품 관리 & 일괄 실행 탭 컨텐츠 (기본 활성) -->
     <div id="tab-content-delivery" class="mode-tab-content">
       <!-- Weekly Delivery Targets Manager Card (주간 납품 목표 누적 등록 및 관리) -->
-      <div class="card" style="margin-bottom: 24px; border-color: rgba(168, 85, 247, 0.45); background: linear-gradient(180deg, rgba(30, 27, 75, 0.35) 0%, rgba(15, 23, 42, 0.6) 100%);">
-        <div class="card-title">
+      <div class="card" id="delivery-targets-main-card" style="margin-bottom: 24px; border-color: rgba(168, 85, 247, 0.45); background: linear-gradient(180deg, rgba(30, 27, 75, 0.35) 0%, rgba(15, 23, 42, 0.6) 100%);">
+        <div class="card-title" style="margin-bottom: 0;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span>🎯 주간 납품 목표 등록 & 관리</span>
             <span id="target-count-badge" class="badge delivery">0개 등록됨</span>
@@ -1774,53 +1790,65 @@ HTML_PAGE = """<!DOCTYPE html>
             <button class="btn btn-sm" onclick="loadDeliveryTargets()">
               새로고침
             </button>
-          </div>
-        </div>
-
-        <!-- Quick Manual Add Input Form -->
-        <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
-          <div style="flex: 2; min-width: 170px;">
-            <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
-            <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
-          </div>
-          <div style="flex: 1; min-width: 80px;">
-            <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
-            <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="6" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
-          </div>
-          <div style="flex: 1; min-width: 90px;">
-            <label style="font-size: 11.5px; color: #38bdf8; font-weight: 600; margin-bottom: 4px; display: block;">현재 보유 (선택)</label>
-            <input type="number" id="target-input-current" class="input-number" min="0" max="100" placeholder="자동 감지" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
-          </div>
-          <div>
-            <button class="btn btn-emerald" style="height: 38px; padding: 0 18px; font-size: 13px; font-weight: 700;" onclick="addManualTarget()">
-              ➕ 직접 추가
+            <button class="btn btn-sm" id="btn-toggle-delivery-targets" onclick="toggleDeliveryTargetsView()">
+              접어두기 ▲
             </button>
           </div>
-          <div style="width: 100%; font-size: 11.5px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
-            <span>💡 <strong>사용 방법:</strong> 인게임에서 주간 퀘스트를 하나씩 추적하면서 <strong style="color: #c7d2fe;">[➕ 현재 퀘스트 등록]</strong>을 누르거나, 여기서 아이템명과 수량을 직접 입력해 목록에 등록하세요. 아래 통합 플래너가 모든 목표를 한 번에 합산해 최적화 제작합니다!</span>
-          </div>
         </div>
 
-        <!-- Preset Save/Load Section -->
-        <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-weight: 700; font-size: 13px; color: #c4b5fd;">💾 주간 납품 프리셋 (퀘스트 조합 저장)</span>
-              <span id="preset-count-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c4b5fd;">0개 저장됨</span>
-            </div>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <input type="text" id="preset-save-name" class="input-text" placeholder="프리셋 이름 (예: 대장간 세트)" style="height: 32px; padding: 4px 10px; font-size: 12px; width: 160px;">
-              <button class="btn btn-sm" style="padding: 4px 12px; font-size: 11.5px; background: rgba(168, 85, 247, 0.2); color: #c4b5fd; border: 1px solid rgba(168, 85, 247, 0.35);" onclick="saveCurrentAsPreset()">💾 현재 목록 저장</button>
-            </div>
-          </div>
-          <div id="preset-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 28px;">
-            <span style="color: #64748b; font-size: 12px;">저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
-          </div>
+        <!-- Collapsed Compact Bar (shown when collapsed) -->
+        <div id="delivery-targets-collapsed-bar" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer;" onclick="toggleDeliveryTargetsView()">
+          <span id="delivery-targets-quick-summary">등록된 주간 납품 목표 요약 정보...</span>
+          <span style="float: right; color: #c4b5fd; font-weight: 600;">펼치기 ▼</span>
         </div>
 
-        <!-- Registered Delivery Targets Grid / List -->
-        <div id="delivery-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
-          <p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 주간 납품 목표가 없습니다.</p>
+        <!-- Expanded Content (shown by default) -->
+        <div id="delivery-targets-expanded-content" style="margin-top: 14px;">
+          <!-- Quick Manual Add Input Form -->
+          <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+            <div style="flex: 2; min-width: 170px;">
+              <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
+              <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+            </div>
+            <div style="flex: 1; min-width: 80px;">
+              <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
+              <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="6" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+            </div>
+            <div style="flex: 1; min-width: 90px;">
+              <label style="font-size: 11.5px; color: #38bdf8; font-weight: 600; margin-bottom: 4px; display: block;">현재 보유 (선택)</label>
+              <input type="number" id="target-input-current" class="input-number" min="0" max="100" placeholder="자동 감지" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+            </div>
+            <div>
+              <button class="btn btn-emerald" style="height: 38px; padding: 0 18px; font-size: 13px; font-weight: 700;" onclick="addManualTarget()">
+                ➕ 직접 추가
+              </button>
+            </div>
+            <div style="width: 100%; font-size: 11.5px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
+              <span>💡 <strong>사용 방법:</strong> 인게임에서 주간 퀘스트를 하나씩 추적하면서 <strong style="color: #c7d2fe;">[➕ 현재 퀘스트 등록]</strong>을 누르거나, 여기서 아이템명과 수량을 직접 입력해 목록에 등록하세요. 아래 통합 플래너가 모든 목표를 한 번에 합산해 최적화 제작합니다!</span>
+            </div>
+          </div>
+
+          <!-- Preset Save/Load Section -->
+          <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: 700; font-size: 13px; color: #c4b5fd;">💾 주간 납품 프리셋 (퀘스트 조합 저장)</span>
+                <span id="preset-count-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c4b5fd;">0개 저장됨</span>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <input type="text" id="preset-save-name" class="input-text" placeholder="프리셋 이름 (예: 대장간 세트)" style="height: 32px; padding: 4px 10px; font-size: 12px; width: 160px;">
+                <button class="btn btn-sm" style="padding: 4px 12px; font-size: 11.5px; background: rgba(168, 85, 247, 0.2); color: #c4b5fd; border: 1px solid rgba(168, 85, 247, 0.35);" onclick="saveCurrentAsPreset()">💾 현재 목록 저장</button>
+              </div>
+            </div>
+            <div id="preset-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 28px;">
+              <span style="color: #64748b; font-size: 12px;">저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
+            </div>
+          </div>
+
+          <!-- Registered Delivery Targets Grid / List -->
+          <div id="delivery-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
+            <p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 주간 납품 목표가 없습니다.</p>
+          </div>
         </div>
       </div>
 
@@ -1957,19 +1985,8 @@ HTML_PAGE = """<!DOCTYPE html>
     </div>
 
     <div class="grid">
-      <!-- Left Column: Individual Quests & Custom Manual -->
+      <!-- Left Column: Custom Manual Produce -->
       <div>
-        <!-- Active Delivery Quests Card -->
-        <div class="card">
-          <div class="card-title">
-            <span>📋 개별 납품 퀘스트 현황</span>
-            <button class="btn btn-sm" onclick="loadQuests()">새로고침</button>
-          </div>
-          <div id="quest-list">
-            <p style="color: #64748b; font-size: 13px;">퀘스트를 불러오는 중입니다...</p>
-          </div>
-        </div>
-
         <!-- Custom Manual Craft Card -->
         <div class="card">
           <div class="card-title">
@@ -2681,11 +2698,51 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    function toggleDeliveryTargetsView() {
+      const exp = document.getElementById('delivery-targets-expanded-content');
+      const bar = document.getElementById('delivery-targets-collapsed-bar');
+      const btn = document.getElementById('btn-toggle-delivery-targets');
+      if (!exp || !bar || !btn) return;
+      const isExpanded = exp.style.display !== 'none';
+
+      if (isExpanded) {
+        exp.style.display = 'none';
+        bar.style.display = 'block';
+        btn.innerText = '펼치기 ▼';
+        safeSetStorage('mabi_delivery_targets_collapsed', 'true');
+      } else {
+        exp.style.display = 'block';
+        bar.style.display = 'none';
+        btn.innerText = '접어두기 ▲';
+        safeSetStorage('mabi_delivery_targets_collapsed', 'false');
+      }
+    }
+
+    function applyDeliveryTargetsView() {
+      const isCollapsed = safeGetStorage('mabi_delivery_targets_collapsed', 'false') === 'true';
+      const exp = document.getElementById('delivery-targets-expanded-content');
+      const bar = document.getElementById('delivery-targets-collapsed-bar');
+      const btn = document.getElementById('btn-toggle-delivery-targets');
+      if (!exp || !bar || !btn) return;
+      if (isCollapsed) {
+        exp.style.display = 'none';
+        bar.style.display = 'block';
+        btn.innerText = '펼치기 ▼';
+      } else {
+        exp.style.display = 'block';
+        bar.style.display = 'none';
+        btn.innerText = '접어두기 ▲';
+      }
+    }
+
     function formatRemaining(sec) {
       if (sec <= 0) return '완료';
-      const m = Math.floor(sec / 60);
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
       const s = sec % 60;
-      return m > 0 ? `${m}분 ${s}초` : `${s}초`;
+      if (h > 0) return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+      if (m > 0) return s > 0 ? `${m}분 ${s}초` : `${m}분`;
+      return `${s}초`;
     }
 
     // Melodic 2-tone Chime via Web Audio API
@@ -2773,12 +2830,16 @@ HTML_PAGE = """<!DOCTYPE html>
         ALL_FACILITIES.forEach(f => {
           const list = grouped[f.name] || [];
           if (list.length > 0) {
-            const hasComp = list.some(x => x.IsCompleted);
-            const inProg = list.find(x => !x.IsCompleted && x.State === 'InProgress');
-            if (hasComp) {
-              quickSummaryParts.push(`${f.icon} ${f.name.replace(' 가공 시설','')}: <span style="color:#34d399;font-weight:700;">완료!</span>`);
-            } else if (inProg) {
-              quickSummaryParts.push(`${f.icon} ${f.name.replace(' 가공 시설','')}: <span style="color:#fbbf24;">${Math.ceil(inProg.RemainingSeconds/60)}분</span>`);
+            const incomplete = list.filter(w => !w.IsCompleted && (Number(w.RemainingSeconds) || 0) > 0);
+            const totalSec = incomplete.reduce((sum, w) => sum + (Number(w.RemainingSeconds) || 0), 0);
+            const hasComp = list.some(w => w.IsCompleted);
+            const facShort = f.name.replace(' 가공 시설', '');
+
+            if (totalSec > 0) {
+              const compTag = hasComp ? ' <span style="color:#34d399;font-size:11px;">(일부완료)</span>' : '';
+              quickSummaryParts.push(`${f.icon} ${facShort}: <span style="color:#fbbf24;font-weight:600;">${formatRemaining(totalSec)}</span>${compTag}`);
+            } else if (hasComp) {
+              quickSummaryParts.push(`${f.icon} ${facShort}: <span style="color:#34d399;font-weight:700;">완료!</span>`);
             }
           }
         });
@@ -3206,6 +3267,27 @@ HTML_PAGE = """<!DOCTYPE html>
         if (tabDeliveryPill) {
           tabDeliveryPill.innerText = `${targets.length}개 등록`;
         }
+
+        // Update Collapsed Bar Quick Summary
+        const quickSummaryEl = document.getElementById('delivery-targets-quick-summary');
+        if (quickSummaryEl) {
+          if (targets.length === 0) {
+            quickSummaryEl.innerHTML = '<span style="color: #64748b;">등록된 주간 납품 목표가 없습니다. 클릭하여 펼친 뒤 등록하세요.</span>';
+          } else {
+            const completedCount = targets.filter(t => t.is_completed || t.current >= t.goal).length;
+            const itemTexts = targets.slice(0, 5).map(t => {
+              const done = t.is_completed || t.current >= t.goal;
+              const color = done ? '#34d399' : '#fbbf24';
+              return `<span style="color:#f1f5f9;">${t.item_name}</span> (<span style="color:${color};font-weight:600;">${t.current}/${t.goal}</span>)`;
+            });
+            const more = targets.length > 5 ? ` <span style="color:#94a3b8;">외 ${targets.length - 5}건</span>` : '';
+            const statusBadge = completedCount === targets.length
+              ? '<span style="color:#34d399;font-weight:700;">[전체 달성]</span>'
+              : `<span style="color:#c4b5fd;font-weight:600;">[${completedCount}/${targets.length} 완료]</span>`;
+            quickSummaryEl.innerHTML = `${statusBadge} ${itemTexts.join(', ')}${more}`;
+          }
+        }
+
         if (!container) return;
         if (targets.length === 0) {
           container.innerHTML = '<p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 주간 납품 목표가 없습니다. 인게임에서 퀘스트를 선택하고 [➕ 현재 퀘스트 등록]을 누르거나 직접 추가하세요.</p>';
@@ -4055,11 +4137,11 @@ HTML_PAGE = """<!DOCTYPE html>
     function initAll() {
       try { applyAlteringView(); } catch(e) { console.error('applyAlteringView error:', e); }
       try { applyQuickAlterView(); } catch(e) { console.error('applyQuickAlterView error:', e); }
+      try { applyDeliveryTargetsView(); } catch(e) { console.error('applyDeliveryTargetsView error:', e); }
       try { applyMainModeView(); } catch(e) { console.error('applyMainModeView error:', e); }
       try { updateStatus(); } catch(e) { console.error('updateStatus error:', e); }
       try { loadDeliveryTargets(); } catch(e) { console.error('loadDeliveryTargets error:', e); }
       try { loadPresets(); } catch(e) { console.error('loadPresets error:', e); }
-      try { loadQuests(); } catch(e) { console.error('loadQuests error:', e); }
       try { loadQuickAlterPlan(); } catch(e) { console.error('loadQuickAlterPlan error:', e); }
       try { loadBatchPlan(); } catch(e) { console.error('loadBatchPlan error:', e); }
       try { loadAlteringQueue(); } catch(e) { console.error('loadAlteringQueue error:', e); }
@@ -4067,7 +4149,6 @@ HTML_PAGE = """<!DOCTYPE html>
 
       setInterval(() => { try { updateStatus(); } catch(e) {} }, 3000);
       setInterval(() => { if (document.hidden) return; try { loadDeliveryTargets(); } catch(e) {} }, 6000);
-      setInterval(() => { if (document.hidden) return; try { loadQuests(); } catch(e) {} }, 8000);
       setInterval(() => { if (document.hidden) return; try { loadQuickAlterPlan(); } catch(e) {} }, 8000);
       setInterval(() => { if (document.hidden) return; try { loadBatchPlan(); } catch(e) {} }, 8000);
       setInterval(() => { if (document.hidden) return; try { loadAlteringQueue(); } catch(e) {} }, 5000);
