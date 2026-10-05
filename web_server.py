@@ -1884,15 +1884,12 @@ HTML_PAGE = """<!DOCTYPE html>
                 <th style="min-width: 120px;">재료명</th>
                 <th style="min-width: 65px; text-align: center;">시설</th>
                 <th style="min-width: 75px; text-align: right;">총 소요</th>
-                <th style="min-width: 65px; text-align: right;">가방</th>
-                <th style="min-width: 95px;">창고</th>
-                <th style="min-width: 95px;">대기열</th>
-                <th style="min-width: 85px; text-align: right;">추가 가공</th>
+                <th style="min-width: 100px; text-align: center;">가방(창고)</th>
                 <th style="min-width: 130px;">상태</th>
               </tr>
             </thead>
             <tbody id="bom-table-body">
-              <tr><td colspan="8" style="text-align: center; color: #64748b; padding: 14px;">분석 데이터를 불러오는 중...</td></tr>
+              <tr><td colspan="5" style="text-align: center; color: #64748b; padding: 14px;">분석 데이터를 불러오는 중...</td></tr>
             </tbody>
           </table>
         </div>
@@ -3650,50 +3647,37 @@ HTML_PAGE = """<!DOCTYPE html>
 
         if (tbody) {
           if (reqs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 12px;">필요한 1차 가공품이 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 12px;">필요한 1차 가공품이 없습니다.</td></tr>';
             if (btnExec) btnExec.disabled = true;
             if (statusText) statusText.innerText = plan.all_completed ? '모든 목표 달성 완료' : '납품 퀘스트 없음';
           } else {
             let rowsHtml = '';
             reqs.forEach(r => {
+              const queuedBadge = r.queued_works_count > 0 ? `<span style="color:#818cf8; font-size:11px; margin-left:4px;">(대기 ${r.queued_works_count}회)</span>` : '';
+              const completedBadge = r.completed_works_count > 0 ? `<span style="color:#38bdf8; font-size:11px; margin-left:4px;">(수령가능 ${r.completed_works_count}회)</span>` : '';
+
               let statusBadge = '';
               if (r.status === 'satisfied') {
-                statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>';
+                statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>' + completedBadge;
               } else if (r.status === 'needs_alter') {
-                statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">▲ ${r.works_needed}회 가공 필요</span>`;
+                statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">▲ ${r.works_needed}회 가공 필요</span>` + queuedBadge + completedBadge;
               } else if (r.status === 'in_queue') {
-                statusBadge = `<span style="color:#fbbf24; font-weight:700; white-space:nowrap;">⏳ 대기열 (${r.queued_works_count}회)</span>`;
+                statusBadge = `<span style="color:#fbbf24; font-weight:700; white-space:nowrap;">⏳ 대기열 (${r.queued_works_count}회)</span>` + completedBadge;
               } else if (r.status === 'ready_to_collect') {
                 statusBadge = `<span style="color:#38bdf8; font-weight:700; white-space:nowrap;">🎁 수령 가능 (${r.completed_works_count}회)</span>`;
               }
 
-              let storageNote = '<span style="color:#64748b;">0개</span>';
-              if (r.storage_count > 0) {
-                const charCnt = r.character_storage_count || 0;
-                const accCnt = r.account_storage_count || 0;
-                let subDetails = [];
-                if (charCnt > 0) subDetails.push(`개인 ${charCnt}`);
-                if (accCnt > 0) subDetails.push(`공용 ${accCnt}`);
-                storageNote = `<span style="color:#38bdf8; font-weight:600;">${r.storage_count}개</span> <small style="color:#94a3b8; font-size:10px;">(${subDetails.join(', ')})</small>`;
-              }
-
+              const invCnt = r.inventory_count || 0;
+              const storeCnt = r.storage_count || 0;
+              const bagStorageText = `${invCnt}개<span style="color:${storeCnt > 0 ? '#38bdf8' : '#64748b'};">(${storeCnt}개)</span>`;
               const facShort = formatFacilityShort(r.facility);
-              const queuedText = r.queued_works_count > 0 
-                ? `${r.queued_works_count}회 (${r.queued_yield}개)` 
-                : '<span style="color:#64748b;">-</span>';
-              const addText = r.works_needed > 0 
-                ? `<strong style="color:#f43f5e;">▲ ${r.works_needed}회</strong>` 
-                : '<span style="color:#34d399; font-weight:600;">완료</span>';
 
               rowsHtml += `
                 <tr>
                   <td style="font-weight:700; color:#e0e7ff; white-space:nowrap;">${r.item_name}</td>
                   <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(255,255,255,0.06); color:#cbd5e1; padding:2px 7px; font-size:11px;">${facShort}</span></td>
                   <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${r.total_needed}개</td>
-                  <td style="text-align:right; white-space:nowrap;">${r.inventory_count}개</td>
-                  <td style="white-space:nowrap;">${storageNote}</td>
-                  <td style="white-space:nowrap;">${queuedText}</td>
-                  <td style="text-align:right; white-space:nowrap;">${addText}</td>
+                  <td style="text-align:center; white-space:nowrap;">${bagStorageText}</td>
                   <td style="white-space:nowrap;">${statusBadge}</td>
                 </tr>
               `;
@@ -3709,24 +3693,16 @@ HTML_PAGE = """<!DOCTYPE html>
                   statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">⚠️ 도구 필요 (${rm.deficit}개 부족)</span>`;
                 }
 
-                let storageNote = '<span style="color:#64748b;">0개</span>';
-                if (rm.storage_count > 0) {
-                  storageNote = `<span style="color:#38bdf8; font-weight:600;" title="가방으로 꺼내오시면 채집 수량을 절약할 수 있습니다">${rm.storage_count}개</span> <small style="color:#94a3b8; font-size:10px;">(보관)</small>`;
-                }
-
-                const rawAddText = rm.deficit > 0 
-                  ? `<strong style="color:#34d399;">🌿 ${rm.deficit}개 채집</strong>` 
-                  : '<span style="color:#34d399; font-weight:600;">완료</span>';
+                const rmInvCnt = rm.inventory_count || 0;
+                const rmStoreCnt = rm.storage_count || 0;
+                const rmBagStorageText = `${rmInvCnt}개<span style="color:${rmStoreCnt > 0 ? '#38bdf8' : '#64748b'};">(${rmStoreCnt}개)</span>`;
 
                 rowsHtml += `
                   <tr style="background: rgba(16, 185, 129, 0.05); border-left: 2px solid #34d399;">
                     <td style="font-weight:700; color:#a7f3d0; white-space:nowrap;">🌿 ${rm.item_name}</td>
                     <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; padding:2px 7px; font-size:11px;">채집</span></td>
                     <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
-                    <td style="text-align:right; white-space:nowrap;">${rm.inventory_count || 0}개</td>
-                    <td style="white-space:nowrap;">${storageNote}</td>
-                    <td style="color:#64748b; white-space:nowrap;">-</td>
-                    <td style="text-align:right; white-space:nowrap;">${rawAddText}</td>
+                    <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
                     <td style="white-space:nowrap;">${statusBadge}</td>
                   </tr>
                 `;
@@ -3798,16 +3774,19 @@ HTML_PAGE = """<!DOCTYPE html>
               const cardBorder = isOver ? 'rgba(244, 63, 94, 0.4)' : (needed > 0 ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255, 255, 255, 0.06)');
               const cardBg = isOver ? 'rgba(244, 63, 94, 0.08)' : 'rgba(255, 255, 255, 0.03)';
               
+              const progDetail = f.in_progress_detail ? ` (${f.in_progress_detail})` : '';
+              const compDetail = f.completed_detail ? ` (${f.completed_detail})` : '';
+
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 175px; background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 8px 10px;">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 8px 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span style="font-weight: 700; font-size: 12px; color: #e2e8f0;">${f.facility}</span>
                     <span style="font-size: 11px; font-weight: 600; color: ${avail > 0 ? '#34d399' : '#f43f5e'};">
                       여유 ${avail} / ${max}
                     </span>
                   </div>
-                  <div style="font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between;">
-                    <span>진행: ${f.in_progress} | 완료: ${f.completed}</span>
+                  <div style="font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                    <span>진행: ${f.in_progress}${progDetail ? `<span style="color:#c7d2fe; font-size:10px;">${progDetail}</span>` : ''} | 완료: ${f.completed}${compDetail ? `<span style="color:#6ee7b7; font-size:10px;">${compDetail}</span>` : ''}</span>
                     ${needed > 0 ? `<span style="font-weight: 700; color: ${isOver ? '#f43f5e' : '#fbbf24'};">필요 +${needed}</span>` : '<span style="color: #64748b;">필요 없음</span>'}
                   </div>
                   ${f.overflow > 0 ? `<div style="font-size: 10.5px; color: #fb7185; margin-top: 3px; font-weight: 600;">⚠️ ${f.overflow}회 초과 (단계적 진행)</div>` : ''}

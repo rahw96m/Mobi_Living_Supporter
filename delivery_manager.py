@@ -2019,6 +2019,8 @@ class DeliveryManager:
             "completed": 0,
             "total_used": 0,
             "available": MAX_SLOTS,
+            "in_progress_items": defaultdict(int),
+            "completed_items": defaultdict(int),
         })
         completed_yield_by_item = defaultdict(int)
         queued_yield_by_item = defaultdict(int)
@@ -2032,9 +2034,11 @@ class DeliveryManager:
 
             if is_comp:
                 facility_slot_usage[fac]["completed"] += 1
+                facility_slot_usage[fac]["completed_items"][clean_w] += 1
                 completed_yield_by_item[clean_w] += yield_pw
             else:
                 facility_slot_usage[fac]["in_progress"] += 1
+                facility_slot_usage[fac]["in_progress_items"][clean_w] += 1
                 queued_yield_by_item[clean_w] += yield_pw
 
             facility_slot_usage[fac]["total_used"] = (
@@ -2270,11 +2274,16 @@ class DeliveryManager:
             can_fit_all = new_demand <= available_after_collect
             overflow = max(0, new_demand - available_after_collect)
 
+            prog_items_str = ", ".join(f"{it} {cnt}회" for it, cnt in usage["in_progress_items"].items())
+            comp_items_str = ", ".join(f"{it} {cnt}회" for it, cnt in usage["completed_items"].items())
+
             fac_info = {
                 "facility": fac,
                 "max_slots": MAX_SLOTS,
                 "in_progress": usage["in_progress"],
                 "completed": usage["completed"],
+                "in_progress_detail": prog_items_str,
+                "completed_detail": comp_items_str,
                 "available_now": available,
                 "available_after_collect": available_after_collect,
                 "new_works_needed": new_demand,
