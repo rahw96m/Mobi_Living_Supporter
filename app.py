@@ -1,6 +1,6 @@
 import sys
 import argparse
-from delivery_manager import DeliveryManager, DeliveryTask
+from delivery_manager import DeliveryManager, DeliveryTask, settings_store
 
 # Ensure UTF-8 output on Windows console
 if sys.platform == "win32":
@@ -41,12 +41,16 @@ def run_interactive(dm: DeliveryManager):
     show_character_status(dm)
 
     while True:
+        curr_order = settings_store.get("alter_order", "high_tier")
+        order_str = "상위 티어 우선 (오래 걸리는 가공부터)" if curr_order != "low_tier" else "하위 티어 우선 (기초 재료부터)"
+
         print("\n[메뉴를 선택해주세요]")
         print("1. 🎯 현재 수락된 주간 의뢰/납품 퀘스트 자동 감지 & 제작")
         print("2. ✍️ 아이템 이름 & 수량 직접 입력하여 제작 (예: 로터스 힐링 완드 6개)")
         print("3. 🔍 제작/가공/채집 레시피 검색")
         print("4. 🌐 웹 대시보드(Web UI) 실행 (브라우저로 편리하게 사용)")
-        print("5. ⚡ 7슬롯 최고 레벨 가공대 빠른 실행 (수령 ➔ 원자재 일괄 채집 ➔ 고티어 가공)")
+        print(f"5. ⚡ 7슬롯 최고 레벨 가공대 빠른 실행 [{order_str}]")
+        print(f"6. ⚙️ 가공 우선순위 설정 변경 (현재: {order_str})")
         print("q. 종료")
 
         choice = input("\n선택 > ").strip()
@@ -128,6 +132,7 @@ def run_interactive(dm: DeliveryManager):
 
         elif choice == "5":
             print("\n[7슬롯 최고 레벨 가공대 빠른 실행]")
+            print(f"ℹ️ 가공 우선순위: {order_str}")
             print("1. ⚡ 전체 가공대 일괄 (금속, 목재, 가죽, 옷감)")
             print("2. 🪙 금속 가공 시설 (백금강괴 ~ 철괴)")
             print("3. 🪵 목재 가공 시설 (특급 목재 ~ 목재)")
@@ -142,17 +147,17 @@ def run_interactive(dm: DeliveryManager):
                 continue
 
             target_cat = cat_map[c_sel]
-            print(f"\n🔍 '{target_cat}' 가공대 상태 및 재료 분석 중...")
+            print(f"\n🔍 '{target_cat}' 가공대 상태 및 재료 분석 중... ({order_str})")
             try:
                 plan = dm.analyze_quick_alter(target_cat if target_cat != "all" else None)
                 print("\n=======================================================")
-                print("📋 [7슬롯 빠른 가공 분석 결과]")
+                print(f"📋 [7슬롯 빠른 가공 분석 결과 ({order_str})]")
                 print("=======================================================")
                 for cat, c_info in plan["categories"].items():
                     print(f"\n[{cat} ({c_info['facility']})]")
                     print(f" • 완료된 작업 (즉시 수령): {c_info['completed_count']}건")
                     print(f" • 가용 슬롯: {c_info['available_slots']}/7")
-                    print(f" • 고티어 우선 가공 예정 ({len(c_info['planned_tiers'])}건):")
+                    print(f" • 가공 예정 ({len(c_info['planned_tiers'])}건):")
                     for p in c_info["planned_tiers"]:
                         g_str = f" [채집 필요: {p['gather_reqs']}]" if p["needs_gathering"] else " [즉시 가능]"
                         print(f"    - Tier {p['tier']} {p['item_name']} (레시피: {p['recipe_name']}){g_str}")
@@ -178,6 +183,13 @@ def run_interactive(dm: DeliveryManager):
             except Exception as ex:
                 print(f"\n❌ 실행 중 오류 발생: {ex}")
 
+        elif choice == "6":
+            curr = settings_store.get("alter_order", "high_tier")
+            new_val = "low_tier" if curr == "high_tier" else "high_tier"
+            settings_store.set("alter_order", new_val)
+            new_str = "상위 티어 우선 (오래 걸리는 가공부터)" if new_val != "low_tier" else "하위 티어 우선 (기초 재료부터)"
+            print(f"\n✅ 가공 우선순위가 변경되었습니다: {new_str}")
+
         elif choice.lower() in ("q", "quit", "exit"):
             print("프로그램을 종료합니다.")
             break
@@ -188,9 +200,15 @@ def main():
     parser.add_argument("count", nargs="?", type=int, default=1, help="제작할 수량")
     parser.add_argument("--web", action="store_true", help="웹 UI 실행")
     parser.add_argument("--quick-alter", nargs="?", const="all", choices=["all", "금속", "목재", "가죽", "옷감"], help="7슬롯 최고 레벨 가공대 빠른 실행")
+    parser.add_argument("--alter-order", choices=["high", "low", "high_tier", "low_tier"], help="가공 우선순위 (high: 상위 티어부터 / low: 하위 티어부터)")
     args = parser.parse_args()
 
     dm = DeliveryManager()
+
+    if args.alter_order:
+        norm = "low_tier" if "low" in args.alter_order else "high_tier"
+        settings_store.set("alter_order", norm)
+        print(f"⚙️ 가공 우선순위 설정: {'상위 티어 우선' if norm == 'high_tier' else '하위 티어 우선'}")
 
     if args.web:
         from web_server import start_server

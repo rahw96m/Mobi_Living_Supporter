@@ -28,7 +28,7 @@ else:
 import webbrowser
 import subprocess
 from mabi_cli import MabinogiCLI, MabinogiCLIError, get_saved_cli_path, find_cli_path
-from delivery_manager import DeliveryManager, DeliveryTask, alarm_store, delivery_target_store, delivery_preset_store, get_facility_for_material
+from delivery_manager import DeliveryManager, DeliveryTask, alarm_store, delivery_target_store, delivery_preset_store, settings_store, get_facility_for_material
 
 BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 EXE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
@@ -342,9 +342,18 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error(e)
             return
 
-        if path == "/api/batch_plan":
+        if path == "/api/settings":
             try:
-                plan = manager_instance.analyze_batch_plan()
+                self._send_json(settings_store.get_all())
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/batch_plan":
+            query_params = parse_qs(parsed.query)
+            alter_order = query_params.get("alter_order", [None])[0]
+            try:
+                plan = manager_instance.analyze_batch_plan(alter_order=alter_order)
                 self._send_json(plan)
             except Exception as e:
                 self._send_error(e)
@@ -397,8 +406,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/quick_alter_plan":
             query_params = parse_qs(parsed.query)
             category = query_params.get("category", ["all"])[0].strip()
+            alter_order = query_params.get("alter_order", [None])[0]
             try:
-                plan = manager_instance.analyze_quick_alter(category if category != "all" else None)
+                plan = manager_instance.analyze_quick_alter(category if category != "all" else None, alter_order=alter_order)
                 self._send_json(plan)
             except Exception as e:
                 self._send_error(e)
@@ -558,20 +568,38 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error(e)
             return
 
+        if path == "/api/settings":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                settings_store.update(req_json)
+                add_log("info", f"⚙️ 설정이 업데이트되었습니다: {req_json}")
+                self._send_json({"status": "success", "settings": settings_store.get_all()})
+            except Exception as e:
+                self._send_error(e)
+            return
+
         if path == "/api/execute_batch":
             if is_busy:
                 self._send_error("이미 다른 작업이 진행 중입니다.", 409)
                 return
+
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+            alter_order = req_json.get("alter_order")
 
             manager_instance.reset_abort()
 
             def batch_worker():
                 global is_busy, current_task_info, last_execution_summary, last_summary_id
                 is_busy = True
-                current_task_info = "⚡ 전체 주간 납품 일괄 최적화 제작 진행 중..."
+                order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
+                current_task_info = f"⚡ 전체 주간 납품 일괄 최적화 제작 진행 중 ({order_name})..."
                 try:
-                    plan = manager_instance.analyze_batch_plan()
-                    res = manager_instance.execute_batch_deliveries(plan, callback=add_log)
+                    plan = manager_instance.analyze_batch_plan(alter_order=alter_order)
+                    res = manager_instance.execute_batch_deliveries(plan, callback=add_log, alter_order=alter_order)
                     if isinstance(res, dict) and "summary" in res:
                         with status_lock:
                             last_execution_summary = res["summary"]
@@ -620,6 +648,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
                 category = req_json.get("category", "all")
+                alter_order = req_json.get("alter_order")
 
                 manager_instance.reset_abort()
 
@@ -627,10 +656,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                     global is_busy, current_task_info, last_execution_summary, last_summary_id
                     is_busy = True
                     cat_disp = "전체 가공대" if category == "all" else f"'{category}' 가공대"
-                    current_task_info = f"⚡ 7슬롯 최고 레벨 {cat_disp} 빠른 실행 진행 중..."
+                    order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
+                    current_task_info = f"⚡ 7슬롯 최고 레벨 {cat_disp} 빠른 실행 진행 중 ({order_name})..."
                     try:
-                        plan = manager_instance.analyze_quick_alter(category if category != "all" else None)
-                        res = manager_instance.execute_quick_alter(plan, callback=add_log)
+                        plan = manager_instance.analyze_quick_alter(category if category != "all" else None, alter_order=alter_order)
+                        res = manager_instance.execute_quick_alter(plan, callback=add_log, alter_order=alter_order)
                         if isinstance(res, dict) and "summary" in res:
                             with status_lock:
                                 last_execution_summary = res["summary"]
@@ -1519,6 +1549,60 @@ HTML_PAGE = """<!DOCTYPE html>
       box-shadow: 0 4px 16px rgba(2, 132, 199, 0.4);
     }
 
+    /* Alteration Order Segmented Control */
+    .alter-order-container {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 4px 6px;
+      border-radius: 10px;
+    }
+    .alter-order-label {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-left: 4px;
+    }
+    .segmented-control {
+      display: inline-flex;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .seg-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: #94a3b8;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .seg-btn:hover {
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .seg-btn.active {
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.25));
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.45);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      font-weight: 700;
+    }
+
     /* Tab Content Animation */
     .mode-tab-content {
       animation: tabFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1646,7 +1730,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
           </div>
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.4.1</span></h1>
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.4.2</span></h1>
             <p>마비노기 모바일 AI 커넥터 연동</p>
           </div>
         </div>
@@ -1865,7 +1949,20 @@ HTML_PAGE = """<!DOCTYPE html>
             <span>⚡ 주간 납품 통합 플래너 (일괄 자재 소요 분석 & 원스톱 제작)</span>
             <span class="badge delivery">최적화 일괄 모드</span>
           </div>
-          <button class="btn btn-sm" onclick="loadBatchPlan()">재료 분석 새로고침</button>
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div class="alter-order-container" title="가공 등록 순서 설정: 장시간 소요 가공부터 먼저 등록하거나, 기초 재료부터 순차 등록합니다">
+              <span class="alter-order-label">가공 순서:</span>
+              <div class="segmented-control" id="seg-delivery-alter-order">
+                <button type="button" class="seg-btn active" id="btn-delivery-alter-high" onclick="setAlterOrder('high_tier')" title="오래 걸리는 고티어 가공품(T7~T1)부터 시설 슬롯에 우선 등록합니다">
+                  <span>⏱️ 상위 티어 우선 (오래 걸리는 가공부터)</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-delivery-alter-low" onclick="setAlterOrder('low_tier')" title="기초 재료(T1~T7)부터 시설 슬롯에 순차 등록합니다">
+                  <span>⚙️ 하위 티어 우선 (기초 재료부터)</span>
+                </button>
+              </div>
+            </div>
+            <button class="btn btn-sm" onclick="loadBatchPlan()">재료 분석 새로고침</button>
+          </div>
         </div>
 
         <!-- Full-Width Aggregated Materials Table Container -->
@@ -1931,7 +2028,18 @@ HTML_PAGE = """<!DOCTYPE html>
             <span>⚡ 7슬롯 최고 레벨 가공대 빠른 실행</span>
             <span class="badge" style="background: rgba(56, 189, 248, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">7슬롯 최적화</span>
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div class="alter-order-container" title="가공 우선순위 설정">
+              <span class="alter-order-label">순서:</span>
+              <div class="segmented-control" id="seg-quick-alter-order">
+                <button type="button" class="seg-btn active" id="btn-quick-alter-high" onclick="setAlterOrder('high_tier')" title="오래 걸리는 최고 티어(T7 ➔ T1)부터 1슬롯씩 대기열에 등록합니다">
+                  <span>⏱️ 상위 티어 우선 (T7 ➔ T1)</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-quick-alter-low" onclick="setAlterOrder('low_tier')" title="기초 하위 티어(T1 ➔ T7)부터 1슬롯씩 대기열에 등록합니다">
+                  <span>⚙️ 하위 티어 우선 (T1 ➔ T7)</span>
+                </button>
+              </div>
+            </div>
             <button class="btn btn-sm" onclick="loadQuickAlterPlan()">계획 새로고침</button>
             <button class="btn btn-sm" id="btn-toggle-quick-alter" onclick="toggleQuickAlterView()">접어두기 ▲</button>
           </div>
@@ -1945,7 +2053,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
         <!-- Expanded Content -->
         <div id="quick-alter-expanded-content" style="margin-top: 12px;">
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.6;">
+          <p id="quick-alter-desc-text" style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.6;">
             완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 최고 티어 재료부터 순서대로 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>
           </p>
 
@@ -2564,6 +2672,64 @@ HTML_PAGE = """<!DOCTYPE html>
       } catch (e) {}
     }
 
+    let currentAlterOrder = safeGetStorage('mabi_alter_order', 'high_tier');
+
+    async function loadSettings() {
+      applyAlterOrderUI();
+      try {
+        const res = await fetch('/api/settings');
+        const d = await res.json();
+        if (d && d.alter_order) {
+          currentAlterOrder = d.alter_order;
+          safeSetStorage('mabi_alter_order', currentAlterOrder);
+          applyAlterOrderUI();
+        }
+      } catch (e) {}
+    }
+
+    function applyAlterOrderUI() {
+      const isHigh = currentAlterOrder !== 'low_tier';
+
+      const btnDH = document.getElementById('btn-delivery-alter-high');
+      const btnDL = document.getElementById('btn-delivery-alter-low');
+      if (btnDH && btnDL) {
+        btnDH.classList.toggle('active', isHigh);
+        btnDL.classList.toggle('active', !isHigh);
+      }
+
+      const btnQH = document.getElementById('btn-quick-alter-high');
+      const btnQL = document.getElementById('btn-quick-alter-low');
+      if (btnQH && btnQL) {
+        btnQH.classList.toggle('active', isHigh);
+        btnQL.classList.toggle('active', !isHigh);
+      }
+
+      const descText = document.getElementById('quick-alter-desc-text');
+      if (descText) {
+        if (isHigh) {
+          descText.innerHTML = `완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: #38bdf8;">오래 걸리는 최고 티어 재료(T7 ➔ T1)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
+        } else {
+          descText.innerHTML = `완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: #38bdf8;">기초 하위 티어 재료(T1 ➔ T7)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
+        }
+      }
+    }
+
+    async function setAlterOrder(order) {
+      currentAlterOrder = order;
+      safeSetStorage('mabi_alter_order', order);
+      applyAlterOrderUI();
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alter_order: order })
+        });
+      } catch (e) {}
+
+      loadBatchPlan();
+      loadQuickAlterPlan();
+    }
+
     let isCurrentlyBusy = false;
     let activeAlarms = {}; // Synchronized strictly from /api/alarms
 
@@ -3059,7 +3225,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (!container) return;
 
       try {
-        const res = await fetch(`/api/quick_alter_plan?category=${encodeURIComponent(currentQuickCategory)}`);
+        const res = await fetch(`/api/quick_alter_plan?category=${encodeURIComponent(currentQuickCategory)}&alter_order=${encodeURIComponent(currentAlterOrder)}`);
         const data = await res.json();
         cachedQuickPlan = data;
 
@@ -3204,7 +3370,8 @@ HTML_PAGE = """<!DOCTYPE html>
 
     async function executeQuickAlter() {
       const catText = currentQuickCategory === 'all' ? '전체 가공대' : `'${currentQuickCategory}' 가공대`;
-      if (!confirm(`${catText} 7슬롯 빠른 가공 루틴을 실행할까요?\\n\\n1. 완료 가공품 일괄 수령 (슬롯 확보)\\n2. 부족한 원자재 사전 일괄 채집\\n3. 최고 티어(T7~T1)부터 순차 가공 등록`)) {
+      const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어(T1~T7)부터 순차 가공 등록' : '최고 티어(T7~T1)부터 순차 가공 등록 (오래 걸리는 가공 우선)';
+      if (!confirm(`${catText} 7슬롯 빠른 가공 루틴을 실행할까요?\\n\\n1. 완료 가공품 일괄 수령 (슬롯 확보)\\n2. 부족한 원자재 사전 일괄 채집\\n3. ${orderDesc}`)) {
         return;
       }
 
@@ -3212,7 +3379,7 @@ HTML_PAGE = """<!DOCTYPE html>
         const res = await fetch('/api/execute_quick_alter', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category: currentQuickCategory })
+          body: JSON.stringify({ category: currentQuickCategory, alter_order: currentAlterOrder })
         });
         const d = await res.json();
         if (d.error) {
@@ -3611,7 +3778,7 @@ HTML_PAGE = """<!DOCTYPE html>
     // 3. Batch Planner: Aggregate BOM & Single-Click Pipeline
     async function loadBatchPlan() {
       try {
-        const res = await fetch('/api/batch_plan');
+        const res = await fetch(`/api/batch_plan?alter_order=${encodeURIComponent(currentAlterOrder)}`);
         const plan = await res.json();
 
         const tasksContainer = document.getElementById('batch-tasks-container');
@@ -3818,9 +3985,14 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     async function executeBatchPipeline() {
-      if (confirm('전체 주간 납품 퀘스트를 위한 일괄 재료 수급 및 제작 파이프라인을 가동할까요?\\n(부족한 가공품이 해당 시설에 일괄 등록되며 주간 납품 전용 알람이 설정됩니다)')) {
+      const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
+      if (confirm(`전체 주간 납품 퀘스트를 위한 일괄 재료 수급 및 제작 파이프라인을 가동할까요?\\n[가공 우선순위: ${orderDesc}]\\n\\n(부족한 가공품이 해당 시설에 일괄 등록되며 주간 납품 전용 알람이 설정됩니다)`)) {
         try {
-          const res = await fetch('/api/execute_batch', { method: 'POST' });
+          const res = await fetch('/api/execute_batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ alter_order: currentAlterOrder })
+          });
           const d = await res.json();
           if (d.error) alert('오류: ' + d.error);
           else {
@@ -4136,6 +4308,7 @@ HTML_PAGE = """<!DOCTYPE html>
       try { applyQuickAlterView(); } catch(e) { console.error('applyQuickAlterView error:', e); }
       try { applyDeliveryTargetsView(); } catch(e) { console.error('applyDeliveryTargetsView error:', e); }
       try { applyMainModeView(); } catch(e) { console.error('applyMainModeView error:', e); }
+      try { loadSettings(); } catch(e) { console.error('loadSettings error:', e); }
       try { updateStatus(); } catch(e) { console.error('updateStatus error:', e); }
       try { loadDeliveryTargets(); } catch(e) { console.error('loadDeliveryTargets error:', e); }
       try { loadPresets(); } catch(e) { console.error('loadPresets error:', e); }

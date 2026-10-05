@@ -788,6 +788,52 @@ class DeliveryPresetStore:
 
 delivery_preset_store = DeliveryPresetStore()
 
+SETTINGS_FILE = os.path.join(SCRIPT_DIR, "settings.json")
+
+class SettingsStore:
+    """Manages persistent application settings (e.g. alter order, etc.)."""
+    DEFAULT_SETTINGS = {
+        "alter_order": "high_tier",  # "high_tier" (상위 티어부터 / 오래 걸리는 가공 우선) or "low_tier" (하위 티어부터 / 기초 재료부터)
+    }
+
+    def __init__(self, filepath: str = SETTINGS_FILE):
+        self.filepath = filepath
+        self.settings: Dict[str, Any] = dict(self.DEFAULT_SETTINGS)
+        self.load()
+
+    def load(self):
+        if os.path.exists(self.filepath):
+            try:
+                with open(self.filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        self.settings.update(data)
+            except Exception:
+                pass
+
+    def save(self):
+        try:
+            with open(self.filepath, "w", encoding="utf-8") as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.settings.get(key, default if default is not None else self.DEFAULT_SETTINGS.get(key))
+
+    def set(self, key: str, value: Any):
+        self.settings[key] = value
+        self.save()
+
+    def get_all(self) -> Dict[str, Any]:
+        return dict(self.settings)
+
+    def update(self, new_settings: Dict[str, Any]):
+        self.settings.update(new_settings)
+        self.save()
+
+settings_store = SettingsStore()
+
 class DeliveryManager:
     def __init__(self, cli: Optional[MabinogiCLI] = None):
         self.cli = cli or MabinogiCLI()
@@ -1954,7 +2000,7 @@ class DeliveryManager:
     # UNIFIED BATCH PRODUCTION PLANNER (통합 일괄 납품 플래너)
     # =========================================================================
 
-    def analyze_batch_plan(self, custom_tasks: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def analyze_batch_plan(self, custom_tasks: Optional[List[Dict[str, Any]]] = None, alter_order: Optional[str] = None) -> Dict[str, Any]:
         """
         Full Recursive Bill-of-Materials (BOM) Batch Planner:
         1. Determines active/registered tasks to produce.
@@ -1963,9 +2009,14 @@ class DeliveryManager:
            - Correctly traverses multi-tier dependencies (e.g. 합금강괴 -> 강철괴 -> 철괴 -> 철 광석).
            - Accounts for items already owned or queued in altering.
            - Calculates exact deficit for each field gatherable item.
-        4. Sorts altering works in strict dependency/tier order (Tier 1 -> Tier 2 -> Tier 3).
+        4. Sorts altering works according to alter_order preference (high_tier: T7->T1, low_tier: T1->T7).
         5. Computes per-facility slot usage (out of 7) and slot warnings.
         """
+        if alter_order is None:
+            alter_order = settings_store.get("alter_order", "high_tier")
+        if alter_order not in ("high_tier", "low_tier"):
+            alter_order = "high_tier"
+
         tasks_to_plan: List[Dict[str, Any]] = []
 
         if custom_tasks is not None:
@@ -2003,6 +2054,7 @@ class DeliveryManager:
                 "raw_materials": [],
                 "can_craft_immediately": False,
                 "all_completed": False,
+                "alter_order": alter_order,
                 "message": "등록되거나 진행 중인 주간 납품 퀘스트가 없습니다."
             }
 
@@ -2189,7 +2241,10 @@ class DeliveryManager:
                         raw_gather_demands[clean_mat] += net_def
 
         # 5. Build Intermediate Requirements Analysis
-        sorted_alters = sorted(alter_plan.values(), key=lambda x: (x["tier"], x["item_name"]))
+        if alter_order == "low_tier":
+            sorted_alters = sorted(alter_plan.values(), key=lambda x: (x["tier"], x["item_name"]))
+        else:  # "high_tier" (상위 티어부터 / 오래 걸리는 가공 우선)
+            sorted_alters = sorted(alter_plan.values(), key=lambda x: (-x["tier"], x["item_name"]))
         intermediate_analysis: List[Dict[str, Any]] = []
         total_works_to_queue = 0
         facility_new_works_demand: Dict[str, int] = defaultdict(int)
@@ -2327,17 +2382,18 @@ class DeliveryManager:
             "facility_slots": facility_analysis,
             "slot_warnings": slot_warnings,
             "has_slot_issue": has_slot_issue,
-            "wings_count": wings_count
+            "wings_count": wings_count,
+            "alter_order": alter_order
         }
 
-    def execute_batch_deliveries(self, plan: Dict[str, Any], callback: Optional[LogCallback] = None) -> Dict[str, Any]:
+    def execute_batch_deliveries(self, plan: Dict[str, Any], callback: Optional[LogCallback] = None, alter_order: Optional[str] = None) -> Dict[str, Any]:
         """
         Executes unified batch delivery pipeline with slot-aware, resilient scheduling:
         1. Checks character status and handles user abort.
         2. Collects completed altering works across all facilities first (frees slots & gains materials).
         3. Gathers any missing raw materials (both direct craft ingredients and altering materials)
            that are gatherable in the field.
-        4. Registers altering works up to available slots per facility.
+        4. Registers altering works up to available slots per facility according to alter_order preference.
            - If a facility is full (or becomes full during registration), gracefully skips to the
              next material / next facility without crashing or halting the entire pipeline!
            - Synchronizes alarms for queued background altering.
@@ -2345,8 +2401,14 @@ class DeliveryManager:
            - Does NOT halt even if altering was queued; immediately crafts everything possible.
         6. Summarizes completed crafts, running alters, and deferred tasks.
         """
+        if alter_order is None:
+            alter_order = plan.get("alter_order") or settings_store.get("alter_order", "high_tier")
+        if alter_order not in ("high_tier", "low_tier"):
+            alter_order = "high_tier"
+
+        order_label = "상위 티어 우선 (오래 걸리는 가공부터)" if alter_order != "low_tier" else "하위 티어 우선 (기초 재료부터)"
         self.reset_abort()
-        self.log("🚀 [통합 일괄 납품 파이프라인 가동] 전체 주간 납품 목표 최적화 제작을 시작합니다.", "action", callback)
+        self.log(f"🚀 [통합 일괄 납품 파이프라인 가동] ({order_label}) 전체 주간 납품 목표 최적화 제작을 시작합니다.", "action", callback)
 
         start_time = time.time()
         initial_wings = self._safe_get_wings()
@@ -2389,7 +2451,7 @@ class DeliveryManager:
         if collected_facilities:
             collected_facilities_all.extend(collected_facilities)
             self.log("🔄 [BOM 재계산] 완료 가공품 수령으로 재고가 변동되어 최적 필요 수량을 재계산합니다.", "info", callback)
-            plan = self.analyze_batch_plan(custom_tasks=tasks)
+            plan = self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
             intermediate_reqs = plan.get("intermediate_requirements", [])
             tasks = plan.get("tasks", [])
             raw_mats = plan.get("raw_materials", [])
@@ -2585,15 +2647,32 @@ class DeliveryManager:
                 })
                 continue
 
-            works_to_register = min(works_needed, available)
+            # Calculate how many works can actually be supported by currently owned sub-ingredients
+            max_works_by_sub = works_needed
+            if sub_ings:
+                for s_name, s_req in sub_ings.items():
+                    if s_req > 0:
+                        s_owned = self.get_effective_owned(s_name, include_storage=True)
+                        possible_for_this = s_owned // s_req
+                        if possible_for_this < max_works_by_sub:
+                            max_works_by_sub = possible_for_this
+
+            works_to_register = min(works_needed, available, max_works_by_sub)
             deferred_count = works_needed - works_to_register
 
             if deferred_count > 0:
-                self.log(
-                    f"⚠️ [{facility}] '{mat_name}' 가공 {works_needed}회 필요하지만 가용 슬롯이 {available}개뿐입니다. "
-                    f"{works_to_register}회만 등록하고 {deferred_count}회는 보류합니다.",
-                    "warn", callback
-                )
+                if works_to_register == 0:
+                    self.log(
+                        f"⏳ [{facility}] '{mat_name}' 하위 재료 가공 대기 중 (필요: {works_needed}회). "
+                        f"하위 재료가 준비된 후 다음 차례에 등록됩니다.",
+                        "info", callback
+                    )
+                else:
+                    self.log(
+                        f"⚠️ [{facility}] '{mat_name}' 가공 {works_needed}회 필요하지만 현재 재료/슬롯상 {works_to_register}회만 등록 가능합니다. "
+                        f"{works_to_register}회 등록 후 {deferred_count}회는 보류합니다.",
+                        "warn", callback
+                    )
                 deferred_works.append({
                     "item_name": mat_name,
                     "facility": facility,
@@ -3064,17 +3143,24 @@ class DeliveryManager:
         }
     }
 
-    def analyze_quick_alter(self, category_key: Optional[str] = None) -> Dict[str, Any]:
+    def analyze_quick_alter(self, category_key: Optional[str] = None, alter_order: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyzes 7-slot alteration bench state for specified category (or all 4 categories):
         1. Checks completed works to collect.
         2. Checks in-progress works and calculates available slots (out of 7).
-        3. Evaluates tiers from High Tier (Tier 7) down to Low Tier (Tier 1):
+        3. Evaluates tiers according to alter_order:
+           - high_tier: High Tier (Tier 7) down to Low Tier (Tier 1) [default: 오래 걸리는 고티어 우선]
+           - low_tier: Low Tier (Tier 1) up to High Tier (Tier 7) [기초 재료 우선]
            - If non-gatherable intermediate goods are lacking -> Skips tier ("가공으로만 얻을 수 있는 재료가 부족하면 그냥 넘어가고").
            - If all missing ingredients are gatherable -> Marks viable and adds to gather plan.
            - If already alterable -> Marks ready immediately.
         4. Compiles aggregated raw material gathering requirements.
         """
+        if alter_order is None:
+            alter_order = settings_store.get("alter_order", "high_tier")
+        if alter_order not in ("high_tier", "low_tier"):
+            alter_order = "high_tier"
+
         target_cats = {}
         if category_key and category_key in self.CATEGORY_7_TIERS:
             target_cats[category_key] = self.CATEGORY_7_TIERS[category_key]
@@ -3120,7 +3206,8 @@ class DeliveryManager:
 
         for cat_name, cat_info in target_cats.items():
             facility = cat_info["facility"]
-            tiers_list = cat_info["tiers"]
+            base_tiers = list(cat_info["tiers"])
+            tiers_list = list(reversed(base_tiers)) if alter_order == "low_tier" else base_tiers
 
             completed_works = [w for w in works if w.get("FacilityName") == facility and w.get("IsCompleted")]
             in_progress_works = [w for w in works if w.get("FacilityName") == facility and not w.get("IsCompleted")]
@@ -3132,14 +3219,13 @@ class DeliveryManager:
             allocated_materials = defaultdict(int)
 
             for tier_idx, item_name in enumerate(tiers_list, 1):
-                tier_num = 8 - tier_idx
+                clean_name = item_name.split("(")[0].strip()
+                std_info = STANDARD_ALTER_RECIPES.get(clean_name)
+                tier_num = std_info.get("tier", 1) if std_info else (8 - tier_idx if alter_order != "low_tier" else tier_idx)
                 matching_recipes = [
                     it for it in alter_items 
                     if it["DisplayName"] == item_name or it["DisplayName"].startswith(item_name + "(")
                 ]
-
-                clean_name = item_name.split("(")[0].strip()
-                std_info = STANDARD_ALTER_RECIPES.get(clean_name)
 
                 viable_choice = None
                 skip_reasons = []
@@ -3240,21 +3326,31 @@ class DeliveryManager:
 
         return {
             "selected_category": category_key or "all",
+            "alter_order": alter_order,
             "categories": categories_plan,
             "total_raw_needed": dict(total_raw_needed),
             "can_start": any(len(c["planned_tiers"]) > 0 for c in categories_plan.values()) or any(c["completed_count"] > 0 for c in categories_plan.values())
         }
 
-    def execute_quick_alter(self, plan_or_category: Any = "all", callback: Optional[LogCallback] = None) -> Dict[str, Any]:
+    def execute_quick_alter(self, plan_or_category: Any = "all", callback: Optional[LogCallback] = None, alter_order: Optional[str] = None) -> Dict[str, Any]:
         """
         Executes the 7-slot facility quick alter routine:
         1. Collects all completed works at target facilities FIRST (가공품을 먼저 수령하여 재료 확보).
         2. Evaluates ingredient shortages & determines plan AFTER collection (수령 후 최신 인벤토리 기준으로 재료 판단).
         3. Gathers all required gatherable raw materials in bulk.
-        4. Starts altering from High Tier down to Low Tier at once.
+        4. Starts altering according to alter_order preference (high_tier: T7->T1, low_tier: T1->T7).
         5. Registers alarms for background completion.
         """
-        self.log("🚀 [7슬롯 최고 레벨 가공대 빠른 실행 가동] 루틴을 시작합니다.", "action", callback)
+        if alter_order is None:
+            if isinstance(plan_or_category, dict):
+                alter_order = plan_or_category.get("alter_order") or settings_store.get("alter_order", "high_tier")
+            else:
+                alter_order = settings_store.get("alter_order", "high_tier")
+        if alter_order not in ("high_tier", "low_tier"):
+            alter_order = "high_tier"
+
+        order_label = "상위 티어 우선 (오래 걸리는 가공부터)" if alter_order != "low_tier" else "하위 티어 우선 (기초 재료부터)"
+        self.log(f"🚀 [7슬롯 최고 레벨 가공대 빠른 실행 가동] ({order_label}) 루틴을 시작합니다.", "action", callback)
         self.reset_abort()
 
         start_time = time.time()
@@ -3323,8 +3419,8 @@ class DeliveryManager:
         # STEP 2: Evaluate ingredient shortages & determine plan AFTER collection!
         # (수령 완료 후 최신화된 가방 보유량 기준으로 부족 여부를 판단)
         # -------------------------------------------------------------
-        self.log("🔍 [가공 재료 판단] 가공품 수령 완료 후 최신 가방 상태를 기준으로 고티어 가공 가능 여부를 판단합니다.", "action", callback)
-        plan = self.analyze_quick_alter(cat_key if cat_key != "all" else None)
+        self.log(f"🔍 [가공 재료 판단] 가공품 수령 완료 후 최신 가방 상태를 기준으로 {order_label} 가공 가능 여부를 판단합니다.", "action", callback)
+        plan = self.analyze_quick_alter(cat_key if cat_key != "all" else None, alter_order=alter_order)
         categories = plan.get("categories", {})
         total_raw_needed = plan.get("total_raw_needed", {})
 
@@ -3447,7 +3543,7 @@ class DeliveryManager:
                 self.log(f"ℹ️ [{c_name} ({facility})] 등록 가능한 고티어 가공이 없어 건너뜁니다.", "info", callback)
                 continue
 
-            self.log(f"⚙️ [{c_name} ({facility})] 고티어 우선 순차 가공 등록 시작 (총 {len(planned)}건)", "action", callback)
+            self.log(f"⚙️ [{c_name} ({facility})] {order_label} 순차 가공 등록 시작 (총 {len(planned)}건)", "action", callback)
             for item in planned:
                 if self.abort_requested:
                     self.log("🛑 [사용자 중지] 가공 등록이 중단되었습니다.", "warn", callback)
