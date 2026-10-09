@@ -255,42 +255,42 @@ STANDARD_ALTER_RECIPES: Dict[str, Dict[str, Any]] = {
     "상급 옷감": {
         "facility": "옷감 가공 시설",
         "produced": 3,
-        "ingredients": {"옷감+": 3, "양털": 8},
+        "ingredients": {"옷감+": 3, "상급 양털": 15},
         "tier": 3,
         "display_name": "상급 옷감"
     },
     "상급 옷감+": {
         "facility": "옷감 가공 시설",
         "produced": 3,
-        "ingredients": {"상급 옷감": 4, "양털": 12},
+        "ingredients": {"상급 옷감": 4, "상급 양털+": 20},
         "tier": 4,
         "display_name": "상급 옷감+"
     },
     "최상급 옷감": {
         "facility": "옷감 가공 시설",
         "produced": 3,
-        "ingredients": {"상급 옷감+": 5, "최상급 양털": 20, "양털": 16},
+        "ingredients": {"상급 옷감+": 5, "최상급 양털": 20},
         "tier": 5,
         "display_name": "최상급 옷감"
     },
     "최상급 옷감+": {
         "facility": "옷감 가공 시설",
         "produced": 3,
-        "ingredients": {"최상급 옷감": 5, "최상급 양털+": 20, "양털": 20},
+        "ingredients": {"최상급 옷감": 5, "최상급 양털+": 20},
         "tier": 6,
         "display_name": "최상급 옷감+"
     },
     "특급 옷감": {
         "facility": "옷감 가공 시설",
         "produced": 3,
-        "ingredients": {"최상급 옷감+": 5, "특급 양털": 20, "양털": 20},
+        "ingredients": {"최상급 옷감+": 5, "특급 양털": 20},
         "tier": 7,
         "display_name": "특급 옷감"
     },
     "두꺼운 옷감": {
         "facility": "옷감 가공 시설",
         "produced": 3,
-        "ingredients": {"두꺼운 양털": 50, "밀랍": 2},
+        "ingredients": {"두꺼운 양털": 50, "상급 양털": 100, "밀랍": 2},
         "tier": 3,
         "display_name": "두꺼운 옷감"
     },
@@ -1771,10 +1771,10 @@ class DeliveryManager:
                             continue
                         except MabinogiCLIError as retry_err:
                             self.log(f"   ⚠️ 보충 후 가공 재시도 실패 ({retry_err}). 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
-                            break
+                            return {"status": "ingredient_missing_skipped", "item": item_name, "registered": successful_works, "facility": target_facility, "error": str(retry_err)}
                     else:
                         self.log(f"   ⚠️ '{alter_display_name}' 가공 재료 부족 ({err}). 남은 {works_needed - successful_works}회 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
-                        break
+                        return {"status": "ingredient_missing_skipped", "item": item_name, "registered": successful_works, "facility": target_facility, "error": str(err)}
 
                 self.log(f"   ⚠️ 가공 등록 중 오류: {err}. 완료 가공 슬롯 재확인 후 1회 재시도합니다.", "warn", callback)
                 self.collect_completed_altering_works(preferred_facility=target_facility, callback=callback)
@@ -1784,7 +1784,7 @@ class DeliveryManager:
                     successful_works += 1
                 except MabinogiCLIError as retry_err:
                     self.log(f"   ⚠️ '{alter_display_name}' 가공 슬롯 부족/오류 ({retry_err}). 남은 {works_needed - successful_works}회 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
-                    break
+                    return {"status": "slot_full_skipped", "item": item_name, "registered": successful_works, "facility": target_facility, "error": str(retry_err)}
             time.sleep(1)
 
         if successful_works == 0:
@@ -2132,11 +2132,13 @@ class DeliveryManager:
             virtual_stock[clean_n] = avail - used
             return used
 
-        # 3. Resolve Finished Goods & Direct Gatherable Delivery Items
+        # 3. Resolve Finished Goods, Alterable Delivery Items & Direct Gatherable Delivery Items
         recipe_details: Dict[str, Dict[str, int]] = {}
         pending_demands: Dict[str, int] = defaultdict(int)
         raw_gather_demands: Dict[str, int] = defaultdict(int)
         raw_total_demands: Dict[str, int] = defaultdict(int)
+        alter_plan: Dict[str, Dict[str, Any]] = {}
+        intermediate_total_demands: Dict[str, int] = defaultdict(int)
         craftable_tasks_count = 0
 
         for t in tasks_to_plan:
@@ -2168,6 +2170,44 @@ class DeliveryManager:
                     craftable_tasks_count += 1
                 continue
 
+            # Check if this delivery item is an alterable item (e.g. 옷감+, 강철괴, 목재+ 등)
+            is_alt, alt_info = self.get_alter_info(clean_it)
+            if is_alt and alt_info:
+                t["is_alter_item"] = True
+                recipe_details[it_name] = alt_info.get("ingredients", {})
+                pending_fin = completed_yield_by_item.get(clean_it, 0) + queued_yield_by_item.get(clean_it, 0)
+                net_needed = max(0, needed - pending_fin)
+                if net_needed > 0:
+                    yield_pw = alt_info.get("produced", 3)
+                    works = math.ceil(net_needed / yield_pw)
+                    fac = alt_info.get("facility") or get_facility_for_material(clean_it)
+                    tier = alt_info.get("tier", 1)
+                    recipe_dn = alt_info.get("display_name", clean_it)
+
+                    if clean_mat := clean_it:
+                        if clean_mat not in alter_plan:
+                            alter_plan[clean_mat] = {
+                                "item_name": clean_mat,
+                                "recipe_name": recipe_dn,
+                                "facility": fac,
+                                "tier": tier,
+                                "ingredients": dict(alt_info.get("ingredients", {})),
+                                "works_needed": 0,
+                                "yield_per_work": yield_pw,
+                                "total_needed": 0,
+                                "net_needed": 0,
+                            }
+                        alter_plan[clean_mat]["works_needed"] += works
+                        alter_plan[clean_mat]["total_needed"] += net_needed
+                        alter_plan[clean_mat]["net_needed"] += net_needed
+                        intermediate_total_demands[clean_mat] += net_needed
+
+                    for sub_name, sub_req in alt_info.get("ingredients", {}).items():
+                        pending_demands[sub_name] += sub_req * works
+                else:
+                    craftable_tasks_count += 1
+                continue
+
             # Finished Goods (crafted items)
             # t["needed"] is already net deficit (goal - current).
             # Do NOT subtract virtual_stock of finished goods again (double-subtraction bug)!
@@ -2187,8 +2227,6 @@ class DeliveryManager:
                 craftable_tasks_count += 1
 
         # 4. Multi-tier Recursive BOM Resolution
-        alter_plan: Dict[str, Dict[str, Any]] = {}
-        intermediate_total_demands: Dict[str, int] = defaultdict(int)
 
         depth = 0
         MAX_DEPTH = 15
@@ -2704,9 +2742,7 @@ class DeliveryManager:
                         })
 
                     if reg_count < works_to_register:
-                        # Queue filled up earlier than expected
-                        full_facilities.add(facility)
-                        facility_used_slots[facility] = MAX_SLOTS
+                        status = alter_res.get("status") if isinstance(alter_res, dict) else ""
                         failed_count = works_to_register - reg_count
                         deferred_works.append({
                             "item_name": mat_name,
@@ -2715,13 +2751,16 @@ class DeliveryManager:
                             "registered": reg_count,
                             "deferred": failed_count,
                         })
+                        # 실제 슬롯 부족(slot_full_skipped)일 때만 시설 전체를 차단하고,
+                        # 재료 부족(ingredient_missing_skipped)인 경우는 남은 슬롯이 있으므로 동일 시설의 다른 품목 가공을 허용!
+                        if status == "slot_full_skipped":
+                            full_facilities.add(facility)
+                            facility_used_slots[facility] = MAX_SLOTS
 
                     if isinstance(alter_res, dict) and alter_res.get("status") in ("waiting_in_background", "slot_full_skipped"):
                         queued_any_long = True
                 except Exception as ex:
                     self.log(f"⚠️ [{facility}] '{recipe_name}' 가공 등록 실패 ({ex}). 다음 항목으로 스킵합니다.", "warn", callback)
-                    full_facilities.add(facility)
-                    facility_used_slots[facility] = MAX_SLOTS
                     deferred_works.append({
                         "item_name": mat_name,
                         "facility": facility,
@@ -2729,6 +2768,10 @@ class DeliveryManager:
                         "registered": 0,
                         "deferred": works_needed,
                     })
+                    ex_str = str(ex).lower()
+                    if "slot" in ex_str or "full" in ex_str or "슬롯" in ex_str:
+                        full_facilities.add(facility)
+                        facility_used_slots[facility] = MAX_SLOTS
 
         if deferred_works:
             self.log(
@@ -2761,6 +2804,11 @@ class DeliveryManager:
             is_gath, _ = self.is_gatherable(item_name)
             if t.get("is_gather_item") or is_gath or clean_t in KNOWN_GATHERABLE_ITEMS:
                 gather_ready_tasks.append(t)
+                continue
+
+            # Skip alter-only items (이미 가공 단계에서 대기열 등록 처리됨)
+            is_alt, _ = self.get_alter_info(item_name)
+            if t.get("is_alter_item") or is_alt:
                 continue
 
             if needed <= 0:
@@ -3053,6 +3101,27 @@ class DeliveryManager:
                 callback=callback
             )
             return {"status": "completed", "item": item_name, "gathered": needed, "summary": summary}
+
+        # Check if target item itself is an alterable good (가공품인 경우 가공 대기열 등록으로 완결)
+        is_alt, alt_info = self.get_alter_info(item_name)
+        if is_alt and alt_info:
+            owned = self.get_effective_owned(item_name)
+            self.log(f"🎉 '{item_name}' 가공 준비 및 대기열 등록이 완료되었습니다! (현재 총 보유량: {owned}/{target_count}개)", "success", callback)
+            final_wings = self._safe_get_wings(initial_wings)
+            status_str = "waiting_in_background" if queued_any_long else "completed"
+            summary = self.format_and_log_summary(
+                summary_title=f"'{item_name}' 가공 등록 완료",
+                initial_wings=initial_wings,
+                final_wings=final_wings,
+                gathered_list=gathered_list,
+                altered_list=altered_list,
+                crafted_list=craft_results,
+                collected_facilities=collected_facilities_all,
+                duration_sec=time.time() - start_time,
+                status=status_str,
+                callback=callback
+            )
+            return {"status": status_str, "item": item_name, "altered": needed, "summary": summary}
 
         craft_recipe = self.find_craft_recipe(item_name)
         if not craft_recipe:
