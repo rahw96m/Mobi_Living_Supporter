@@ -10,6 +10,7 @@ dist/
 배포용_*/
 *.zip
 Mobi_Living_Supporter/
+Mobi_Living_Supporter_v*/
 
 # Browser / App runtime data
 .mabi_*browser_data/

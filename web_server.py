@@ -2130,6 +2130,7 @@ HTML_PAGE = """<!DOCTYPE html>
                   <span>⚙️ 하위 티어</span>
                 </button>
               </div>
+            </div>
             <button class="btn btn-sm" onclick="loadBatchPlan()">재료 분석 새로고침</button>
           </div>
         </div>
@@ -2540,6 +2541,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <span style="font-size: 11.5px; color: var(--text-muted);">* 설치 폴더만 입력하셔도 MabinogiMobile_CLI.exe를 자동 감지합니다.</span>
             <button class="btn btn-sm" onclick="triggerCliScan()" style="font-size: 11.5px; padding: 3px 10px; background: rgba(255,255,255,0.06);">🔍 자동 다시 검색</button>
           </div>
+        </div>
 
         <!-- 3-Step Setup Checklist -->
         <div style="padding: 14px 16px; background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 10px;">
