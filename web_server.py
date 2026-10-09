@@ -2113,35 +2113,6 @@ HTML_PAGE = """<!DOCTYPE html>
                   <span>⚙️ 하위 티어</span>
                 </button>
               </div>
-            </div>
-            <div class="alter-order-container" title="양털 계열 채집 우선순위: 2종류 이상 가능 시 상위 양(먹구름>곱슬>일반) 우선 또는 드롭 효율 최적화 (레벨 부족 시 단계적 자동 폴백)">
-              <span class="alter-order-label">양털 채집:</span>
-              <div class="segmented-control" id="seg-delivery-wool-order">
-                <button type="button" class="seg-btn active" id="btn-delivery-wool-high" onclick="setWoolGatherOrder('high_tier')" title="상위 양 우선: 먹구름 양(상급+) > 곱슬 양(상급) > 일반 양(양털) (레벨 부족 시 단계적 폴백)">
-                  <span>🥇 상위 양</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-delivery-wool-drop" onclick="setWoolGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 양 우선 (양털=양, 상급=곱슬, 상급+=먹구름)">
-                  <span>⚖️ 드롭 효율</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-delivery-wool-low" onclick="setWoolGatherOrder('low_tier')" title="일반 양 우선: 일반 양 > 곱슬 양 > 먹구름 양">
-                  <span>🥉 일반 양</span>
-                </button>
-              </div>
-            </div>
-            <div class="alter-order-container" title="벌목 및 통나무/나무 진액 채집 우선순위: 드롭 효율 최적화(진액=뾰족나무, 통나무=굵은나무) 또는 상위 나무 우선 (레벨 부족 시 단계적 자동 폴백)">
-              <span class="alter-order-label">벌목 채집:</span>
-              <div class="segmented-control" id="seg-delivery-wood-order">
-                <button type="button" class="seg-btn active" id="btn-delivery-wood-drop" onclick="setWoodGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 나무 우선 (진액=뾰족 나무, 통나무=굵은 나무)">
-                  <span>⚖️ 드롭 효율</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-delivery-wood-high" onclick="setWoodGatherOrder('high_tier')" title="상위 나무 우선: 상급 나무+ > 상급 나무 > 굵은 나무 > 뾰족 나무 (레벨 부족 시 단계적 폴백)">
-                  <span>🥇 상위 나무</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-delivery-wood-low" onclick="setWoodGatherOrder('low_tier')" title="기본 나무 우선: 굵은 나무 > 뾰족 나무 > 상급 나무">
-                  <span>🥉 기본 나무</span>
-                </button>
-              </div>
-            </div>
             <button class="btn btn-sm" onclick="loadBatchPlan()">재료 분석 새로고침</button>
           </div>
         </div>
@@ -2218,34 +2189,6 @@ HTML_PAGE = """<!DOCTYPE html>
                 </button>
                 <button type="button" class="seg-btn" id="btn-quick-alter-low" onclick="setAlterOrder('low_tier')" title="기초 하위 티어(T1 ➔ T7)부터 1슬롯씩 대기열에 등록합니다">
                   <span>⚙️ 하위 티어</span>
-                </button>
-              </div>
-            </div>
-            <div class="alter-order-container" title="양털 계열 채집 우선순위: 2종류 이상 가능 시 상위 양(먹구름>곱슬>일반) 우선 또는 드롭 효율 최적화 (레벨 부족 시 단계적 자동 폴백)">
-              <span class="alter-order-label">양털 채집:</span>
-              <div class="segmented-control" id="seg-quick-wool-order">
-                <button type="button" class="seg-btn active" id="btn-quick-wool-high" onclick="setWoolGatherOrder('high_tier')" title="상위 양 우선: 먹구름 양(상급+) > 곱슬 양(상급) > 일반 양(양털) (레벨 부족 시 단계적 폴백)">
-                  <span>🥇 상위 양</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-quick-wool-drop" onclick="setWoolGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 양 우선 (양털=양, 상급=곱슬, 상급+=먹구름)">
-                  <span>⚖️ 드롭 효율</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-quick-wool-low" onclick="setWoolGatherOrder('low_tier')" title="일반 양 우선: 일반 양 > 곱슬 양 > 먹구름 양">
-                  <span>🥉 일반 양</span>
-                </button>
-              </div>
-            </div>
-            <div class="alter-order-container" title="벌목 및 통나무/나무 진액 채집 우선순위: 드롭 효율 최적화(진액=뾰족나무, 통나무=굵은나무) 또는 상위 나무 우선 (레벨 부족 시 단계적 자동 폴백)">
-              <span class="alter-order-label">벌목 채집:</span>
-              <div class="segmented-control" id="seg-quick-wood-order">
-                <button type="button" class="seg-btn active" id="btn-quick-wood-drop" onclick="setWoodGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 나무 우선 (진액=뾰족 나무, 통나무=굵은 나무)">
-                  <span>⚖️ 드롭 효율</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-quick-wood-high" onclick="setWoodGatherOrder('high_tier')" title="상위 나무 우선: 상급 나무+ > 상급 나무 > 굵은 나무 > 뾰족 나무 (레벨 부족 시 단계적 폴백)">
-                  <span>🥇 상위 나무</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-quick-wood-low" onclick="setWoodGatherOrder('low_tier')" title="기본 나무 우선: 굵은 나무 > 뾰족 나무 > 상급 나무">
-                  <span>🥉 기본 나무</span>
                 </button>
               </div>
             </div>
@@ -2367,34 +2310,6 @@ HTML_PAGE = """<!DOCTYPE html>
                 </button>
                 <button type="button" class="seg-btn" id="btn-custom-alter-low" onclick="setAlterOrder('low_tier')" title="기초 재료(T1~T7)부터 시설 슬롯에 순차 등록합니다">
                   <span>⚙️ 하위 티어</span>
-                </button>
-              </div>
-            </div>
-            <div class="alter-order-container" title="양털 계열 채집 우선순위: 2종류 이상 가능 시 상위 양(먹구름>곱슬>일반) 우선 또는 드롭 효율 최적화 (레벨 부족 시 단계적 자동 폴백)">
-              <span class="alter-order-label">양털 채집:</span>
-              <div class="segmented-control" id="seg-custom-wool-order">
-                <button type="button" class="seg-btn active" id="btn-custom-wool-high" onclick="setWoolGatherOrder('high_tier')" title="상위 양 우선: 먹구름 양(상급+) > 곱슬 양(상급) > 일반 양(양털) (레벨 부족 시 단계적 폴백)">
-                  <span>🥇 상위 양</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-custom-wool-drop" onclick="setWoolGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 양 우선 (양털=양, 상급=곱슬, 상급+=먹구름)">
-                  <span>⚖️ 드롭 효율</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-custom-wool-low" onclick="setWoolGatherOrder('low_tier')" title="일반 양 우선: 일반 양 > 곱슬 양 > 먹구름 양">
-                  <span>🥉 일반 양</span>
-                </button>
-              </div>
-            </div>
-            <div class="alter-order-container" title="벌목 및 통나무/나무 진액 채집 우선순위: 드롭 효율 최적화(진액=뾰족나무, 통나무=굵은나무) 또는 상위 나무 우선 (레벨 부족 시 단계적 자동 폴백)">
-              <span class="alter-order-label">벌목 채집:</span>
-              <div class="segmented-control" id="seg-custom-wood-order">
-                <button type="button" class="seg-btn active" id="btn-custom-wood-drop" onclick="setWoodGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 나무 우선 (진액=뾰족 나무, 통나무=굵은 나무)">
-                  <span>⚖️ 드롭 효율</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-custom-wood-high" onclick="setWoodGatherOrder('high_tier')" title="상위 나무 우선: 상급 나무+ > 상급 나무 > 굵은 나무 > 뾰족 나무 (레벨 부족 시 단계적 폴백)">
-                  <span>🥇 상위 나무</span>
-                </button>
-                <button type="button" class="seg-btn" id="btn-custom-wood-low" onclick="setWoodGatherOrder('low_tier')" title="기본 나무 우선: 굵은 나무 > 뾰족 나무 > 상급 나무">
-                  <span>🥉 기본 나무</span>
                 </button>
               </div>
             </div>
@@ -2604,81 +2519,10 @@ HTML_PAGE = """<!DOCTYPE html>
             <input type="text" id="cli-modal-input" placeholder="예: D:\\Nexon\\MabinogiMobile 또는 C:\\Nexon\\MabinogiMobile" style="flex: 1; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(99,102,241,0.4); border-radius: 8px; color: #fff; font-size: 13px;">
             <button class="btn btn-primary" onclick="saveCliPathFromModal()" style="white-space: nowrap; padding: 0 16px;">저장 & 연결</button>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 6px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 6px; margin-bottom: 20px;">
             <span style="font-size: 11.5px; color: var(--text-muted);">* 설치 폴더만 입력하셔도 MabinogiMobile_CLI.exe를 자동 감지합니다.</span>
             <button class="btn btn-sm" onclick="triggerCliScan()" style="font-size: 11.5px; padding: 3px 10px; background: rgba(255,255,255,0.06);">🔍 자동 다시 검색</button>
           </div>
-        <!-- Wool Gathering Priority Setting Section -->
-        <div style="margin-bottom: 20px; padding: 14px 16px; background: rgba(236, 72, 153, 0.06); border: 1px solid rgba(236, 72, 153, 0.25); border-radius: 10px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="font-weight: 700; color: #f472b6; display: flex; align-items: center; gap: 6px;">
-              <span>🧶</span> <span>양털 계열 채집 우선순위 & 단계적 폴백 설정</span>
-            </div>
-            <span class="badge" style="background: rgba(236, 72, 153, 0.2); color: #f472b6; font-size: 11px;">자동 폴백 지원</span>
-          </div>
-          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 10px; line-height: 1.5;">
-            양털 계열 채집 시 캐릭터의 생활 레벨에 맞춰 최적의 양을 선택하며, 생활 레벨이 부족할 경우 에러 없이 <strong>하위 양으로 단계적 자동 폴백</strong>됩니다.
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 8px;" id="wool-order-radio-group">
-            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-              <input type="radio" name="wool_order_modal" value="high_tier" onchange="setWoolGatherOrder('high_tier')" style="margin-top: 3px;" checked>
-              <div>
-                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">🥇 상위 양 우선 (기본 / 강력 권장)</div>
-                <div style="font-size: 11.5px; color: #94a3b8;">먹구름 양(상급 양털+) ➔ 곱슬 양(상급 양털) ➔ 일반 양(양털) 순서. 2종류 이상 가능 시 상위 양 우선! 부가 재료(상급 양털+/상급 양털) 동시 다량 수급에 최적.</div>
-              </div>
-            </label>
-            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-              <input type="radio" name="wool_order_modal" value="drop_rate" onchange="setWoolGatherOrder('drop_rate')" style="margin-top: 3px;">
-              <div>
-                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">⚖️ 드롭 효율 최적화 (품목별 전담 양 우선)</div>
-                <div style="font-size: 11.5px; color: #94a3b8;">양털은 일반 양(양털 다량), 상급 양털은 곱슬 양, 상급 양털+는 먹구름 양 우선 채집 (레벨 미달 시 단계적 자동 폴백).</div>
-              </div>
-            </label>
-            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-              <input type="radio" name="wool_order_modal" value="low_tier" onchange="setWoolGatherOrder('low_tier')" style="margin-top: 3px;">
-              <div>
-                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">🥉 일반 양 우선 (초보자 권장)</div>
-                <div style="font-size: 11.5px; color: #94a3b8;">일반 양 ➔ 곱슬 양 ➔ 먹구름 양 순서로 채집합니다.</div>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <!-- Wood Gathering Priority Setting Section -->
-        <div style="margin-bottom: 20px; padding: 14px 16px; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="font-weight: 700; color: #34d399; display: flex; align-items: center; gap: 6px;">
-              <span>🪓</span> <span>벌목 & 통나무/나무 진액 채집 우선순위 & 단계적 폴백 설정</span>
-            </div>
-            <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 11px;">자동 폴백 지원</span>
-          </div>
-          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 10px; line-height: 1.5;">
-            벌목 채집 시 캐릭터의 생활 레벨에 맞춰 최적의 나무를 선택하며, 생활 레벨이 부족할 경우 에러 없이 <strong>하위 나무로 단계적 자동 폴백</strong>됩니다.
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 8px;" id="wood-order-radio-group">
-            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-              <input type="radio" name="wood_order_modal" value="drop_rate" onchange="setWoodGatherOrder('drop_rate')" style="margin-top: 3px;" checked>
-              <div>
-                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">⚖️ 드롭 효율 최적화 (기본 / 강력 권장)</div>
-                <div style="font-size: 11.5px; color: #94a3b8;"><strong>나무 진액</strong>은 뾰족 나무(진액 다량), <strong>통나무</strong>는 굵은 나무(통나무 다량) 우선 채집! (생활 레벨 미달 시 단계적 자동 폴백).</div>
-              </div>
-            </label>
-            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-              <input type="radio" name="wood_order_modal" value="high_tier" onchange="setWoodGatherOrder('high_tier')" style="margin-top: 3px;">
-              <div>
-                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">🥇 상위 나무 우선</div>
-                <div style="font-size: 11.5px; color: #94a3b8;">상급 나무+(상급 통나무+) ➔ 상급 나무(상급 통나무) ➔ 굵은 나무 ➔ 뾰족 나무 순서. 부가 재료 동시 수급에 최적.</div>
-              </div>
-            </label>
-            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-              <input type="radio" name="wood_order_modal" value="low_tier" onchange="setWoodGatherOrder('low_tier')" style="margin-top: 3px;">
-              <div>
-                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">🥉 기본 나무 우선 (초보자 권장)</div>
-                <div style="font-size: 11.5px; color: #94a3b8;">굵은 나무 ➔ 뾰족 나무 ➔ 상급 나무 순서로 기본 나무부터 채집합니다.</div>
-              </div>
-            </label>
-          </div>
-        </div>
 
         <!-- 3-Step Setup Checklist -->
         <div style="padding: 14px 16px; background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 10px;">
@@ -2962,8 +2806,6 @@ HTML_PAGE = """<!DOCTYPE html>
     // CLI Connection & Setup Modal Logic
     function openCliModal() {
       fetchCliConfig();
-      applyWoolGatherOrderUI();
-      applyWoodGatherOrderUI();
       const modal = document.getElementById('cli-modal-overlay');
       if (modal) modal.classList.add('active');
     }
@@ -3093,13 +2935,9 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     let currentAlterOrder = safeGetStorage('mabi_alter_order', 'high_tier');
-    let currentWoolGatherOrder = safeGetStorage('mabi_wool_gather_order', 'high_tier');
-    let currentWoodGatherOrder = safeGetStorage('mabi_wood_gather_order', 'drop_rate');
 
     async function loadSettings() {
       applyAlterOrderUI();
-      applyWoolGatherOrderUI();
-      applyWoodGatherOrderUI();
       try {
         const res = await fetch('/api/settings');
         const d = await res.json();
@@ -3108,16 +2946,6 @@ HTML_PAGE = """<!DOCTYPE html>
             currentAlterOrder = d.alter_order;
             safeSetStorage('mabi_alter_order', currentAlterOrder);
             applyAlterOrderUI();
-          }
-          if (d.wool_gather_order) {
-            currentWoolGatherOrder = d.wool_gather_order;
-            safeSetStorage('mabi_wool_gather_order', currentWoolGatherOrder);
-            applyWoolGatherOrderUI();
-          }
-          if (d.wood_gather_order) {
-            currentWoodGatherOrder = d.wood_gather_order;
-            safeSetStorage('mabi_wood_gather_order', currentWoodGatherOrder);
-            applyWoodGatherOrderUI();
           }
         }
       } catch (e) {}
@@ -3155,120 +2983,6 @@ HTML_PAGE = """<!DOCTYPE html>
           descText.innerHTML = `완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: #38bdf8;">기초 하위 티어 재료(T1 ➔ T7)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
         }
       }
-    }
-
-    function applyWoolGatherOrderUI() {
-      const order = currentWoolGatherOrder || 'high_tier';
-
-      // 1. Radio buttons in Modal
-      const radios = document.querySelectorAll('input[name="wool_order_modal"]');
-      radios.forEach(r => {
-        r.checked = (r.value === order);
-      });
-
-      // 2. Delivery Planner Segmented Control
-      const btnDH = document.getElementById('btn-delivery-wool-high');
-      const btnDD = document.getElementById('btn-delivery-wool-drop');
-      const btnDL = document.getElementById('btn-delivery-wool-low');
-      if (btnDH && btnDD && btnDL) {
-        btnDH.classList.toggle('active', order === 'high_tier');
-        btnDD.classList.toggle('active', order === 'drop_rate');
-        btnDL.classList.toggle('active', order === 'low_tier');
-      }
-
-      // 3. Quick Alter Segmented Control
-      const btnQH = document.getElementById('btn-quick-wool-high');
-      const btnQD = document.getElementById('btn-quick-wool-drop');
-      const btnQL = document.getElementById('btn-quick-wool-low');
-      if (btnQH && btnQD && btnQL) {
-        btnQH.classList.toggle('active', order === 'high_tier');
-        btnQD.classList.toggle('active', order === 'drop_rate');
-        btnQL.classList.toggle('active', order === 'low_tier');
-      }
-
-      // 4. Custom Craft Segmented Control
-      const btnCH = document.getElementById('btn-custom-wool-high');
-      const btnCD = document.getElementById('btn-custom-wool-drop');
-      const btnCL = document.getElementById('btn-custom-wool-low');
-      if (btnCH && btnCD && btnCL) {
-        btnCH.classList.toggle('active', order === 'high_tier');
-        btnCD.classList.toggle('active', order === 'drop_rate');
-        btnCL.classList.toggle('active', order === 'low_tier');
-      }
-    }
-
-    function applyWoodGatherOrderUI() {
-      const order = currentWoodGatherOrder || 'drop_rate';
-
-      // 1. Radio buttons in Modal
-      const radios = document.querySelectorAll('input[name="wood_order_modal"]');
-      radios.forEach(r => {
-        r.checked = (r.value === order);
-      });
-
-      // 2. Delivery Planner Segmented Control
-      const btnDD = document.getElementById('btn-delivery-wood-drop');
-      const btnDH = document.getElementById('btn-delivery-wood-high');
-      const btnDL = document.getElementById('btn-delivery-wood-low');
-      if (btnDD && btnDH && btnDL) {
-        btnDD.classList.toggle('active', order === 'drop_rate');
-        btnDH.classList.toggle('active', order === 'high_tier');
-        btnDL.classList.toggle('active', order === 'low_tier');
-      }
-
-      // 3. Quick Alter Segmented Control
-      const btnQD = document.getElementById('btn-quick-wood-drop');
-      const btnQH = document.getElementById('btn-quick-wood-high');
-      const btnQL = document.getElementById('btn-quick-wood-low');
-      if (btnQD && btnQH && btnQL) {
-        btnQD.classList.toggle('active', order === 'drop_rate');
-        btnQH.classList.toggle('active', order === 'high_tier');
-        btnQL.classList.toggle('active', order === 'low_tier');
-      }
-
-      // 4. Custom Craft Segmented Control
-      const btnCD = document.getElementById('btn-custom-wood-drop');
-      const btnCH = document.getElementById('btn-custom-wood-high');
-      const btnCL = document.getElementById('btn-custom-wood-low');
-      if (btnCD && btnCH && btnCL) {
-        btnCD.classList.toggle('active', order === 'drop_rate');
-        btnCH.classList.toggle('active', order === 'high_tier');
-        btnCL.classList.toggle('active', order === 'low_tier');
-      }
-    }
-
-    async function setWoodGatherOrder(order) {
-      currentWoodGatherOrder = order;
-      safeSetStorage('mabi_wood_gather_order', order);
-      applyWoodGatherOrderUI();
-      try {
-        await fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wood_gather_order: order })
-        });
-      } catch (e) {}
-
-      if (typeof loadBatchPlan === 'function') loadBatchPlan();
-      if (typeof loadQuickAlterPlan === 'function') loadQuickAlterPlan();
-      if (typeof loadCustomPlan === 'function') loadCustomPlan();
-    }
-
-    async function setWoolGatherOrder(order) {
-      currentWoolGatherOrder = order;
-      safeSetStorage('mabi_wool_gather_order', order);
-      applyWoolGatherOrderUI();
-      try {
-        await fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wool_gather_order: order })
-        });
-      } catch (e) {}
-
-      if (typeof loadBatchPlan === 'function') loadBatchPlan();
-      if (typeof loadQuickAlterPlan === 'function') loadQuickAlterPlan();
-      if (typeof loadCustomPlan === 'function') loadCustomPlan();
     }
 
     async function setAlterOrder(order) {
@@ -4780,7 +4494,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     async function loadCustomPlan() {
       try {
-        const res = await fetch(`/api/custom_plan?alter_order=${encodeURIComponent(currentAlterOrder)}&wool_order=${encodeURIComponent(currentWoolGatherOrder)}&wood_order=${encodeURIComponent(currentWoodGatherOrder)}`);
+        const res = await fetch(`/api/custom_plan?alter_order=${encodeURIComponent(currentAlterOrder)}`);
         const plan = await res.json();
         cachedCustomPlan = plan;
 
@@ -4996,7 +4710,7 @@ HTML_PAGE = """<!DOCTYPE html>
           const res = await fetch('/api/execute_custom', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ alter_order: currentAlterOrder, wool_order: currentWoolGatherOrder, wood_order: currentWoodGatherOrder })
+            body: JSON.stringify({ alter_order: currentAlterOrder })
           });
           const d = await res.json();
           if (d.error) alert('오류: ' + d.error);

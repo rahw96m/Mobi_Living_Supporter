@@ -43,20 +43,6 @@ def run_interactive(dm: DeliveryManager):
     while True:
         curr_order = settings_store.get("alter_order", "high_tier")
         order_str = "상위 티어 우선 (오래 걸리는 가공부터)" if curr_order != "low_tier" else "하위 티어 우선 (기초 재료부터)"
-        curr_wool = settings_store.get("wool_gather_order", "high_tier")
-        wool_labels = {
-            "high_tier": "상위 양 우선 (먹구름>곱슬>양, 단계적 폴백)",
-            "drop_rate": "드롭 효율 최적화 (품목별 전담 양 우선)",
-            "low_tier": "일반 양 우선 (초보자 권장)"
-        }
-        wool_str = wool_labels.get(curr_wool, curr_wool)
-        curr_wood = settings_store.get("wood_gather_order", "drop_rate")
-        wood_labels = {
-            "drop_rate": "드롭 효율 최적화 (진액=뾰족 나무, 통나무=굵은 나무)",
-            "high_tier": "상위 나무 우선 (상급 나무+>상급 나무>굵은>뾰족)",
-            "low_tier": "기본 나무 우선 (굵은>뾰족>상급)"
-        }
-        wood_str = wood_labels.get(curr_wood, curr_wood)
 
         print("\n[메뉴를 선택해주세요]")
         print("1. 🎯 현재 수락된 주간 의뢰/납품 퀘스트 자동 감지 & 제작")
@@ -65,8 +51,6 @@ def run_interactive(dm: DeliveryManager):
         print("4. 🌐 웹 대시보드(Web UI) 실행 (브라우저로 편리하게 사용)")
         print(f"5. ⚡ 7슬롯 최고 레벨 가공대 빠른 실행 [{order_str}]")
         print(f"6. ⚙️ 가공 우선순위 설정 변경 (현재: {order_str})")
-        print(f"7. 🧶 양털 채집 우선순위 설정 변경 (현재: {wool_str})")
-        print(f"8. 🪓 벌목 채집 우선순위 설정 변경 (현재: {wood_str})")
         print("q. 종료")
 
         choice = input("\n선택 > ").strip()
@@ -206,32 +190,6 @@ def run_interactive(dm: DeliveryManager):
             new_str = "상위 티어 우선 (오래 걸리는 가공부터)" if new_val != "low_tier" else "하위 티어 우선 (기초 재료부터)"
             print(f"\n✅ 가공 우선순위가 변경되었습니다: {new_str}")
 
-        elif choice == "7":
-            curr = settings_store.get("wool_gather_order", "high_tier")
-            order_cycle = ["high_tier", "drop_rate", "low_tier"]
-            next_idx = (order_cycle.index(curr) + 1) % len(order_cycle) if curr in order_cycle else 0
-            new_val = order_cycle[next_idx]
-            settings_store.set("wool_gather_order", new_val)
-            wool_labels = {
-                "high_tier": "🥇 상위 양 우선 (먹구름>곱슬>양, 단계적 폴백)",
-                "drop_rate": "⚖️ 드롭 효율 최적화 (품목별 전담 양 우선)",
-                "low_tier": "🥉 일반 양 우선 (초보자 권장)"
-            }
-            print(f"\n✅ 양털 채집 우선순위가 변경되었습니다: {wool_labels.get(new_val, new_val)}")
-
-        elif choice == "8":
-            curr = settings_store.get("wood_gather_order", "drop_rate")
-            order_cycle = ["drop_rate", "high_tier", "low_tier"]
-            next_idx = (order_cycle.index(curr) + 1) % len(order_cycle) if curr in order_cycle else 0
-            new_val = order_cycle[next_idx]
-            settings_store.set("wood_gather_order", new_val)
-            wood_labels = {
-                "drop_rate": "⚖️ 드롭 효율 최적화 (진액=뾰족 나무, 통나무=굵은 나무)",
-                "high_tier": "🥇 상위 나무 우선 (상급 나무+>상급 나무>굵은>뾰족)",
-                "low_tier": "🥉 기본 나무 우선 (굵은>뾰족>상급)"
-            }
-            print(f"\n✅ 벌목 채집 우선순위가 변경되었습니다: {wood_labels.get(new_val, new_val)}")
-
         elif choice.lower() in ("q", "quit", "exit"):
             print("프로그램을 종료합니다.")
             break
@@ -243,8 +201,6 @@ def main():
     parser.add_argument("--web", action="store_true", help="웹 UI 실행")
     parser.add_argument("--quick-alter", nargs="?", const="all", choices=["all", "금속", "목재", "가죽", "옷감"], help="7슬롯 최고 레벨 가공대 빠른 실행")
     parser.add_argument("--alter-order", choices=["high", "low", "high_tier", "low_tier"], help="가공 우선순위 (high: 상위 티어부터 / low: 하위 티어부터)")
-    parser.add_argument("--wool-order", choices=["high", "drop", "low", "high_tier", "drop_rate", "low_tier"], help="양털 채집 우선순위 (high: 상위 양 우선 / drop: 드롭 효율 최적화 / low: 일반 양 우선)")
-    parser.add_argument("--wood-order", choices=["drop", "high", "low", "drop_rate", "high_tier", "low_tier"], help="벌목 채집 우선순위 (drop: 드롭 효율 최적화 / high: 상위 나무 우선 / low: 기본 나무 우선)")
     args = parser.parse_args()
 
     dm = DeliveryManager()
@@ -253,18 +209,6 @@ def main():
         norm = "low_tier" if "low" in args.alter_order else "high_tier"
         settings_store.set("alter_order", norm)
         print(f"⚙️ 가공 우선순위 설정: {'상위 티어 우선' if norm == 'high_tier' else '하위 티어 우선'}")
-
-    if args.wool_order:
-        norm_w = "drop_rate" if "drop" in args.wool_order else ("low_tier" if "low" in args.wool_order else "high_tier")
-        settings_store.set("wool_gather_order", norm_w)
-        w_labels = {"high_tier": "상위 양 우선", "drop_rate": "드롭 효율 최적화", "low_tier": "일반 양 우선"}
-        print(f"🧶 양털 채집 우선순위 설정: {w_labels.get(norm_w, norm_w)}")
-
-    if args.wood_order:
-        norm_wd = "high_tier" if "high" in args.wood_order else ("low_tier" if "low" in args.wood_order else "drop_rate")
-        settings_store.set("wood_gather_order", norm_wd)
-        wd_labels = {"drop_rate": "드롭 효율 최적화 (진액=뾰족, 통나무=굵은)", "high_tier": "상위 나무 우선", "low_tier": "기본 나무 우선"}
-        print(f"🪓 벌목 채집 우선순위 설정: {wd_labels.get(norm_wd, norm_wd)}")
 
     if args.web:
         from web_server import start_server

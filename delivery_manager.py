@@ -479,12 +479,13 @@ def is_wool_family(item_name: str) -> bool:
     clean = item_name.split("(")[0].strip()
     return clean in WOOL_FAMILY_ITEMS or "양털" in clean
 
-def get_wool_gather_candidates(target_item: str, preference: str = "high_tier") -> List[Dict[str, Any]]:
+def get_wool_gather_candidates(target_item: str, preference: str = "drop_rate") -> List[Dict[str, Any]]:
     """
-    Returns ordered list of candidate sheep gathering targets based on user preference and drop characteristics.
-    - 'high_tier': 상위 양 우선 (먹구름 양 > 곱슬 양 > 일반 양)
-    - 'drop_rate': 드롭 효율 최적화 (양털=일반 양, 상급 양털=곱슬 양, 상급 양털+=먹구름 양)
-    - 'low_tier': 일반 양 우선 (일반 양 > 곱슬 양 > 먹구름 양)
+    항상 가장 빨리 필요한 재료를 확보할 수 있는 최적의 양 후보 목록을 반환합니다.
+    - 양털: 일반 양 (양털 최다 드롭) ➔ 곱슬 양 ➔ 먹구름 양
+    - 상급 양털: 곱슬 양 (상급 양털 최다 드롭) ➔ 먹구름 양 ➔ 일반 양
+    - 상급 양털+: 먹구름 양 (상급 양털+ 최다 드롭) ➔ 곱슬 양 ➔ 일반 양
+    (생활 레벨 미달 시 자동으로 하위 양으로 단계적 폴백)
     """
     cloud = WOOL_SPECIES_DATA["상급 양털+"]
     curly = WOOL_SPECIES_DATA["상급 양털"]
@@ -492,20 +493,14 @@ def get_wool_gather_candidates(target_item: str, preference: str = "high_tier") 
 
     clean = target_item.split("(")[0].strip()
 
-    if preference == "drop_rate":
-        if clean == "양털":
-            return [normal, curly, cloud]
-        elif clean == "상급 양털":
-            return [curly, cloud, normal]
-        elif clean == "상급 양털+":
-            return [cloud, curly, normal]
-        else:
-            return [cloud, curly, normal]
-    elif preference == "low_tier":
+    if clean == "양털":
         return [normal, curly, cloud]
-    else:
-        # Default: "high_tier" (상위 양 우선)
+    elif clean == "상급 양털":
+        return [curly, cloud, normal]
+    elif clean == "상급 양털+":
         return [cloud, curly, normal]
+    else:
+        return [normal, curly, cloud]
 
 # --- 벌목 및 통나무/나무 진액 계열 다단계 채집 및 종별 드롭 특성 정의 ---
 WOOD_SPECIES_DATA: Dict[str, Dict[str, Any]] = {
@@ -551,10 +546,12 @@ def is_wood_family(item_name: str) -> bool:
 
 def get_wood_gather_candidates(target_item: str, preference: str = "drop_rate") -> List[Dict[str, Any]]:
     """
-    Returns ordered list of candidate tree gathering targets based on user preference and drop characteristics.
-    - 'drop_rate' (기본/권장): 드롭 효율 최적화 (나무 진액=뾰족 나무, 통나무=굵은 나무, 상급 통나무=상급 나무 등)
-    - 'high_tier': 상위 나무 우선 (상급 나무+ > 상급 나무 > 굵은 나무 > 뾰족 나무)
-    - 'low_tier': 기본 나무 우선 (굵은 나무 > 뾰족 나무 > 상급 나무 > 상급 나무+)
+    항상 가장 빨리 필요한 재료를 확보할 수 있는 최적의 나무 후보 목록을 반환합니다.
+    - 나무 진액: 뾰족 나무 (진액 최다 드롭) ➔ 굵은 나무 ➔ 상급 나무 ➔ 상급 나무+
+    - 통나무: 굵은 나무 (통나무 최다 드롭) ➔ 뾰족 나무 ➔ 상급 나무 ➔ 상급 나무+
+    - 상급 통나무: 상급 나무 (상급 통나무 최다 드롭) ➔ 상급 나무+ ➔ 굵은 나무 ➔ 뾰족 나무
+    - 상급 통나무+: 상급 나무+ (상급 통나무+ 최다 드롭) ➔ 상급 나무 ➔ 굵은 나무 ➔ 뾰족 나무
+    (생활 레벨 미달 시 자동으로 하위 나무로 단계적 폴백)
     """
     cloud = WOOD_SPECIES_DATA["상급 통나무+"]
     high = WOOD_SPECIES_DATA["상급 통나무"]
@@ -563,25 +560,16 @@ def get_wood_gather_candidates(target_item: str, preference: str = "drop_rate") 
 
     clean = target_item.split("(")[0].strip()
 
-    if preference == "high_tier":
+    if "진액" in clean:
+        return [pointy, thick, high, cloud]
+    elif clean == "통나무":
+        return [thick, pointy, high, cloud]
+    elif clean == "상급 통나무":
+        return [high, cloud, thick, pointy]
+    elif clean == "상급 통나무+":
         return [cloud, high, thick, pointy]
-    elif preference == "low_tier":
-        if "진액" in clean:
-            return [pointy, thick, high, cloud]
-        else:
-            return [thick, pointy, high, cloud]
     else:
-        # Default: "drop_rate" (드롭 효율 최적화)
-        if "진액" in clean:
-            return [pointy, thick, high, cloud]
-        elif clean == "통나무":
-            return [thick, pointy, high, cloud]
-        elif clean == "상급 통나무":
-            return [high, cloud, thick, pointy]
-        elif clean == "상급 통나무+":
-            return [cloud, high, thick, pointy]
-        else:
-            return [thick, pointy, high, cloud]
+        return [thick, pointy, high, cloud]
 
 FACILITY_MAP: Dict[str, str] = {
     # 금속
@@ -940,8 +928,6 @@ class SettingsStore:
     """Manages persistent application settings (e.g. alter order, wool gather order, wood gather order, etc.)."""
     DEFAULT_SETTINGS = {
         "alter_order": "high_tier",  # "high_tier" (상위 티어부터 / 오래 걸리는 가공 우선) or "low_tier" (하위 티어부터 / 기초 재료부터)
-        "wool_gather_order": "high_tier",  # "high_tier" (상위 양 우선: 먹구름>곱슬>일반), "drop_rate" (드롭 효율 최적화), "low_tier" (일반 양 우선)
-        "wood_gather_order": "drop_rate",  # "drop_rate" (드롭 효율 최적화: 진액=뾰족나무, 통나무=굵은나무), "high_tier" (상위 나무 우선), "low_tier" (기본 나무 우선)
     }
 
     def __init__(self, filepath: str = SETTINGS_FILE):
@@ -1612,8 +1598,7 @@ class DeliveryManager:
                 res = self.cli.get_gatherable_items()
                 items = res.get("items", [])
                 items_map = {it.get("DisplayName"): it for it in items}
-                pref = settings_store.get("wool_gather_order", "high_tier")
-                candidates = get_wool_gather_candidates(clean_name, pref)
+                candidates = get_wool_gather_candidates(clean_name)
                 has_any_gatherable = False
                 for cand in candidates:
                     tgt = cand["gather_target"]
@@ -1634,8 +1619,7 @@ class DeliveryManager:
                 res = self.cli.get_gatherable_items()
                 items = res.get("items", [])
                 items_map = {it.get("DisplayName"): it for it in items}
-                pref = settings_store.get("wood_gather_order", "drop_rate")
-                candidates = get_wood_gather_candidates(clean_name, pref)
+                candidates = get_wood_gather_candidates(clean_name)
                 has_any_gatherable = False
                 for cand in candidates:
                     tgt = cand["gather_target"]
@@ -1697,8 +1681,7 @@ class DeliveryManager:
         candidate_list: List[Dict[str, Any]] = []
 
         if is_wool:
-            pref = settings_store.get("wool_gather_order", "high_tier")
-            all_cands = get_wool_gather_candidates(item_name, pref)
+            all_cands = get_wool_gather_candidates(item_name)
 
             # 게임 클라이언트에서 생활 레벨이 충족된 채집물 확인
             try:
@@ -1717,16 +1700,10 @@ class DeliveryManager:
                 candidate_list = all_cands
 
             target_sheep = candidate_list[0]
-            pref_labels = {
-                "high_tier": "상위 양 우선 (먹구름 양 ➔ 곱슬 양 ➔ 일반 양)",
-                "drop_rate": "드롭 효율 최적화 (품목별 전담 양 우선)",
-                "low_tier": "일반 양 우선 (초보자 권장)"
-            }
-            pref_text = pref_labels.get(pref, pref)
             self.log(
                 f"🧶 [양털 맞춤 채집 시작] 목표: '{item_name}' {required_count}개 "
                 f"(가방: {initial_count}개 ➔ 목표: {target_count}개) | "
-                f"설정: {pref_text} | 1순위: {target_sheep['species']}({target_sheep['gather_target']})",
+                f"최적 대상: {target_sheep['species']}({target_sheep['gather_target']})",
                 "action",
                 callback
             )
@@ -1738,8 +1715,7 @@ class DeliveryManager:
                     callback
                 )
         elif is_wood:
-            pref = settings_store.get("wood_gather_order", "drop_rate")
-            all_cands = get_wood_gather_candidates(item_name, pref)
+            all_cands = get_wood_gather_candidates(item_name)
 
             try:
                 g_res = self.cli.get_gatherable_items()
@@ -1757,16 +1733,10 @@ class DeliveryManager:
                 candidate_list = all_cands
 
             target_tree = candidate_list[0]
-            pref_labels = {
-                "drop_rate": "드롭 효율 최적화 (진액=뾰족 나무, 통나무=굵은 나무 등)",
-                "high_tier": "상위 나무 우선 (상급 나무+ ➔ 상급 나무 ➔ 일반 나무)",
-                "low_tier": "기본 나무 우선 (굵은 나무 ➔ 뾰족 나무 ➔ 상위 나무)"
-            }
-            pref_text = pref_labels.get(pref, pref)
             self.log(
                 f"🪓 [벌목 맞춤 채집 시작] 목표: '{item_name}' {required_count}개 "
                 f"(가방: {initial_count}개 ➔ 목표: {target_count}개) | "
-                f"설정: {pref_text} | 1순위: {target_tree['species']}({target_tree['gather_target']})",
+                f"최적 대상: {target_tree['species']}({target_tree['gather_target']})",
                 "action",
                 callback
             )
