@@ -1260,39 +1260,137 @@ class DeliveryManager:
 
     def detect_delivery_quests(self) -> List[DeliveryTask]:
         """
-        Scans active quest tracker entries for delivery objectives like:
-        '<color=orange>아이템명</color> 보유 3/6', '아이템명 제작 0/6', etc.
-        Also parses quest title as fallback when description is just '3/6'.
+        Scans actively tracked quest tracker entries (shortcut, pinned_sub, auto_register_sub)
+        for genuine item delivery / crafting / gathering objectives:
+        e.g., '<color=orange>달걀</color> 보유 20/60', '<color=orange>론 엣지소드S</color> 보유 3/6'
+        Strictly excludes combat/dungeon clear objectives (클리어, 처치, 사냥, 토벌, 대화 등)
+        and non-active background quest lines (main, auto_register_candidate_sub).
         """
         quests = self.cli.get_quests()
-        tasks: List[DeliveryTask] = []
-        pattern = re.compile(r"(.+?)\s*(?:보유|제작|만들기|납품|전달|수집|구하기)?\s*(\d+)\s*/\s*(\d+)")
-        number_only_pattern = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
+        if not quests:
+            return []
 
-        for q in quests:
-            quest_title = self.clean_text(q.get("QuestTitle", ""))
-            title_candidate = re.sub(r"\s*(?:만들기|구하기|제작|납품|전달)$", "", quest_title).strip()
+        # 1. Only process active / pinned sources.
+        # 'shortcut' = actively tracked HUD quest widget
+        # 'pinned_sub' = player-pinned sub/side quest tracker items
+        # 'auto_register_sub' = automatically pinned sub quest
+        # Excludes: 'main' (story/dungeon orders), 'auto_register_candidate_sub' (unpinned candidates), 'goddess_mission', etc.
+        valid_sources = ("shortcut", "pinned_sub", "auto_register_sub")
+        active_quests = [q for q in quests if q.get("Source") in valid_sources]
+        if not active_quests:
+            return []
+
+        EXCLUDE_VERBS = (
+            "클리어", "처치", "사냥", "토벌", "대화", "만나기", "방문",
+            "완료", "달성", "진행", "보고", "승리", "참여", "탐색", "조사"
+        )
+        DELIVERY_VERBS = ("보유", "제작", "만들기", "납품", "전달", "수집", "구하기", "채집")
+        GENERIC_TITLES = ("퀘스트 클리어", "임무 진행", "바로가기", "숏컷", "임무 완료", "퀘스트")
+
+        # Extract title hints from shortcut objectives (e.g. '<color=orange>달걀 구하기</color> 진행')
+        title_hints: Dict[str, str] = {}
+        for q in active_quests:
+            if q.get("Source") == "shortcut":
+                q_raw_title = self.clean_text(q.get("QuestTitle", ""))
+                for obj in q.get("Objectives", []):
+                    desc = obj.get("Description", "")
+                    m = re.search(r"<color=[^>]+>(.*?)</color>\s*진행", desc)
+                    if m:
+                        title_hints[q_raw_title] = m.group(1).strip()
+
+        # Build map of specific titles from pinned quests by item
+        pinned_title_by_item: Dict[str, str] = {}
+        for q in active_quests:
+            if q.get("Source") == "pinned_sub":
+                pq_title = self.clean_text(q.get("QuestTitle", ""))
+                if pq_title and pq_title not in GENERIC_TITLES:
+                    for obj in q.get("Objectives", []):
+                        raw_desc = obj.get("Description", "")
+                        c_m = re.search(r"<color=[^>]+>(.*?)</color>", raw_desc)
+                        if c_m:
+                            it_name = c_m.group(1).strip()
+                            it_name = re.sub(r"^(?:보유|제작|만들기|납품|전달|수집|구하기|채집)\s*", "", it_name).strip()
+                            it_name = re.sub(r"\s*(?:보유|제작|만들기|납품|전달|수집|구하기|채집)$", "", it_name).strip()
+                            if it_name:
+                                pinned_title_by_item[it_name] = pq_title
+
+        tasks_dict: Dict[str, DeliveryTask] = {}
+
+        for q in active_quests:
+            raw_title = self.clean_text(q.get("QuestTitle", ""))
+            if raw_title in GENERIC_TITLES and raw_title in title_hints:
+                quest_title = title_hints[raw_title]
+            else:
+                quest_title = raw_title
+
             objectives = q.get("Objectives", [])
             for obj in objectives:
-                desc = self.clean_text(obj.get("Description", ""))
-                match = pattern.search(desc)
-                if match and match.group(1).strip():
-                    item_name = match.group(1).strip()
-                    # Clean any leading/trailing keywords
-                    item_name = re.sub(r"^(?:보유|제작|만들기|납품|전달|수집|구하기)\s*", "", item_name).strip()
-                    current = int(match.group(2))
-                    goal = int(match.group(3))
-                    is_completed = obj.get("IsCompleted", current >= goal)
-                    tasks.append(DeliveryTask(quest_title, item_name, current, goal, is_completed))
-                else:
-                    num_match = number_only_pattern.search(desc)
-                    if num_match and title_candidate:
-                        current = int(num_match.group(1))
-                        goal = int(num_match.group(2))
-                        is_completed = obj.get("IsCompleted", current >= goal)
-                        tasks.append(DeliveryTask(quest_title, title_candidate, current, goal, is_completed))
+                raw_desc = obj.get("Description", "")
 
-        return tasks
+                color_m = re.search(r"<color=[^>]+>(.*?)</color>\s*([^\d]*?)\s*(\d+)\s*/\s*(\d+)", raw_desc)
+                parsed_item = None
+                parsed_cur = 0
+                parsed_goal = 0
+
+                if color_m:
+                    raw_item = color_m.group(1).strip()
+                    verb = color_m.group(2).strip()
+                    cur = int(color_m.group(3))
+                    goal = int(color_m.group(4))
+
+                    # Check for combat / non-delivery exclusions
+                    if any(ev in verb for ev in EXCLUDE_VERBS) or any(ev in raw_item for ev in EXCLUDE_VERBS):
+                        continue
+
+                    # Require delivery verb or empty verb
+                    if any(dv in verb for dv in DELIVERY_VERBS) or not verb:
+                        clean_item = re.sub(r"^(?:보유|제작|만들기|납품|전달|수집|구하기|채집)\s*", "", raw_item).strip()
+                        clean_item = re.sub(r"\s*(?:보유|제작|만들기|납품|전달|수집|구하기|채집)$", "", clean_item).strip()
+                        if clean_item:
+                            parsed_item = clean_item
+                            parsed_cur = cur
+                            parsed_goal = goal
+
+                # Plain text fallback if no color tag
+                if not parsed_item:
+                    clean_desc = self.clean_text(raw_desc)
+                    if any(ev in clean_desc for ev in EXCLUDE_VERBS):
+                        continue
+                    plain_m = re.search(r"^(.*?)\s*(?:보유|제작|만들기|납품|전달|수집|구하기|채집)\s*(\d+)\s*/\s*(\d+)$", clean_desc)
+                    if plain_m:
+                        item_candidate = plain_m.group(1).strip()
+                        if item_candidate and not any(ev in item_candidate for ev in EXCLUDE_VERBS):
+                            parsed_item = item_candidate
+                            parsed_cur = int(plain_m.group(2))
+                            parsed_goal = int(plain_m.group(3))
+
+                # Number-only description fallback: '0/6' with delivery quest title
+                if not parsed_item:
+                    num_m = re.match(r"^\s*(\d+)\s*/\s*(\d+)\s*$", self.clean_text(raw_desc))
+                    if num_m and quest_title:
+                        title_cand = re.sub(r"\s*(?:만들기|구하기|제작|납품|전달|채집|수집)$", "", quest_title).strip()
+                        if title_cand != quest_title and not any(ev in title_cand for ev in EXCLUDE_VERBS):
+                            parsed_item = title_cand
+                            parsed_cur = int(num_m.group(1))
+                            parsed_goal = int(num_m.group(2))
+
+                if parsed_item and parsed_goal > 0:
+                    is_completed = obj.get("IsCompleted", parsed_cur >= parsed_goal)
+                    final_title = pinned_title_by_item.get(parsed_item, quest_title)
+                    if final_title in GENERIC_TITLES and parsed_item in pinned_title_by_item:
+                        final_title = pinned_title_by_item[parsed_item]
+
+                    if parsed_item not in tasks_dict:
+                        tasks_dict[parsed_item] = DeliveryTask(final_title, parsed_item, parsed_cur, parsed_goal, is_completed)
+                    else:
+                        existing = tasks_dict[parsed_item]
+                        new_cur = max(existing.current, parsed_cur)
+                        best_title = existing.quest_title
+                        if best_title in GENERIC_TITLES and final_title not in GENERIC_TITLES:
+                            best_title = final_title
+                        tasks_dict[parsed_item] = DeliveryTask(best_title, parsed_item, new_cur, parsed_goal, new_cur >= parsed_goal)
+
+        return list(tasks_dict.values())
 
     def get_effective_owned(self, item_name: str, include_storage: bool = True) -> int:
         """
