@@ -789,78 +789,96 @@ class RegisteredDeliveryStore:
     def __init__(self, filepath: str = DELIVERY_TARGETS_FILE):
         self.filepath = filepath
         self.targets: Dict[str, Dict[str, Any]] = {}
+        self._lock = threading.RLock()
         self.load()
 
     def load(self):
-        if os.path.exists(self.filepath):
-            try:
-                with open(self.filepath, "r", encoding="utf-8") as f:
-                    self.targets = json.load(f)
-            except Exception:
-                self.targets = {}
+        with self._lock:
+            if os.path.exists(self.filepath):
+                try:
+                    with open(self.filepath, "r", encoding="utf-8") as f:
+                        self.targets = json.load(f)
+                except Exception:
+                    self.targets = {}
 
     def save(self):
-        try:
-            with open(self.filepath, "w", encoding="utf-8") as f:
-                json.dump(self.targets, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        with self._lock:
+            try:
+                with open(self.filepath, "w", encoding="utf-8") as f:
+                    json.dump(self.targets, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
     def add_or_update(self, item_name: str, goal: int, current: int = 0, quest_title: str = "주간 납품") -> Dict[str, Any]:
-        needed = max(0, int(goal) - int(current))
-        data = {
-            "quest_title": quest_title,
-            "item_name": item_name,
-            "goal": int(goal),
-            "current": int(current),
-            "needed": needed,
-            "is_completed": (int(current) >= int(goal)),
-            "updated_at": int(time.time() * 1000)
-        }
-        self.targets[item_name] = data
-        self.save()
-        return data
+        with self._lock:
+            key = item_name.strip()
+            needed = max(0, int(goal) - int(current))
+            data = {
+                "quest_title": quest_title,
+                "item_name": key,
+                "goal": int(goal),
+                "current": int(current),
+                "needed": needed,
+                "is_completed": (int(current) >= int(goal)),
+                "updated_at": int(time.time() * 1000)
+            }
+            self.targets[key] = data
+            self.save()
+            return data
 
     def update_current(self, item_name: str, current: int) -> Optional[Dict[str, Any]]:
         """Directly sets the current owned count for item_name and recalculates completion status."""
-        if item_name in self.targets:
-            t = self.targets[item_name]
-            goal = int(t.get("goal", 1))
-            cur = max(0, int(current))
-            t["current"] = cur
-            t["needed"] = max(0, goal - cur)
-            t["is_completed"] = (cur >= goal)
-            t["updated_at"] = int(time.time() * 1000)
-            self.targets[item_name] = t
-            self.save()
-            return t
-        return None
+        with self._lock:
+            target_key = item_name.strip()
+            found_key = None
+            for k in self.targets.keys():
+                if k == item_name or k.strip() == target_key:
+                    found_key = k
+                    break
+            if found_key:
+                t = self.targets[found_key]
+                goal = int(t.get("goal", 1))
+                cur = max(0, int(current))
+                t["current"] = cur
+                t["needed"] = max(0, goal - cur)
+                t["is_completed"] = (cur >= goal)
+                t["updated_at"] = int(time.time() * 1000)
+                self.targets[found_key] = t
+                self.save()
+                return t
+            return None
 
     def delete(self, item_name: str):
-        if item_name in self.targets:
-            del self.targets[item_name]
+        with self._lock:
+            target_key = item_name.strip()
+            keys_to_del = [k for k in list(self.targets.keys()) if k == item_name or k.strip() == target_key]
+            for k in keys_to_del:
+                del self.targets[k]
             self.save()
 
     def clear(self):
-        self.targets = {}
-        self.save()
+        with self._lock:
+            self.targets = {}
+            self.save()
 
     def reset_all_current(self) -> int:
         """Resets the current count of all registered targets to 0."""
-        count = 0
-        for item_name, t in self.targets.items():
-            goal = int(t.get("goal", 1))
-            t["current"] = 0
-            t["needed"] = goal
-            t["is_completed"] = False
-            t["inventory_count"] = 0
-            t["updated_at"] = int(time.time() * 1000)
-            count += 1
-        self.save()
-        return count
+        with self._lock:
+            count = 0
+            for item_name, t in self.targets.items():
+                goal = int(t.get("goal", 1))
+                t["current"] = 0
+                t["needed"] = goal
+                t["is_completed"] = False
+                t["inventory_count"] = 0
+                t["updated_at"] = int(time.time() * 1000)
+                count += 1
+            self.save()
+            return count
 
     def get_all(self) -> List[Dict[str, Any]]:
-        return list(self.targets.values())
+        with self._lock:
+            return [dict(t) for t in self.targets.values()]
 
 delivery_target_store = RegisteredDeliveryStore()
 
@@ -1417,9 +1435,12 @@ class DeliveryManager:
     def get_registered_deliveries_with_status(self) -> List[Dict[str, Any]]:
         """
         Returns all registered weekly delivery targets, with real-time current counts
-        (including inventory, character storage, and account storage) queried from the game client.
-        CRITICAL: Never overwrites a known positive count (from previous craft or manual edit)
-        with 0 when an item is unpinned or not returned by get_items.
+        queried from the game client.
+        CRITICAL: For direct delivery targets (items to be handed in directly, e.g. 마법 유탄 부품, 우유, 달걀),
+        warehouse/storage (창고) counts are EXCLUDED from current owned count so only inventory (가방) count
+        is counted towards completion. Storage counts remain displayed in breakdown for user reference.
+        Never overwrites a known positive count with 0 when an item is unpinned or not returned by get_items.
+        Never resurrects targets deleted by the user while status polling was in progress.
         """
         targets = delivery_target_store.get_all()
         updated_list = []
@@ -1431,31 +1452,22 @@ class DeliveryManager:
             prev_current = int(t.get("current", 0))
 
             breakdown = self.cli.get_item_location_breakdown(item_name)
-            detected_current = breakdown["total"]
+            inv_count = breakdown["inventory"]
 
             # Check active quest tracker
             quest_detected = 0
             if item_name in active_delivery_tasks:
                 quest_detected = active_delivery_tasks[item_name].current
-                detected_current = max(detected_current, quest_detected)
 
-            # Determine final current count safely:
-            # 1. If get_items explicitly found it in bag/storage, trust breakdown["total"]
-            # 2. Else if active quest tracker has a count, take max(prev_current, quest_detected)
-            # 3. Else (detected_current == 0, unpinned equipment or unlisted good):
-            #    PRESERVE prev_current so crafted or manually registered count is NEVER wiped out!
-            if breakdown["total"] > 0:
-                current = breakdown["total"]
+            # Direct delivery target: count ONLY inventory (bag), EXCLUDE warehouse / storage!
+            if inv_count > 0:
+                current = inv_count
             elif quest_detected > 0:
-                current = max(prev_current, quest_detected)
+                current = quest_detected
+            elif prev_current > 0 and is_equipment_item(item_name):
+                current = prev_current
             else:
-                # If unpinned or equipment, retain positive prev_current
-                if prev_current > 0:
-                    current = prev_current
-                elif is_equipment_item(item_name):
-                    current = prev_current
-                else:
-                    current = 0
+                current = inv_count
 
             needed = max(0, goal - current)
             is_completed = (current >= goal)
@@ -1463,25 +1475,30 @@ class DeliveryManager:
             t["current"] = current
             t["needed"] = needed
             t["is_completed"] = is_completed
-            t["inventory_count"] = max(breakdown["inventory"], current if (is_equipment_item(item_name) or breakdown["total"] == 0) else 0)
+            t["inventory_count"] = max(inv_count, current if (is_equipment_item(item_name) or breakdown["total"] == 0) else 0)
             t["character_storage_count"] = breakdown["character_storage"]
             t["account_storage_count"] = breakdown["account_storage"]
             t["storage_count"] = breakdown["storage_total"]
-            delivery_target_store.targets[item_name] = t
-            updated_list.append(t)
+
+            # Guard against resurrecting items deleted while this polling cycle was running
+            with delivery_target_store._lock:
+                if item_name not in delivery_target_store.targets and item_name.strip() not in [k.strip() for k in delivery_target_store.targets.keys()]:
+                    continue
+                delivery_target_store.targets[item_name] = t
+
         delivery_target_store.save()
-        return updated_list
+        return delivery_target_store.get_all()
 
     def add_detected_quests_to_targets(self) -> List[Dict[str, Any]]:
         """
         Scans currently active quests via detect_delivery_quests() and adds or updates
         them in the persistent registered delivery targets store.
-        Preserves existing positive counts if quest is temporarily displaying 0.
+        Excludes warehouse/storage counts for delivery targets (counts only bag inventory).
         """
         detected = self.detect_delivery_quests()
         added = []
         for q in detected:
-            cur = self.get_effective_owned(q.item_name)
+            cur = self.get_effective_owned(q.item_name, include_storage=False)
             cur = max(cur, q.current)
             entry = delivery_target_store.add_or_update(
                 item_name=q.item_name,
@@ -1495,6 +1512,7 @@ class DeliveryManager:
     def get_custom_targets_with_status(self) -> List[Dict[str, Any]]:
         """
         Returns all registered custom craft targets with real-time current inventory/storage breakdown.
+        Never resurrects targets deleted by the user while status polling was in progress.
         """
         targets = custom_target_store.get_all()
         updated_list = []
@@ -1523,10 +1541,15 @@ class DeliveryManager:
             t["character_storage_count"] = breakdown["character_storage"]
             t["account_storage_count"] = breakdown["account_storage"]
             t["storage_count"] = breakdown["storage_total"]
-            custom_target_store.targets[item_name] = t
-            updated_list.append(t)
+
+            # Guard against resurrecting items deleted while this polling cycle was running
+            with custom_target_store._lock:
+                if item_name not in custom_target_store.targets and item_name.strip() not in [k.strip() for k in custom_target_store.targets.keys()]:
+                    continue
+                custom_target_store.targets[item_name] = t
+
         custom_target_store.save()
-        return updated_list
+        return custom_target_store.get_all()
 
     def analyze_custom_plan(self, alter_order: Optional[str] = None) -> Dict[str, Any]:
         """

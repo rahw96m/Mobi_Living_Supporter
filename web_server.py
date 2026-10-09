@@ -828,7 +828,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     return
                 existing_entry = delivery_target_store.targets.get(item_name, {})
                 prev_cur = int(existing_entry.get("current", 0))
-                eff_cur = manager_instance.get_effective_owned(item_name)
+                eff_cur = manager_instance.get_effective_owned(item_name, include_storage=False)
                 if req_current is not None and str(req_current).strip() != "":
                     try:
                         cur = max(0, int(req_current))
@@ -877,7 +877,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             body_bytes = self.rfile.read(length)
             try:
                 req_json = json.loads(body_bytes.decode("utf-8"))
-                item_name = req_json.get("item_name")
+                item_name = str(req_json.get("item_name", "")).strip()
                 if item_name:
                     delivery_target_store.delete(item_name)
                     add_log("info", f"🗑️ [납품 목표 삭제] '{item_name}' 항목이 목표 목록에서 제거되었습니다.")
@@ -950,7 +950,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             body_bytes = self.rfile.read(length)
             try:
                 req_json = json.loads(body_bytes.decode("utf-8"))
-                item_name = req_json.get("item_name")
+                item_name = str(req_json.get("item_name", "")).strip()
                 if item_name:
                     custom_target_store.delete(item_name)
                     add_log("info", f"🗑️ [개별 제작 삭제] '{item_name}' 항목이 목표 목록에서 제거되었습니다.")
