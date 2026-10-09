@@ -1573,7 +1573,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     .main-mode-tabs {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       width: 100%;
       box-sizing: border-box;
@@ -1687,6 +1687,23 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     .main-mode-tab.active#btn-mode-quick-alter .tab-icon-wrap {
       box-shadow: 0 4px 16px rgba(2, 132, 199, 0.4);
+    }
+
+    /* Active Tab: Custom Craft Mode */
+    .main-mode-tab.active#btn-mode-custom-craft {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.14) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.45);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(16, 185, 129, 0.22);
+    }
+    .main-mode-tab.active#btn-mode-custom-craft .tab-main-title {
+      color: #a7f3d0;
+    }
+    .main-mode-tab.active#btn-mode-custom-craft .tab-sub-desc {
+      color: #6ee7b7;
+    }
+    .main-mode-tab.active#btn-mode-custom-craft .tab-icon-wrap {
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
     }
 
     /* Alteration Order Segmented Control */
@@ -1870,7 +1887,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
           </div>
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.0</span></h1>
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.1</span></h1>
             <p>마비노기 모바일 AI 커넥터 연동</p>
           </div>
         </div>
@@ -2569,6 +2586,7 @@ HTML_PAGE = """<!DOCTYPE html>
     // Execution Summary State & Functions
     let cachedLastSummary = null;
     let shownSummaryId = 0;
+    let isInitialStatusLoaded = false;
 
     function openSummaryModal() {
       const modal = document.getElementById('summary-modal-overlay');
@@ -2585,6 +2603,14 @@ HTML_PAGE = """<!DOCTYPE html>
         closeSummaryModal();
       }
     }
+
+    // ESC key closes modals
+    window.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeSummaryModal();
+        if (typeof closeCliModal === 'function') closeCliModal();
+      }
+    });
 
     function renderSummaryModal(sum) {
       if (!sum) return;
@@ -3058,6 +3084,9 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function switchMainMode(mode) {
+      // If summary modal is somehow active, close it so it never blocks user tab view
+      closeSummaryModal();
+
       const btnDelivery = document.getElementById('btn-mode-delivery');
       const btnQuickAlter = document.getElementById('btn-mode-quick-alter');
       const btnCustomCraft = document.getElementById('btn-mode-custom-craft');
@@ -3079,6 +3108,17 @@ HTML_PAGE = """<!DOCTYPE html>
         contentCustomCraft.style.display = 'none';
         contentQuickAlter.style.display = 'block';
         safeSetStorage('mabi_main_mode_tab', 'quick_alter');
+
+        // Ensure quick alter content is expanded and visible
+        const exp = document.getElementById('quick-alter-expanded-content');
+        const bar = document.getElementById('quick-alter-collapsed-bar');
+        const btn = document.getElementById('btn-toggle-quick-alter');
+        if (exp && bar && btn && exp.style.display === 'none') {
+          exp.style.display = 'block';
+          bar.style.display = 'none';
+          btn.innerText = '접어두기 ▲';
+          safeSetStorage('mabi_quick_alter_collapsed', 'false');
+        }
 
         if (typeof loadQuickAlterPlan === 'function') {
           loadQuickAlterPlan();
@@ -4511,7 +4551,7 @@ HTML_PAGE = """<!DOCTYPE html>
           return;
         }
 
-        const materials = plan.materials || [];
+        const materials = plan.intermediate_requirements || plan.materials || [];
         const rawMaterials = plan.raw_materials || [];
 
         if (materials.length === 0 && rawMaterials.length === 0) {
@@ -4832,10 +4872,16 @@ HTML_PAGE = """<!DOCTYPE html>
         // Execution Summary Modal Hook
         if (data.last_summary) {
           renderSummaryModal(data.last_summary);
-          if (data.last_summary_id && data.last_summary_id > shownSummaryId && !data.is_busy) {
+          if (!isInitialStatusLoaded) {
+            // First status fetch: sync shownSummaryId without interrupting user with auto-popup
+            shownSummaryId = data.last_summary_id || 0;
+            isInitialStatusLoaded = true;
+          } else if (data.last_summary_id && data.last_summary_id > shownSummaryId && !data.is_busy) {
             shownSummaryId = data.last_summary_id;
             openSummaryModal();
           }
+        } else {
+          isInitialStatusLoaded = true;
         }
       } catch (err) {
         statusFailCount++;

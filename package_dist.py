@@ -143,7 +143,7 @@ print("\n🗜️ 배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
 # GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v0.5.0.zip)
-VERSION = "v0.5.0"
+VERSION = "v0.5.1"
 github_zip_path = os.path.join(BASE_DIR, f"Mobi_Living_Supporter_{VERSION}.zip")
 shutil.copy2(zip_path, github_zip_path)
 
