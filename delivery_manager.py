@@ -446,6 +446,143 @@ KNOWN_GATHERABLE_ITEMS: Set[str] = {
     "데코 제작 부품", "데코 제작 부품+", "상급 데코 제작 부품",
 }
 
+# --- 양털 계열 다단계 채집 및 종별 드롭 특성 정의 ---
+WOOL_SPECIES_DATA: Dict[str, Dict[str, Any]] = {
+    "상급 양털+": {
+        "species": "먹구름 양",
+        "tier": 3,
+        "gather_target": "상급 양털+",
+        "primary_drop": "상급 양털+",
+        "desc": "먹구름 양 (상급 양털+ 다량, 상급 양털/양털 부가 드롭)"
+    },
+    "상급 양털": {
+        "species": "곱슬 양",
+        "tier": 2,
+        "gather_target": "상급 양털",
+        "primary_drop": "상급 양털",
+        "desc": "곱슬 양 (상급 양털 다량, 일반 양털 부가 드롭)"
+    },
+    "양털": {
+        "species": "일반 양",
+        "tier": 1,
+        "gather_target": "양털",
+        "primary_drop": "양털",
+        "desc": "일반 양 (양털 다량 드롭)"
+    }
+}
+
+WOOL_FAMILY_ITEMS: Set[str] = {
+    "양털", "상급 양털", "상급 양털+", "최상급 양털", "최상급 양털+", "두꺼운 양털", "황금 양털", "황금 양털+", "특급 양털"
+}
+
+def is_wool_family(item_name: str) -> bool:
+    clean = item_name.split("(")[0].strip()
+    return clean in WOOL_FAMILY_ITEMS or "양털" in clean
+
+def get_wool_gather_candidates(target_item: str, preference: str = "high_tier") -> List[Dict[str, Any]]:
+    """
+    Returns ordered list of candidate sheep gathering targets based on user preference and drop characteristics.
+    - 'high_tier': 상위 양 우선 (먹구름 양 > 곱슬 양 > 일반 양)
+    - 'drop_rate': 드롭 효율 최적화 (양털=일반 양, 상급 양털=곱슬 양, 상급 양털+=먹구름 양)
+    - 'low_tier': 일반 양 우선 (일반 양 > 곱슬 양 > 먹구름 양)
+    """
+    cloud = WOOL_SPECIES_DATA["상급 양털+"]
+    curly = WOOL_SPECIES_DATA["상급 양털"]
+    normal = WOOL_SPECIES_DATA["양털"]
+
+    clean = target_item.split("(")[0].strip()
+
+    if preference == "drop_rate":
+        if clean == "양털":
+            return [normal, curly, cloud]
+        elif clean == "상급 양털":
+            return [curly, cloud, normal]
+        elif clean == "상급 양털+":
+            return [cloud, curly, normal]
+        else:
+            return [cloud, curly, normal]
+    elif preference == "low_tier":
+        return [normal, curly, cloud]
+    else:
+        # Default: "high_tier" (상위 양 우선)
+        return [cloud, curly, normal]
+
+# --- 벌목 및 통나무/나무 진액 계열 다단계 채집 및 종별 드롭 특성 정의 ---
+WOOD_SPECIES_DATA: Dict[str, Dict[str, Any]] = {
+    "상급 통나무+": {
+        "species": "상급 나무+",
+        "tier": 3,
+        "gather_target": "상급 통나무+",
+        "primary_drop": "상급 통나무+",
+        "desc": "상급 나무+ (상급 통나무+ 다량, 상급/일반 통나무, 진액 동시 드롭)"
+    },
+    "상급 통나무": {
+        "species": "상급 나무",
+        "tier": 2,
+        "gather_target": "상급 통나무",
+        "primary_drop": "상급 통나무",
+        "desc": "상급 나무 (상급 통나무 다량, 일반 통나무, 진액 동시 드롭)"
+    },
+    "통나무": {
+        "species": "굵은 나무",
+        "tier": 1,
+        "gather_target": "통나무",
+        "primary_drop": "통나무",
+        "desc": "굵은 나무 (통나무 다량 드롭, 나무 진액/나뭇가지 부가 드롭)"
+    },
+    "나무 진액": {
+        "species": "뾰족 나무",
+        "tier": 1,
+        "gather_target": "나무 진액",
+        "primary_drop": "나무 진액",
+        "desc": "뾰족 나무 (나무 진액 다량 드롭, 통나무/나뭇가지 부가 드롭)"
+    }
+}
+
+WOOD_FAMILY_ITEMS: Set[str] = {
+    "통나무", "단단한 통나무", "부드러운 통나무", "상급 통나무", "상급 통나무+", 
+    "최상급 통나무", "최상급 통나무+", "특급 통나무", "나무 진액", "나뭇가지", 
+    "황금 나뭇가지", "벼락 맞은 나뭇가지"
+}
+
+def is_wood_family(item_name: str) -> bool:
+    clean = item_name.split("(")[0].strip()
+    return clean in WOOD_FAMILY_ITEMS or any(k in clean for k in ["통나무", "나무 진액", "나뭇가지"])
+
+def get_wood_gather_candidates(target_item: str, preference: str = "drop_rate") -> List[Dict[str, Any]]:
+    """
+    Returns ordered list of candidate tree gathering targets based on user preference and drop characteristics.
+    - 'drop_rate' (기본/권장): 드롭 효율 최적화 (나무 진액=뾰족 나무, 통나무=굵은 나무, 상급 통나무=상급 나무 등)
+    - 'high_tier': 상위 나무 우선 (상급 나무+ > 상급 나무 > 굵은 나무 > 뾰족 나무)
+    - 'low_tier': 기본 나무 우선 (굵은 나무 > 뾰족 나무 > 상급 나무 > 상급 나무+)
+    """
+    cloud = WOOD_SPECIES_DATA["상급 통나무+"]
+    high = WOOD_SPECIES_DATA["상급 통나무"]
+    thick = WOOD_SPECIES_DATA["통나무"]    # 굵은 나무
+    pointy = WOOD_SPECIES_DATA["나무 진액"] # 뾰족 나무
+
+    clean = target_item.split("(")[0].strip()
+
+    if preference == "high_tier":
+        return [cloud, high, thick, pointy]
+    elif preference == "low_tier":
+        if "진액" in clean:
+            return [pointy, thick, high, cloud]
+        else:
+            return [thick, pointy, high, cloud]
+    else:
+        # Default: "drop_rate" (드롭 효율 최적화)
+        if "진액" in clean:
+            return [pointy, thick, high, cloud]
+        elif clean == "통나무":
+            return [thick, pointy, high, cloud]
+        elif clean == "상급 통나무":
+            return [high, cloud, thick, pointy]
+        elif clean == "상급 통나무+":
+            return [cloud, high, thick, pointy]
+        else:
+            return [thick, pointy, high, cloud]
+
 FACILITY_MAP: Dict[str, str] = {
     # 금속
     "철괴": "금속 가공 시설", "합금강괴": "금속 가공 시설", "강철괴": "금속 가공 시설",
@@ -739,6 +876,15 @@ class RegisteredDeliveryStore:
 
 delivery_target_store = RegisteredDeliveryStore()
 
+CUSTOM_TARGETS_FILE = os.path.join(SCRIPT_DIR, "custom_targets.json")
+
+class CustomTargetStore(RegisteredDeliveryStore):
+    """Manages user-specified custom craft targets (개별 아이템 지정 제작 목표 관리)."""
+    def __init__(self, filepath: str = CUSTOM_TARGETS_FILE):
+        super().__init__(filepath=filepath)
+
+custom_target_store = CustomTargetStore()
+
 PRESETS_FILE = os.path.join(SCRIPT_DIR, "delivery_presets.json")
 
 class DeliveryPresetStore:
@@ -791,9 +937,11 @@ delivery_preset_store = DeliveryPresetStore()
 SETTINGS_FILE = os.path.join(SCRIPT_DIR, "settings.json")
 
 class SettingsStore:
-    """Manages persistent application settings (e.g. alter order, etc.)."""
+    """Manages persistent application settings (e.g. alter order, wool gather order, wood gather order, etc.)."""
     DEFAULT_SETTINGS = {
         "alter_order": "high_tier",  # "high_tier" (상위 티어부터 / 오래 걸리는 가공 우선) or "low_tier" (하위 티어부터 / 기초 재료부터)
+        "wool_gather_order": "high_tier",  # "high_tier" (상위 양 우선: 먹구름>곱슬>일반), "drop_rate" (드롭 효율 최적화), "low_tier" (일반 양 우선)
+        "wood_gather_order": "drop_rate",  # "drop_rate" (드롭 효율 최적화: 진액=뾰족나무, 통나무=굵은나무), "high_tier" (상위 나무 우선), "low_tier" (기본 나무 우선)
     }
 
     def __init__(self, filepath: str = SETTINGS_FILE):
@@ -1260,6 +1408,59 @@ class DeliveryManager:
             added.append(entry)
         return added
 
+    def get_custom_targets_with_status(self) -> List[Dict[str, Any]]:
+        """
+        Returns all registered custom craft targets with real-time current inventory/storage breakdown.
+        """
+        targets = custom_target_store.get_all()
+        updated_list = []
+
+        for t in targets:
+            item_name = t["item_name"]
+            goal = int(t.get("goal", 1))
+            prev_current = int(t.get("current", 0))
+
+            breakdown = self.cli.get_item_location_breakdown(item_name)
+
+            if breakdown["total"] > 0:
+                current = breakdown["total"]
+            elif prev_current > 0 or is_equipment_item(item_name):
+                current = prev_current
+            else:
+                current = 0
+
+            needed = max(0, goal - current)
+            is_completed = (current >= goal)
+
+            t["current"] = current
+            t["needed"] = needed
+            t["is_completed"] = is_completed
+            t["inventory_count"] = max(breakdown["inventory"], current if (is_equipment_item(item_name) or breakdown["total"] == 0) else 0)
+            t["character_storage_count"] = breakdown["character_storage"]
+            t["account_storage_count"] = breakdown["account_storage"]
+            t["storage_count"] = breakdown["storage_total"]
+            custom_target_store.targets[item_name] = t
+            updated_list.append(t)
+        custom_target_store.save()
+        return updated_list
+
+    def analyze_custom_plan(self, alter_order: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Runs full recursive BOM and production planner for custom craft targets.
+        """
+        custom_targets = self.get_custom_targets_with_status()
+        tasks: List[Dict[str, Any]] = []
+        for t in custom_targets:
+            tasks.append({
+                "quest_title": "개별 지정 제작",
+                "item_name": t["item_name"],
+                "current": t["current"],
+                "goal": t["goal"],
+                "needed": t["needed"],
+                "is_completed": t.get("is_completed", False)
+            })
+        return self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
+
     def find_craft_recipe(self, item_name: str) -> Optional[Dict[str, Any]]:
         """Finds craft recipe for the exact item_name."""
         res = self.cli.get_craftable_items(item_name)
@@ -1404,6 +1605,51 @@ class DeliveryManager:
     def is_gatherable(self, item_name: str) -> Tuple[bool, bool]:
         """Returns (is_gatherable, tool_ok)."""
         clean_name = item_name.split("(")[0].strip()
+
+        # 1. 양털 계열의 경우: 후보 양들 중 하나라도 채집 가능한지 확인
+        if is_wool_family(clean_name):
+            try:
+                res = self.cli.get_gatherable_items()
+                items = res.get("items", [])
+                items_map = {it.get("DisplayName"): it for it in items}
+                pref = settings_store.get("wool_gather_order", "high_tier")
+                candidates = get_wool_gather_candidates(clean_name, pref)
+                has_any_gatherable = False
+                for cand in candidates:
+                    tgt = cand["gather_target"]
+                    if tgt in items_map:
+                        has_any_gatherable = True
+                        if items_map[tgt].get("ToolOk", False):
+                            return True, True
+                if has_any_gatherable:
+                    return True, False
+            except Exception:
+                pass
+            if clean_name in KNOWN_GATHERABLE_ITEMS or "양털" in clean_name:
+                return True, True
+
+        # 2. 벌목 및 통나무/나무 진액 계열의 경우: 후보 나무들 중 하나라도 채집 가능한지 확인
+        if is_wood_family(clean_name):
+            try:
+                res = self.cli.get_gatherable_items()
+                items = res.get("items", [])
+                items_map = {it.get("DisplayName"): it for it in items}
+                pref = settings_store.get("wood_gather_order", "drop_rate")
+                candidates = get_wood_gather_candidates(clean_name, pref)
+                has_any_gatherable = False
+                for cand in candidates:
+                    tgt = cand["gather_target"]
+                    if tgt in items_map:
+                        has_any_gatherable = True
+                        if items_map[tgt].get("ToolOk", False):
+                            return True, True
+                if has_any_gatherable:
+                    return True, False
+            except Exception:
+                pass
+            if clean_name in KNOWN_GATHERABLE_ITEMS or any(k in clean_name for k in ["통나무", "나무 진액", "나뭇가지"]):
+                return True, True
+
         try:
             res = self.cli.get_gatherable_items(item_name)
             for item in res.get("items", []):
@@ -1420,10 +1666,11 @@ class DeliveryManager:
         """
         Gathers only the required deficient amount of item_name:
         1. Checks initial inventory count. If already satisfied, returns immediately.
-        2. Starts execute_gathering in a worker thread.
-        3. Polls inventory count periodically (every ~1.0-1.2s).
-        4. When target_count is reached (or abort requested), stops the worker immediately.
-        5. If execute_gathering finishes before target_count is reached (e.g. 100-item cap per call
+        2. Supports multi-tier fallback for wool & wood family based on living-skill level and drop efficiency.
+        3. Starts execute_gathering in a worker thread.
+        4. Polls inventory count periodically (every ~1.0-1.2s).
+        5. When target_count is reached (or abort requested), stops the worker immediately.
+        6. If execute_gathering finishes before target_count is reached (e.g. 100-item cap per call
            or ore/tree node depleted), automatically re-launches execute_gathering in a loop
            until the full required_count is collected!
         """
@@ -1444,29 +1691,122 @@ class DeliveryManager:
         initial_count = self.cli.count_item(item_name, include_storage=False)
         target_count = initial_count + required_count
 
-        self.log(
-            f"🌿 [부족 수량 맞춤 채집 시작] '{item_name}' 목표: {required_count}개 추가 채집 "
-            f"(현재 가방: {initial_count}개 ➔ 목표: {target_count}개)", 
-            "action", 
-            callback
-        )
+        # --- 양털 및 벌목 계열 다단계 우선순위 및 레벨 필터링 설정 ---
+        is_wool = is_wool_family(item_name)
+        is_wood = is_wood_family(item_name)
+        candidate_list: List[Dict[str, Any]] = []
 
+        if is_wool:
+            pref = settings_store.get("wool_gather_order", "high_tier")
+            all_cands = get_wool_gather_candidates(item_name, pref)
+
+            # 게임 클라이언트에서 생활 레벨이 충족된 채집물 확인
+            try:
+                g_res = self.cli.get_gatherable_items()
+                g_items = g_res.get("items", [])
+                g_map = {it.get("DisplayName"): it for it in g_items}
+            except Exception:
+                g_map = {}
+
+            if g_map:
+                valid_cands = [c for c in all_cands if c["gather_target"] in g_map and g_map[c["gather_target"]].get("ToolOk", False)]
+                if not valid_cands:
+                    valid_cands = [c for c in all_cands if c["gather_target"] in g_map]
+                candidate_list = valid_cands if valid_cands else all_cands
+            else:
+                candidate_list = all_cands
+
+            target_sheep = candidate_list[0]
+            pref_labels = {
+                "high_tier": "상위 양 우선 (먹구름 양 ➔ 곱슬 양 ➔ 일반 양)",
+                "drop_rate": "드롭 효율 최적화 (품목별 전담 양 우선)",
+                "low_tier": "일반 양 우선 (초보자 권장)"
+            }
+            pref_text = pref_labels.get(pref, pref)
+            self.log(
+                f"🧶 [양털 맞춤 채집 시작] 목표: '{item_name}' {required_count}개 "
+                f"(가방: {initial_count}개 ➔ 목표: {target_count}개) | "
+                f"설정: {pref_text} | 1순위: {target_sheep['species']}({target_sheep['gather_target']})",
+                "action",
+                callback
+            )
+            if len(candidate_list) > 1:
+                cand_names = " ➔ ".join([c["species"] for c in candidate_list])
+                self.log(
+                    f"ℹ️ [단계적 폴백 활성화] 생활 레벨 및 채집 가능 여부에 따라 단계적 순차 채집: {cand_names}",
+                    "info",
+                    callback
+                )
+        elif is_wood:
+            pref = settings_store.get("wood_gather_order", "drop_rate")
+            all_cands = get_wood_gather_candidates(item_name, pref)
+
+            try:
+                g_res = self.cli.get_gatherable_items()
+                g_items = g_res.get("items", [])
+                g_map = {it.get("DisplayName"): it for it in g_items}
+            except Exception:
+                g_map = {}
+
+            if g_map:
+                valid_cands = [c for c in all_cands if c["gather_target"] in g_map and g_map[c["gather_target"]].get("ToolOk", False)]
+                if not valid_cands:
+                    valid_cands = [c for c in all_cands if c["gather_target"] in g_map]
+                candidate_list = valid_cands if valid_cands else all_cands
+            else:
+                candidate_list = all_cands
+
+            target_tree = candidate_list[0]
+            pref_labels = {
+                "drop_rate": "드롭 효율 최적화 (진액=뾰족 나무, 통나무=굵은 나무 등)",
+                "high_tier": "상위 나무 우선 (상급 나무+ ➔ 상급 나무 ➔ 일반 나무)",
+                "low_tier": "기본 나무 우선 (굵은 나무 ➔ 뾰족 나무 ➔ 상위 나무)"
+            }
+            pref_text = pref_labels.get(pref, pref)
+            self.log(
+                f"🪓 [벌목 맞춤 채집 시작] 목표: '{item_name}' {required_count}개 "
+                f"(가방: {initial_count}개 ➔ 목표: {target_count}개) | "
+                f"설정: {pref_text} | 1순위: {target_tree['species']}({target_tree['gather_target']})",
+                "action",
+                callback
+            )
+            if len(candidate_list) > 1:
+                cand_names = " ➔ ".join([c["species"] for c in candidate_list])
+                self.log(
+                    f"ℹ️ [단계적 폴백 활성화] 생활 레벨 및 채집 가능 여부에 따라 단계적 순차 채집: {cand_names}",
+                    "info",
+                    callback
+                )
+        else:
+            candidate_list = [{"gather_target": item_name, "species": item_name, "tier": 1, "desc": item_name}]
+            self.log(
+                f"🌿 [부족 수량 맞춤 채집 시작] '{item_name}' 목표: {required_count}개 추가 채집 "
+                f"(현재 가방: {initial_count}개 ➔ 목표: {target_count}개)", 
+                "action", 
+                callback
+            )
+
+        candidate_idx = 0
         stopped_by_target = False
         poll_interval = 1.0
         last_logged_gained = -1
         consecutive_zero_gains = 0
 
-        while not self.abort_requested:
+        while not self.abort_requested and candidate_idx < len(candidate_list):
             curr_count = self.cli.count_item(item_name, include_storage=False)
             gained = max(0, curr_count - initial_count)
             if curr_count >= target_count or gained >= required_count:
                 stopped_by_target = True
                 break
 
+            current_cand = candidate_list[candidate_idx]
+            gather_target_item = current_cand["gather_target"]
+            species_label = current_cand.get("species", gather_target_item)
+
             # Check tool status before launching or re-launching
-            is_gath, tool_ok = self.is_gatherable(item_name)
+            is_gath, tool_ok = self.is_gatherable(gather_target_item)
             if not tool_ok:
-                self.log(f"⚠️ '{item_name}' 채집 도구가 소모되었거나 내구도가 0입니다. 채집을 중단합니다.", "warn", callback)
+                self.log(f"⚠️ '{species_label}'({gather_target_item}) 채집 도구가 소모되었거나 내구도가 0입니다. 채집을 중단합니다.", "warn", callback)
                 break
 
             worker_error = []
@@ -1474,7 +1814,7 @@ class DeliveryManager:
 
             def gather_worker():
                 try:
-                    res = self.cli.execute_gathering(item_name)
+                    res = self.cli.execute_gathering(gather_target_item)
                     worker_result.append(res)
                 except Exception as e:
                     worker_error.append(e)
@@ -1533,7 +1873,7 @@ class DeliveryManager:
                 except Exception:
                     pass
 
-                # 2. Check current count in inventory
+                # 2. Check current count in inventory (항상 원래 목표 아이템 추적)
                 try:
                     curr_count = self.cli.count_item(item_name, include_storage=False)
                 except Exception:
@@ -1542,7 +1882,8 @@ class DeliveryManager:
 
                 if gained != last_logged_gained and gained > 0:
                     last_logged_gained = gained
-                    self.log(f"🌾 '{item_name}' 채집 진행 중... ({gained}/{required_count}개 획득, 현재 가방: {curr_count}개)", "info", callback)
+                    extra_info = f" | 대상: {species_label}" if (is_wool or is_wood) and species_label != item_name else ""
+                    self.log(f"🌾 '{item_name}' 채집 진행 중... ({gained}/{required_count}개 획득, 현재 가방: {curr_count}개{extra_info})", "info", callback)
 
                 # 3. Check if target count is reached
                 if curr_count >= target_count or gained >= required_count:
@@ -1563,7 +1904,7 @@ class DeliveryManager:
                         idle_counter += 1
                         # After 8s of not moving/playing, safely recognize that field node is gone
                         if idle_counter >= 8:
-                            self.log(f"ℹ️ 필드에 더 이상 상호작용 가능한 '{item_name}' 노드가 없어 채집 동작을 종료합니다.", "info", callback)
+                            self.log(f"ℹ️ 필드에 더 이상 상호작용 가능한 '{species_label}' 노드가 없어 채집 동작을 일시 종료합니다.", "info", callback)
                             self._force_stop_worker(worker_thread)
                             break
                     else:
@@ -1573,7 +1914,6 @@ class DeliveryManager:
 
                 # 5. Check if worker thread finished
                 if not worker_thread.is_alive():
-                    # Auto-fishing returns result: started immediately while character is still fishing
                     if worker_result and isinstance(worker_result[0], dict) and worker_result[0].get("result") == "started":
                         continue
                     else:
@@ -1589,8 +1929,24 @@ class DeliveryManager:
             if worker_error:
                 err = worker_error[0]
                 err_msg = str(err)
-                self.log(f"⚠️ '{item_name}' 채집 중 오류 발생: {err_msg}", "warn", callback)
-                if any(k in err_msg for k in ["tool", "overweight", "blocked", "not_found", "not_in_field"]):
+                self.log(f"⚠️ '{species_label}'({gather_target_item}) 채집 중 응답: {err_msg}", "warn", callback)
+
+                # 단계적 폴백 조건: 생활 레벨 부족, 경로 없음, 노드 없음 등의 경우 다음 하위 후보로 전환
+                is_level_or_route_err = any(k in err_msg for k in ["insufficient_living_skill_level", "no_route", "not_found", "locked"])
+                if is_level_or_route_err and candidate_idx + 1 < len(candidate_list):
+                    candidate_idx += 1
+                    next_cand = candidate_list[candidate_idx]
+                    self.log(
+                        f"🔄 [단계적 폴백] '{species_label}' 채집 불가 ({err_msg}). "
+                        f"생활 레벨 조건을 고려하여 다음 순위인 '{next_cand['species']}'({next_cand['gather_target']})(으)로 자동 전환합니다.",
+                        "warn",
+                        callback
+                    )
+                    consecutive_zero_gains = 0
+                    time.sleep(1.0)
+                    continue
+
+                if any(k in err_msg for k in ["tool", "overweight", "blocked", "not_in_field"]):
                     raise err
                 break
 
@@ -1600,8 +1956,22 @@ class DeliveryManager:
             if round_gained <= 0:
                 consecutive_zero_gains += 1
                 if consecutive_zero_gains >= 3:
-                    self.log(f"⚠️ '{item_name}' 채집 시도에서 더 이상 아이템을 획득하지 못하여 채집을 종료합니다.", "warn", callback)
-                    break
+                    # 현재 양에서 더 이상 획득이 안 되면 다음 후보 양으로 폴백 시도
+                    if candidate_idx + 1 < len(candidate_list):
+                        candidate_idx += 1
+                        next_cand = candidate_list[candidate_idx]
+                        self.log(
+                            f"🔄 [단계적 폴백] '{species_label}'에서 연속 획득 실패. "
+                            f"다음 후보인 '{next_cand['species']}'({next_cand['gather_target']})(으)로 전환하여 채집을 이어갑니다.",
+                            "warn",
+                            callback
+                        )
+                        consecutive_zero_gains = 0
+                        time.sleep(1.0)
+                        continue
+                    else:
+                        self.log(f"⚠️ '{item_name}' 채집 시도에서 더 이상 아이템을 획득하지 못하여 채집을 종료합니다.", "warn", callback)
+                        break
             else:
                 consecutive_zero_gains = 0
 
@@ -1609,8 +1979,8 @@ class DeliveryManager:
             remaining_deficit = target_count - curr_count
             if remaining_deficit > 0:
                 self.log(
-                    f"🔄 '{item_name}' 1회 채집 구간 종료 (현재 가방: {curr_count}개, 총 획득: {curr_count - initial_count}/{required_count}개). "
-                    f"남은 부족분 {remaining_deficit}개를 마저 채집하기 위해 연속 채집을 계속 진행합니다 (100개 제한/노드 재탐색)...", 
+                    f"🔄 '{species_label}' 1회 채집 구간 종료 (현재 가방: {curr_count}개, 총 획득: {curr_count - initial_count}/{required_count}개). "
+                    f"남은 부족분 {remaining_deficit}개를 마저 채집하기 위해 연속 채집을 계속 진행합니다...", 
                     "action", 
                     callback
                 )
@@ -1646,6 +2016,20 @@ class DeliveryManager:
             delivery_target_store.targets[item_name] = t
             delivery_target_store.save()
             self.log(f"📊 [납품 목표 갱신] '{item_name}' 채집 완료({total_gained}개 획득) 반영 ➔ 현재 {new_cur}/{goal}개", "info", callback)
+
+        # Update custom_target_store if this item is in registered custom targets
+        if item_name in custom_target_store.targets and total_gained > 0:
+            ct = custom_target_store.targets[item_name]
+            prev_c = int(ct.get("current", 0))
+            new_cur_c = prev_c + total_gained
+            goal_c = int(ct.get("goal", 1))
+            ct["current"] = new_cur_c
+            ct["needed"] = max(0, goal_c - new_cur_c)
+            ct["is_completed"] = (new_cur_c >= goal_c)
+            ct["updated_at"] = int(time.time() * 1000)
+            custom_target_store.targets[item_name] = ct
+            custom_target_store.save()
+            self.log(f"📊 [개별 제작 목표 갱신] '{item_name}' 채집 완료({total_gained}개 획득) 반영 ➔ 현재 {new_cur_c}/{goal_c}개", "info", callback)
 
         return {
             "status": "completed" if (total_gained >= required_count or final_count >= target_count) else "partial",

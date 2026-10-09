@@ -28,7 +28,7 @@ else:
 import webbrowser
 import subprocess
 from mabi_cli import MabinogiCLI, MabinogiCLIError, get_saved_cli_path, find_cli_path
-from delivery_manager import DeliveryManager, DeliveryTask, alarm_store, delivery_target_store, delivery_preset_store, settings_store, get_facility_for_material
+from delivery_manager import DeliveryManager, DeliveryTask, alarm_store, delivery_target_store, delivery_preset_store, custom_target_store, settings_store, get_facility_for_material
 
 BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 EXE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
@@ -359,6 +359,24 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error(e)
             return
 
+        if path == "/api/custom_targets":
+            try:
+                targets = manager_instance.get_custom_targets_with_status()
+                self._send_json({"targets": targets})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/custom_plan":
+            query_params = parse_qs(parsed.query)
+            alter_order = query_params.get("alter_order", [None])[0]
+            try:
+                plan = manager_instance.analyze_custom_plan(alter_order=alter_order)
+                self._send_json(plan)
+            except Exception as e:
+                self._send_error(e)
+            return
+
         if path == "/api/alarms":
             try:
                 alarm_store.sync_facility_alarms(cli_instance)
@@ -628,6 +646,55 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "started"})
             return
 
+        if path == "/api/execute_custom":
+            if is_busy:
+                self._send_error("이미 다른 작업이 진행 중입니다.", 409)
+                return
+
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+            alter_order = req_json.get("alter_order")
+
+            manager_instance.reset_abort()
+
+            def custom_batch_worker():
+                global is_busy, current_task_info, last_execution_summary, last_summary_id
+                is_busy = True
+                order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
+                current_task_info = f"🔨 개별 지정 아이템 일괄 최적화 제작 진행 중 ({order_name})..."
+                try:
+                    plan = manager_instance.analyze_custom_plan(alter_order=alter_order)
+                    res = manager_instance.execute_batch_deliveries(plan, callback=add_log, alter_order=alter_order)
+                    if isinstance(res, dict) and "summary" in res:
+                        res["summary"]["title"] = "개별 지정 아이템 제작 완료 리포트"
+                        with status_lock:
+                            last_execution_summary = res["summary"]
+                            last_summary_id += 1
+                except Exception as err:
+                    add_log("error", f"❌ 개별 지정 일괄 제작 실패: {str(err)}")
+                    with status_lock:
+                        last_execution_summary = {
+                            "title": "개별 지정 제작 리포트 (오류 중단)",
+                            "status": "aborted",
+                            "status_text": "오류 중단 ❌",
+                            "duration_text": "0초",
+                            "wings": {"initial": 0, "final": 0, "used": 0},
+                            "gather": {"count": 0, "items": []},
+                            "alter": {"count": 0, "items": []},
+                            "craft": {"count": 0, "items": []},
+                            "collected_facilities": [],
+                            "deferred_works": [{"recipe": "개별 지정 제작", "reason": str(err)}]
+                        }
+                        last_summary_id += 1
+                finally:
+                    is_busy = False
+                    current_task_info = ""
+
+            threading.Thread(target=custom_batch_worker, daemon=True).start()
+            self._send_json({"status": "started"})
+            return
+
         if path in ("/api/abort_quick_alter", "/api/abort_pipeline"):
             add_log("warn", "🛑 [중지 요청 접수] 사용자가 진행 중인 작업의 중단 명령을 전송했습니다.")
             manager_instance.request_abort()
@@ -823,6 +890,79 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 delivery_target_store.clear()
                 add_log("info", "🗑️ [납품 목표 초기화] 모든 등록된 납품 목표가 삭제되었습니다.")
+                self._send_json({"status": "success"})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        # --- Custom Craft Targets CRUD ---
+        if path == "/api/add_custom_target":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length)
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8"))
+                item_name = req_json.get("item_name", "").strip()
+                goal = int(req_json.get("goal", 1))
+                req_current = req_json.get("current")
+
+                if not item_name or goal <= 0:
+                    self._send_error("올바른 아이템명과 수량을 입력해주세요.", 400)
+                    return
+                existing_entry = custom_target_store.targets.get(item_name, {})
+                prev_cur = int(existing_entry.get("current", 0))
+                eff_cur = manager_instance.get_effective_owned(item_name)
+                if req_current is not None and str(req_current).strip() != "":
+                    try:
+                        cur = max(0, int(req_current))
+                    except Exception:
+                        cur = max(prev_cur, eff_cur)
+                else:
+                    cur = max(prev_cur, eff_cur)
+                entry = custom_target_store.add_or_update(item_name, goal, cur, quest_title="개별 지정 제작")
+                add_log("success", f"🔨 [개별 제작 등록] '{item_name}' (목표: {goal}개 / 현재: {cur}개) 등록 완료")
+                self._send_json({"status": "success", "target": entry})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/update_custom_target_current":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length)
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8"))
+                item_name = req_json.get("item_name", "").strip()
+                current = int(req_json.get("current", 0))
+                if not item_name:
+                    self._send_error("올바른 아이템명을 입력해주세요.", 400)
+                    return
+                entry = custom_target_store.update_current(item_name, current)
+                if entry:
+                    add_log("info", f"✏️ [개별 보유 수량 수정] '{item_name}' 보유 수량이 {entry['current']}/{entry['goal']}개로 갱신되었습니다.")
+                    self._send_json({"status": "success", "target": entry})
+                else:
+                    self._send_error("해당 아이템을 찾을 수 없습니다.", 404)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/delete_custom_target":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length)
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8"))
+                item_name = req_json.get("item_name")
+                if item_name:
+                    custom_target_store.delete(item_name)
+                    add_log("info", f"🗑️ [개별 제작 삭제] '{item_name}' 항목이 목표 목록에서 제거되었습니다.")
+                self._send_json({"status": "success"})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/clear_custom_targets":
+            try:
+                custom_target_store.clear()
+                add_log("info", "🗑️ [개별 제작 초기화] 모든 등록된 개별 제작 목표가 삭제되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
                 self._send_error(e)
@@ -1855,6 +1995,19 @@ HTML_PAGE = """<!DOCTYPE html>
             <div class="tab-sub-desc">완료 가공품 일괄 수령 · 부족 원자재 자동 사전 채집 · 최고 티어 1슬롯씩 대기열 가공</div>
           </div>
         </button>
+
+        <button class="main-mode-tab" id="btn-mode-custom-craft" role="tab" aria-selected="false" onclick="switchMainMode('custom_craft')">
+          <div class="tab-icon-wrap" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.35));">
+            🔨
+          </div>
+          <div class="tab-text-group">
+            <div class="tab-main-title">
+              <span>개별 아이템 지정 제작</span>
+              <span id="tab-custom-craft-pill" class="badge" style="font-size: 11px; padding: 2px 8px; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">0개 등록</span>
+            </div>
+            <div class="tab-sub-desc">원하는 아이템 직접 입력 · 자재 소요 일괄 분석(BOM) · 부족 원자재 채집/가공/제작 원스톱 완료</div>
+          </div>
+        </button>
       </div>
     </div>
 
@@ -1951,13 +2104,41 @@ HTML_PAGE = """<!DOCTYPE html>
           </div>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <div class="alter-order-container" title="가공 등록 순서 설정: 장시간 소요 가공부터 먼저 등록하거나, 기초 재료부터 순차 등록합니다">
-              <span class="alter-order-label">가공 순서:</span>
+              <span class="alter-order-label">가공:</span>
               <div class="segmented-control" id="seg-delivery-alter-order">
                 <button type="button" class="seg-btn active" id="btn-delivery-alter-high" onclick="setAlterOrder('high_tier')" title="오래 걸리는 고티어 가공품(T7~T1)부터 시설 슬롯에 우선 등록합니다">
-                  <span>⏱️ 상위 티어 우선 (오래 걸리는 가공부터)</span>
+                  <span>⏱️ 상위 티어</span>
                 </button>
                 <button type="button" class="seg-btn" id="btn-delivery-alter-low" onclick="setAlterOrder('low_tier')" title="기초 재료(T1~T7)부터 시설 슬롯에 순차 등록합니다">
-                  <span>⚙️ 하위 티어 우선 (기초 재료부터)</span>
+                  <span>⚙️ 하위 티어</span>
+                </button>
+              </div>
+            </div>
+            <div class="alter-order-container" title="양털 계열 채집 우선순위: 2종류 이상 가능 시 상위 양(먹구름>곱슬>일반) 우선 또는 드롭 효율 최적화 (레벨 부족 시 단계적 자동 폴백)">
+              <span class="alter-order-label">양털 채집:</span>
+              <div class="segmented-control" id="seg-delivery-wool-order">
+                <button type="button" class="seg-btn active" id="btn-delivery-wool-high" onclick="setWoolGatherOrder('high_tier')" title="상위 양 우선: 먹구름 양(상급+) > 곱슬 양(상급) > 일반 양(양털) (레벨 부족 시 단계적 폴백)">
+                  <span>🥇 상위 양</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-delivery-wool-drop" onclick="setWoolGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 양 우선 (양털=양, 상급=곱슬, 상급+=먹구름)">
+                  <span>⚖️ 드롭 효율</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-delivery-wool-low" onclick="setWoolGatherOrder('low_tier')" title="일반 양 우선: 일반 양 > 곱슬 양 > 먹구름 양">
+                  <span>🥉 일반 양</span>
+                </button>
+              </div>
+            </div>
+            <div class="alter-order-container" title="벌목 및 통나무/나무 진액 채집 우선순위: 드롭 효율 최적화(진액=뾰족나무, 통나무=굵은나무) 또는 상위 나무 우선 (레벨 부족 시 단계적 자동 폴백)">
+              <span class="alter-order-label">벌목 채집:</span>
+              <div class="segmented-control" id="seg-delivery-wood-order">
+                <button type="button" class="seg-btn active" id="btn-delivery-wood-drop" onclick="setWoodGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 나무 우선 (진액=뾰족 나무, 통나무=굵은 나무)">
+                  <span>⚖️ 드롭 효율</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-delivery-wood-high" onclick="setWoodGatherOrder('high_tier')" title="상위 나무 우선: 상급 나무+ > 상급 나무 > 굵은 나무 > 뾰족 나무 (레벨 부족 시 단계적 폴백)">
+                  <span>🥇 상위 나무</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-delivery-wood-low" onclick="setWoodGatherOrder('low_tier')" title="기본 나무 우선: 굵은 나무 > 뾰족 나무 > 상급 나무">
+                  <span>🥉 기본 나무</span>
                 </button>
               </div>
             </div>
@@ -2030,13 +2211,41 @@ HTML_PAGE = """<!DOCTYPE html>
           </div>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <div class="alter-order-container" title="가공 우선순위 설정">
-              <span class="alter-order-label">순서:</span>
+              <span class="alter-order-label">가공:</span>
               <div class="segmented-control" id="seg-quick-alter-order">
                 <button type="button" class="seg-btn active" id="btn-quick-alter-high" onclick="setAlterOrder('high_tier')" title="오래 걸리는 최고 티어(T7 ➔ T1)부터 1슬롯씩 대기열에 등록합니다">
-                  <span>⏱️ 상위 티어 우선 (T7 ➔ T1)</span>
+                  <span>⏱️ 상위 티어</span>
                 </button>
                 <button type="button" class="seg-btn" id="btn-quick-alter-low" onclick="setAlterOrder('low_tier')" title="기초 하위 티어(T1 ➔ T7)부터 1슬롯씩 대기열에 등록합니다">
-                  <span>⚙️ 하위 티어 우선 (T1 ➔ T7)</span>
+                  <span>⚙️ 하위 티어</span>
+                </button>
+              </div>
+            </div>
+            <div class="alter-order-container" title="양털 계열 채집 우선순위: 2종류 이상 가능 시 상위 양(먹구름>곱슬>일반) 우선 또는 드롭 효율 최적화 (레벨 부족 시 단계적 자동 폴백)">
+              <span class="alter-order-label">양털 채집:</span>
+              <div class="segmented-control" id="seg-quick-wool-order">
+                <button type="button" class="seg-btn active" id="btn-quick-wool-high" onclick="setWoolGatherOrder('high_tier')" title="상위 양 우선: 먹구름 양(상급+) > 곱슬 양(상급) > 일반 양(양털) (레벨 부족 시 단계적 폴백)">
+                  <span>🥇 상위 양</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-quick-wool-drop" onclick="setWoolGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 양 우선 (양털=양, 상급=곱슬, 상급+=먹구름)">
+                  <span>⚖️ 드롭 효율</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-quick-wool-low" onclick="setWoolGatherOrder('low_tier')" title="일반 양 우선: 일반 양 > 곱슬 양 > 먹구름 양">
+                  <span>🥉 일반 양</span>
+                </button>
+              </div>
+            </div>
+            <div class="alter-order-container" title="벌목 및 통나무/나무 진액 채집 우선순위: 드롭 효율 최적화(진액=뾰족나무, 통나무=굵은나무) 또는 상위 나무 우선 (레벨 부족 시 단계적 자동 폴백)">
+              <span class="alter-order-label">벌목 채집:</span>
+              <div class="segmented-control" id="seg-quick-wood-order">
+                <button type="button" class="seg-btn active" id="btn-quick-wood-drop" onclick="setWoodGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 나무 우선 (진액=뾰족 나무, 통나무=굵은 나무)">
+                  <span>⚖️ 드롭 효율</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-quick-wood-high" onclick="setWoodGatherOrder('high_tier')" title="상위 나무 우선: 상급 나무+ > 상급 나무 > 굵은 나무 > 뾰족 나무 (레벨 부족 시 단계적 폴백)">
+                  <span>🥇 상위 나무</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-quick-wood-low" onclick="setWoodGatherOrder('low_tier')" title="기본 나무 우선: 굵은 나무 > 뾰족 나무 > 상급 나무">
+                  <span>🥉 기본 나무</span>
                 </button>
               </div>
             </div>
@@ -2089,37 +2298,174 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
     </div>
 
-    <div class="grid">
-      <!-- Left Column: Custom Manual Produce -->
-      <div>
-        <!-- Custom Manual Craft Card -->
-        <div class="card">
-          <div class="card-title">
-            <span>✍️ 개별 아이템 지정 제작</span>
-            <span class="badge">단일 품목</span>
+    <!-- Mode 3: 개별 아이템 지정 제작 탭 컨텐츠 -->
+    <div id="tab-content-custom-craft" class="mode-tab-content" style="display: none;">
+      <!-- Custom Targets Manager Card (개별 제작 목표 누적 등록 및 관리) -->
+      <div class="card" id="custom-targets-main-card" style="margin-bottom: 24px; border-color: rgba(16, 185, 129, 0.45); background: linear-gradient(180deg, rgba(6, 78, 59, 0.25) 0%, rgba(15, 23, 42, 0.6) 100%);">
+        <div class="card-title" style="margin-bottom: 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+            <span style="font-size: 15.5px; font-weight: 700; color: #f1f5f9; white-space: nowrap;">🎯 개별 제작 목표 품목 등록 & 관리</span>
+            <span id="custom-target-count-badge" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">0개 등록됨</span>
           </div>
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-            특정 아이템 1종만 단독으로 가방 확인부터 부족 재료 채집/가공 및 최종 제작까지 수행합니다.
-          </p>
-          <div class="form-row">
-            <div class="form-group" style="flex: 2;">
-              <label>제작할 아이템명</label>
-              <input type="text" id="manual-item" class="input-text" placeholder="예: 론 엣지소드S" value="론 엣지소드S">
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+            <button class="btn btn-sm" onclick="clearCustomTargets()" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 6px 12px;">
+              🗑️ 전체 비우기
+            </button>
+            <button class="btn btn-sm" onclick="loadCustomTargets()" style="padding: 6px 12px;">
+              새로고침
+            </button>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+          <!-- Quick Manual Add Input Form -->
+          <div style="background: rgba(0,0,0,0.35); padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 14px;">
+            <div style="font-size: 12px; font-weight: 700; color: #a7f3d0; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <span>✍️ 제작할 아이템 직접 등록</span>
+              <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">(원하는 품목과 수량을 등록하면 아래 플래너가 모든 하위 재료를 일괄 계산합니다)</span>
             </div>
-            <div class="form-group" style="flex: 1;">
-              <label>목표 수량</label>
-              <input type="number" id="manual-count" class="input-number" min="1" max="100" value="4">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <input type="text" id="custom-input-item" placeholder="아이템명 (예: 론 엣지소드S, 은 펜던트, 실크 로브 등)" style="flex: 2; min-width: 200px; padding: 9px 13px; background: rgba(0,0,0,0.4); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px; color: #fff; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualCustomTarget()">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 12px; color: #cbd5e1; white-space: nowrap;">목표 수량:</span>
+                <input type="number" id="custom-input-count" value="1" min="1" max="999" style="width: 75px; padding: 9px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px; color: #fff; font-size: 13px; text-align: center;" onkeydown="if(event.key==='Enter') addManualCustomTarget()">
+                <span style="font-size: 12px; color: #cbd5e1;">개</span>
+              </div>
+              <button class="btn btn-sm btn-emerald" onclick="addManualCustomTarget()" style="padding: 9px 18px; font-size: 13px; font-weight: 700;">
+                ➕ 목표 추가
+              </button>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; margin-top: 10px; flex-wrap: wrap;">
+              <span style="font-size: 11.5px; color: var(--text-muted);">빠른 추천:</span>
+              <button type="button" class="btn btn-sm" style="padding: 2px 8px; font-size: 11px; background: rgba(255,255,255,0.06);" onclick="quickAddCustomTarget('론 엣지소드S', 4)">론 엣지소드S x4</button>
+              <button type="button" class="btn btn-sm" style="padding: 2px 8px; font-size: 11px; background: rgba(255,255,255,0.06);" onclick="quickAddCustomTarget('은 펜던트', 4)">은 펜던트 x4</button>
+              <button type="button" class="btn btn-sm" style="padding: 2px 8px; font-size: 11px; background: rgba(255,255,255,0.06);" onclick="quickAddCustomTarget('실크 로브', 2)">실크 로브 x2</button>
+              <button type="button" class="btn btn-sm" style="padding: 2px 8px; font-size: 11px; background: rgba(255,255,255,0.06);" onclick="quickAddCustomTarget('가죽 아머', 2)">가죽 아머 x2</button>
             </div>
           </div>
-          <button id="btn-produce" class="btn btn-emerald" style="width: 100%; justify-content: center; padding: 13px;" onclick="startCustomProduce()">
-            🚀 단일 제작 파이프라인 가동
-          </button>
+
+          <!-- Registered Custom Targets Grid / List -->
+          <div id="custom-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
+            <p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 개별 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>
+          </div>
         </div>
       </div>
 
-      <!-- Right Column: Live Console & Quick Search -->
+      <!-- Unified Custom Batch Planner Card -->
+      <div class="card" id="custom-plan-main-card" style="margin-bottom: 24px; border-color: rgba(16, 185, 129, 0.35);">
+        <div class="card-title">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <span>⚡ 개별 지정 제작 통합 플래너 (일괄 자재 소요 분석 & 원스톱 제작)</span>
+            <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">개별 지정 일괄 모드</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div class="alter-order-container" title="가공 등록 순서 설정: 장시간 소요 가공부터 먼저 등록하거나, 기초 재료부터 순차 등록합니다">
+              <span class="alter-order-label">가공:</span>
+              <div class="segmented-control" id="seg-custom-alter-order">
+                <button type="button" class="seg-btn active" id="btn-custom-alter-high" onclick="setAlterOrder('high_tier')" title="오래 걸리는 고티어 가공품(T7~T1)부터 시설 슬롯에 우선 등록합니다">
+                  <span>⏱️ 상위 티어</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-custom-alter-low" onclick="setAlterOrder('low_tier')" title="기초 재료(T1~T7)부터 시설 슬롯에 순차 등록합니다">
+                  <span>⚙️ 하위 티어</span>
+                </button>
+              </div>
+            </div>
+            <div class="alter-order-container" title="양털 계열 채집 우선순위: 2종류 이상 가능 시 상위 양(먹구름>곱슬>일반) 우선 또는 드롭 효율 최적화 (레벨 부족 시 단계적 자동 폴백)">
+              <span class="alter-order-label">양털 채집:</span>
+              <div class="segmented-control" id="seg-custom-wool-order">
+                <button type="button" class="seg-btn active" id="btn-custom-wool-high" onclick="setWoolGatherOrder('high_tier')" title="상위 양 우선: 먹구름 양(상급+) > 곱슬 양(상급) > 일반 양(양털) (레벨 부족 시 단계적 폴백)">
+                  <span>🥇 상위 양</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-custom-wool-drop" onclick="setWoolGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 양 우선 (양털=양, 상급=곱슬, 상급+=먹구름)">
+                  <span>⚖️ 드롭 효율</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-custom-wool-low" onclick="setWoolGatherOrder('low_tier')" title="일반 양 우선: 일반 양 > 곱슬 양 > 먹구름 양">
+                  <span>🥉 일반 양</span>
+                </button>
+              </div>
+            </div>
+            <div class="alter-order-container" title="벌목 및 통나무/나무 진액 채집 우선순위: 드롭 효율 최적화(진액=뾰족나무, 통나무=굵은나무) 또는 상위 나무 우선 (레벨 부족 시 단계적 자동 폴백)">
+              <span class="alter-order-label">벌목 채집:</span>
+              <div class="segmented-control" id="seg-custom-wood-order">
+                <button type="button" class="seg-btn active" id="btn-custom-wood-drop" onclick="setWoodGatherOrder('drop_rate')" title="드롭 효율 최적화: 품목별 최다 드롭 나무 우선 (진액=뾰족 나무, 통나무=굵은 나무)">
+                  <span>⚖️ 드롭 효율</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-custom-wood-high" onclick="setWoodGatherOrder('high_tier')" title="상위 나무 우선: 상급 나무+ > 상급 나무 > 굵은 나무 > 뾰족 나무 (레벨 부족 시 단계적 폴백)">
+                  <span>🥇 상위 나무</span>
+                </button>
+                <button type="button" class="seg-btn" id="btn-custom-wood-low" onclick="setWoodGatherOrder('low_tier')" title="기본 나무 우선: 굵은 나무 > 뾰족 나무 > 상급 나무">
+                  <span>🥉 기본 나무</span>
+                </button>
+              </div>
+            </div>
+            <button class="btn btn-sm" onclick="loadCustomPlan()">재료 분석 새로고침</button>
+          </div>
+        </div>
+
+        <!-- Full-Width Aggregated Materials Table Container -->
+        <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); overflow-x: auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h4 style="font-size: 14px; font-weight: 700; color: #34d399; margin: 0;">📊 개별 제작 통합 필요 1차 가공품 분석표</h4>
+              <span id="custom-batch-status-text" style="font-size: 12px; color: var(--text-muted);">계산 중...</span>
+            </div>
+          </div>
+          <table class="bom-table">
+            <thead>
+              <tr>
+                <th style="min-width: 120px;">재료명</th>
+                <th style="min-width: 65px; text-align: center;">시설</th>
+                <th style="min-width: 75px; text-align: right;">총 소요</th>
+                <th style="min-width: 100px; text-align: center;">가방(창고)</th>
+                <th style="min-width: 80px; text-align: right;">부족 수량</th>
+                <th style="min-width: 90px; text-align: center;">가공 필요</th>
+                <th style="min-width: 130px; text-align: center;">가공 상태</th>
+              </tr>
+            </thead>
+            <tbody id="custom-batch-materials-tbody">
+              <tr>
+                <td colspan="7" style="text-align: center; color: #64748b; padding: 24px;">개별 제작 목표를 등록하면 전체 소요 자재가 분석됩니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Facility Slots Status & Overflow Warnings Section -->
+        <div id="custom-facility-slots-section" style="margin-top: 16px; display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12.5px; font-weight: 700; color: #cbd5e1;">🏭 가공 시설별 슬롯 현황 & 수용 가능 여부</span>
+            <span id="custom-slot-summary-badge" style="font-size: 11.5px;"></span>
+          </div>
+          <div id="custom-facility-slots-container" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
+        </div>
+
+        <!-- Overflow Warning Banner -->
+        <div id="custom-slot-warnings-banner" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; font-size: 12px; color: #fda4af;">
+          <div style="font-weight: 700; margin-bottom: 4px;">⚠️ 시설 슬롯 부족 안내</div>
+          <div id="custom-slot-warnings-list"></div>
+        </div>
+
+        <!-- Bottom Execution Action Bar -->
+        <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
+          <div id="custom-plan-summary-text" style="font-size: 12.5px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+            <!-- Summary populated by JS -->
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="btn-custom-abort" class="btn" style="display: none; padding: 12px 20px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; border-radius: 8px; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); cursor: pointer;" onclick="abortQuickAlter()">
+              🛑 작업 즉시 중지
+            </button>
+            <button id="btn-custom-execute" class="btn btn-emerald" style="padding: 12px 24px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #059669, #10b981); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);" onclick="executeCustomPipeline()">
+              ⚡ 개별 지정 재료 일괄 가공 & 제작 시작
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom 2-Column Grid: Live Console & Recipe Search -->
+    <div class="grid">
+      <!-- Left Column: Live Console Card -->
       <div>
-        <!-- Live Console Card -->
         <div class="card">
           <div class="card-title">
             <span>💻 실시간 실행 콘솔</span>
@@ -2133,8 +2479,10 @@ HTML_PAGE = """<!DOCTYPE html>
             <div class="log-line"><span class="log-time">[SYSTEM]</span> <span class="log-info">대시보드가 준비되었습니다.</span></div>
           </div>
         </div>
+      </div>
 
-        <!-- Recipe Quick Search Card -->
+      <!-- Right Column: Recipe Quick Search Card -->
+      <div>
         <div class="card">
           <div class="card-title">
             <span>🔍 레시피 & 재료 즉시 조회</span>
@@ -2259,6 +2607,76 @@ HTML_PAGE = """<!DOCTYPE html>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 6px;">
             <span style="font-size: 11.5px; color: var(--text-muted);">* 설치 폴더만 입력하셔도 MabinogiMobile_CLI.exe를 자동 감지합니다.</span>
             <button class="btn btn-sm" onclick="triggerCliScan()" style="font-size: 11.5px; padding: 3px 10px; background: rgba(255,255,255,0.06);">🔍 자동 다시 검색</button>
+          </div>
+        <!-- Wool Gathering Priority Setting Section -->
+        <div style="margin-bottom: 20px; padding: 14px 16px; background: rgba(236, 72, 153, 0.06); border: 1px solid rgba(236, 72, 153, 0.25); border-radius: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-weight: 700; color: #f472b6; display: flex; align-items: center; gap: 6px;">
+              <span>🧶</span> <span>양털 계열 채집 우선순위 & 단계적 폴백 설정</span>
+            </div>
+            <span class="badge" style="background: rgba(236, 72, 153, 0.2); color: #f472b6; font-size: 11px;">자동 폴백 지원</span>
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 10px; line-height: 1.5;">
+            양털 계열 채집 시 캐릭터의 생활 레벨에 맞춰 최적의 양을 선택하며, 생활 레벨이 부족할 경우 에러 없이 <strong>하위 양으로 단계적 자동 폴백</strong>됩니다.
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;" id="wool-order-radio-group">
+            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+              <input type="radio" name="wool_order_modal" value="high_tier" onchange="setWoolGatherOrder('high_tier')" style="margin-top: 3px;" checked>
+              <div>
+                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">🥇 상위 양 우선 (기본 / 강력 권장)</div>
+                <div style="font-size: 11.5px; color: #94a3b8;">먹구름 양(상급 양털+) ➔ 곱슬 양(상급 양털) ➔ 일반 양(양털) 순서. 2종류 이상 가능 시 상위 양 우선! 부가 재료(상급 양털+/상급 양털) 동시 다량 수급에 최적.</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+              <input type="radio" name="wool_order_modal" value="drop_rate" onchange="setWoolGatherOrder('drop_rate')" style="margin-top: 3px;">
+              <div>
+                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">⚖️ 드롭 효율 최적화 (품목별 전담 양 우선)</div>
+                <div style="font-size: 11.5px; color: #94a3b8;">양털은 일반 양(양털 다량), 상급 양털은 곱슬 양, 상급 양털+는 먹구름 양 우선 채집 (레벨 미달 시 단계적 자동 폴백).</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+              <input type="radio" name="wool_order_modal" value="low_tier" onchange="setWoolGatherOrder('low_tier')" style="margin-top: 3px;">
+              <div>
+                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">🥉 일반 양 우선 (초보자 권장)</div>
+                <div style="font-size: 11.5px; color: #94a3b8;">일반 양 ➔ 곱슬 양 ➔ 먹구름 양 순서로 채집합니다.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Wood Gathering Priority Setting Section -->
+        <div style="margin-bottom: 20px; padding: 14px 16px; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-weight: 700; color: #34d399; display: flex; align-items: center; gap: 6px;">
+              <span>🪓</span> <span>벌목 & 통나무/나무 진액 채집 우선순위 & 단계적 폴백 설정</span>
+            </div>
+            <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 11px;">자동 폴백 지원</span>
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 10px; line-height: 1.5;">
+            벌목 채집 시 캐릭터의 생활 레벨에 맞춰 최적의 나무를 선택하며, 생활 레벨이 부족할 경우 에러 없이 <strong>하위 나무로 단계적 자동 폴백</strong>됩니다.
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;" id="wood-order-radio-group">
+            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+              <input type="radio" name="wood_order_modal" value="drop_rate" onchange="setWoodGatherOrder('drop_rate')" style="margin-top: 3px;" checked>
+              <div>
+                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">⚖️ 드롭 효율 최적화 (기본 / 강력 권장)</div>
+                <div style="font-size: 11.5px; color: #94a3b8;"><strong>나무 진액</strong>은 뾰족 나무(진액 다량), <strong>통나무</strong>는 굵은 나무(통나무 다량) 우선 채집! (생활 레벨 미달 시 단계적 자동 폴백).</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+              <input type="radio" name="wood_order_modal" value="high_tier" onchange="setWoodGatherOrder('high_tier')" style="margin-top: 3px;">
+              <div>
+                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">🥇 상위 나무 우선</div>
+                <div style="font-size: 11.5px; color: #94a3b8;">상급 나무+(상급 통나무+) ➔ 상급 나무(상급 통나무) ➔ 굵은 나무 ➔ 뾰족 나무 순서. 부가 재료 동시 수급에 최적.</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; padding: 7px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+              <input type="radio" name="wood_order_modal" value="low_tier" onchange="setWoodGatherOrder('low_tier')" style="margin-top: 3px;">
+              <div>
+                <div style="font-weight: 700; color: #f8fafc; font-size: 12.5px;">🥉 기본 나무 우선 (초보자 권장)</div>
+                <div style="font-size: 11.5px; color: #94a3b8;">굵은 나무 ➔ 뾰족 나무 ➔ 상급 나무 순서로 기본 나무부터 채집합니다.</div>
+              </div>
+            </label>
           </div>
         </div>
 
@@ -2544,6 +2962,8 @@ HTML_PAGE = """<!DOCTYPE html>
     // CLI Connection & Setup Modal Logic
     function openCliModal() {
       fetchCliConfig();
+      applyWoolGatherOrderUI();
+      applyWoodGatherOrderUI();
       const modal = document.getElementById('cli-modal-overlay');
       if (modal) modal.classList.add('active');
     }
@@ -2673,16 +3093,32 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     let currentAlterOrder = safeGetStorage('mabi_alter_order', 'high_tier');
+    let currentWoolGatherOrder = safeGetStorage('mabi_wool_gather_order', 'high_tier');
+    let currentWoodGatherOrder = safeGetStorage('mabi_wood_gather_order', 'drop_rate');
 
     async function loadSettings() {
       applyAlterOrderUI();
+      applyWoolGatherOrderUI();
+      applyWoodGatherOrderUI();
       try {
         const res = await fetch('/api/settings');
         const d = await res.json();
-        if (d && d.alter_order) {
-          currentAlterOrder = d.alter_order;
-          safeSetStorage('mabi_alter_order', currentAlterOrder);
-          applyAlterOrderUI();
+        if (d) {
+          if (d.alter_order) {
+            currentAlterOrder = d.alter_order;
+            safeSetStorage('mabi_alter_order', currentAlterOrder);
+            applyAlterOrderUI();
+          }
+          if (d.wool_gather_order) {
+            currentWoolGatherOrder = d.wool_gather_order;
+            safeSetStorage('mabi_wool_gather_order', currentWoolGatherOrder);
+            applyWoolGatherOrderUI();
+          }
+          if (d.wood_gather_order) {
+            currentWoodGatherOrder = d.wood_gather_order;
+            safeSetStorage('mabi_wood_gather_order', currentWoodGatherOrder);
+            applyWoodGatherOrderUI();
+          }
         }
       } catch (e) {}
     }
@@ -2704,6 +3140,13 @@ HTML_PAGE = """<!DOCTYPE html>
         btnQL.classList.toggle('active', !isHigh);
       }
 
+      const btnCH = document.getElementById('btn-custom-alter-high');
+      const btnCL = document.getElementById('btn-custom-alter-low');
+      if (btnCH && btnCL) {
+        btnCH.classList.toggle('active', isHigh);
+        btnCL.classList.toggle('active', !isHigh);
+      }
+
       const descText = document.getElementById('quick-alter-desc-text');
       if (descText) {
         if (isHigh) {
@@ -2712,6 +3155,120 @@ HTML_PAGE = """<!DOCTYPE html>
           descText.innerHTML = `완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: #38bdf8;">기초 하위 티어 재료(T1 ➔ T7)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
         }
       }
+    }
+
+    function applyWoolGatherOrderUI() {
+      const order = currentWoolGatherOrder || 'high_tier';
+
+      // 1. Radio buttons in Modal
+      const radios = document.querySelectorAll('input[name="wool_order_modal"]');
+      radios.forEach(r => {
+        r.checked = (r.value === order);
+      });
+
+      // 2. Delivery Planner Segmented Control
+      const btnDH = document.getElementById('btn-delivery-wool-high');
+      const btnDD = document.getElementById('btn-delivery-wool-drop');
+      const btnDL = document.getElementById('btn-delivery-wool-low');
+      if (btnDH && btnDD && btnDL) {
+        btnDH.classList.toggle('active', order === 'high_tier');
+        btnDD.classList.toggle('active', order === 'drop_rate');
+        btnDL.classList.toggle('active', order === 'low_tier');
+      }
+
+      // 3. Quick Alter Segmented Control
+      const btnQH = document.getElementById('btn-quick-wool-high');
+      const btnQD = document.getElementById('btn-quick-wool-drop');
+      const btnQL = document.getElementById('btn-quick-wool-low');
+      if (btnQH && btnQD && btnQL) {
+        btnQH.classList.toggle('active', order === 'high_tier');
+        btnQD.classList.toggle('active', order === 'drop_rate');
+        btnQL.classList.toggle('active', order === 'low_tier');
+      }
+
+      // 4. Custom Craft Segmented Control
+      const btnCH = document.getElementById('btn-custom-wool-high');
+      const btnCD = document.getElementById('btn-custom-wool-drop');
+      const btnCL = document.getElementById('btn-custom-wool-low');
+      if (btnCH && btnCD && btnCL) {
+        btnCH.classList.toggle('active', order === 'high_tier');
+        btnCD.classList.toggle('active', order === 'drop_rate');
+        btnCL.classList.toggle('active', order === 'low_tier');
+      }
+    }
+
+    function applyWoodGatherOrderUI() {
+      const order = currentWoodGatherOrder || 'drop_rate';
+
+      // 1. Radio buttons in Modal
+      const radios = document.querySelectorAll('input[name="wood_order_modal"]');
+      radios.forEach(r => {
+        r.checked = (r.value === order);
+      });
+
+      // 2. Delivery Planner Segmented Control
+      const btnDD = document.getElementById('btn-delivery-wood-drop');
+      const btnDH = document.getElementById('btn-delivery-wood-high');
+      const btnDL = document.getElementById('btn-delivery-wood-low');
+      if (btnDD && btnDH && btnDL) {
+        btnDD.classList.toggle('active', order === 'drop_rate');
+        btnDH.classList.toggle('active', order === 'high_tier');
+        btnDL.classList.toggle('active', order === 'low_tier');
+      }
+
+      // 3. Quick Alter Segmented Control
+      const btnQD = document.getElementById('btn-quick-wood-drop');
+      const btnQH = document.getElementById('btn-quick-wood-high');
+      const btnQL = document.getElementById('btn-quick-wood-low');
+      if (btnQD && btnQH && btnQL) {
+        btnQD.classList.toggle('active', order === 'drop_rate');
+        btnQH.classList.toggle('active', order === 'high_tier');
+        btnQL.classList.toggle('active', order === 'low_tier');
+      }
+
+      // 4. Custom Craft Segmented Control
+      const btnCD = document.getElementById('btn-custom-wood-drop');
+      const btnCH = document.getElementById('btn-custom-wood-high');
+      const btnCL = document.getElementById('btn-custom-wood-low');
+      if (btnCD && btnCH && btnCL) {
+        btnCD.classList.toggle('active', order === 'drop_rate');
+        btnCH.classList.toggle('active', order === 'high_tier');
+        btnCL.classList.toggle('active', order === 'low_tier');
+      }
+    }
+
+    async function setWoodGatherOrder(order) {
+      currentWoodGatherOrder = order;
+      safeSetStorage('mabi_wood_gather_order', order);
+      applyWoodGatherOrderUI();
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wood_gather_order: order })
+        });
+      } catch (e) {}
+
+      if (typeof loadBatchPlan === 'function') loadBatchPlan();
+      if (typeof loadQuickAlterPlan === 'function') loadQuickAlterPlan();
+      if (typeof loadCustomPlan === 'function') loadCustomPlan();
+    }
+
+    async function setWoolGatherOrder(order) {
+      currentWoolGatherOrder = order;
+      safeSetStorage('mabi_wool_gather_order', order);
+      applyWoolGatherOrderUI();
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wool_gather_order: order })
+        });
+      } catch (e) {}
+
+      if (typeof loadBatchPlan === 'function') loadBatchPlan();
+      if (typeof loadQuickAlterPlan === 'function') loadQuickAlterPlan();
+      if (typeof loadCustomPlan === 'function') loadCustomPlan();
     }
 
     async function setAlterOrder(order) {
@@ -2726,8 +3283,9 @@ HTML_PAGE = """<!DOCTYPE html>
         });
       } catch (e) {}
 
-      loadBatchPlan();
-      loadQuickAlterPlan();
+      if (typeof loadBatchPlan === 'function') loadBatchPlan();
+      if (typeof loadQuickAlterPlan === 'function') loadQuickAlterPlan();
+      if (typeof loadCustomPlan === 'function') loadCustomPlan();
     }
 
     let isCurrentlyBusy = false;
@@ -2788,31 +3346,58 @@ HTML_PAGE = """<!DOCTYPE html>
     function switchMainMode(mode) {
       const btnDelivery = document.getElementById('btn-mode-delivery');
       const btnQuickAlter = document.getElementById('btn-mode-quick-alter');
+      const btnCustomCraft = document.getElementById('btn-mode-custom-craft');
       const contentDelivery = document.getElementById('tab-content-delivery');
       const contentQuickAlter = document.getElementById('tab-content-quick-alter');
+      const contentCustomCraft = document.getElementById('tab-content-custom-craft');
 
-      if (!btnDelivery || !btnQuickAlter || !contentDelivery || !contentQuickAlter) return;
+      if (!btnDelivery || !btnQuickAlter || !btnCustomCraft || !contentDelivery || !contentQuickAlter || !contentCustomCraft) return;
 
       if (mode === 'quick_alter') {
         btnDelivery.classList.remove('active');
         btnDelivery.setAttribute('aria-selected', 'false');
+        btnCustomCraft.classList.remove('active');
+        btnCustomCraft.setAttribute('aria-selected', 'false');
         btnQuickAlter.classList.add('active');
         btnQuickAlter.setAttribute('aria-selected', 'true');
 
         contentDelivery.style.display = 'none';
+        contentCustomCraft.style.display = 'none';
         contentQuickAlter.style.display = 'block';
         safeSetStorage('mabi_main_mode_tab', 'quick_alter');
 
         if (typeof loadQuickAlterPlan === 'function') {
           loadQuickAlterPlan();
         }
+      } else if (mode === 'custom_craft') {
+        btnDelivery.classList.remove('active');
+        btnDelivery.setAttribute('aria-selected', 'false');
+        btnQuickAlter.classList.remove('active');
+        btnQuickAlter.setAttribute('aria-selected', 'false');
+        btnCustomCraft.classList.add('active');
+        btnCustomCraft.setAttribute('aria-selected', 'true');
+
+        contentDelivery.style.display = 'none';
+        contentQuickAlter.style.display = 'none';
+        contentCustomCraft.style.display = 'block';
+        safeSetStorage('mabi_main_mode_tab', 'custom_craft');
+
+        if (typeof loadCustomTargets === 'function') {
+          loadCustomTargets();
+        }
+        if (typeof loadCustomPlan === 'function') {
+          loadCustomPlan();
+        }
       } else {
         btnQuickAlter.classList.remove('active');
         btnQuickAlter.setAttribute('aria-selected', 'false');
+        btnCustomCraft.classList.remove('active');
+        btnCustomCraft.setAttribute('aria-selected', 'false');
         btnDelivery.classList.add('active');
         btnDelivery.setAttribute('aria-selected', 'true');
 
         contentQuickAlter.style.display = 'none';
+        contentCustomCraft.style.display = 'none';
         contentDelivery.style.display = 'block';
         safeSetStorage('mabi_main_mode_tab', 'delivery');
 
@@ -4028,6 +4613,406 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    // ==========================================
+    // Custom Craft Targets & Unified Planner JS
+    // ==========================================
+    let cachedCustomPlan = null;
+
+    async function loadCustomTargets() {
+      try {
+        const res = await fetch('/api/custom_targets');
+        const data = await res.json();
+        const targets = data.targets || [];
+        const container = document.getElementById('custom-targets-container');
+        const badge = document.getElementById('custom-target-count-badge');
+        const pill = document.getElementById('tab-custom-craft-pill');
+
+        if (badge) badge.innerText = `${targets.length}개 등록됨`;
+        if (pill) pill.innerText = `${targets.length}개 등록`;
+
+        if (!container) return;
+        if (targets.length === 0) {
+          container.innerHTML = '<p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 개별 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>';
+          return;
+        }
+
+        let html = '';
+        targets.forEach(t => {
+          const isDone = t.is_completed || (t.current >= t.goal);
+          const percent = Math.min(100, Math.round((t.current / (t.goal || 1)) * 100));
+          const safeName = (t.item_name || '').replace(/'/g, "\\'");
+          html += `
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid ${isDone ? 'rgba(52,211,153,0.35)' : 'rgba(255,255,255,0.08)'}; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                  <div style="font-weight: 700; font-size: 13.5px; color: #f1f5f9;">${t.item_name}</div>
+                  <div style="font-size: 11px; color: #94a3b8;">가방: ${t.inventory_count || 0}개 | 개인창고: ${t.char_storage_count || 0}개 | 공용창고: ${t.account_storage_count || 0}개 (총 ${t.current || 0}개)</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="badge" style="background: ${isDone ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}; color: ${isDone ? '#34d399' : '#fbbf24'}; font-size: 11px;">
+                    ${isDone ? '달성 완료' : (t.needed || 0) + '개 부족'}
+                  </span>
+                  <button class="btn btn-sm" onclick="deleteCustomTarget('${safeName}')" style="padding: 2px 6px; font-size: 11px; color: #f87171; background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.2);" title="삭제">✕</button>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 4px;">
+                  <span style="color: #94a3b8;">진행도</span>
+                  <span style="font-weight: 700; color: ${isDone ? '#34d399' : '#e2e8f0'};">${t.current} / ${t.goal}개 (${percent}%)</span>
+                </div>
+                <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                  <div style="width: ${percent}%; height: 100%; background: ${isDone ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, #f59e0b, #fbbf24)'}; border-radius: 3px;"></div>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.04);">
+                <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', -1)" style="padding: 1px 7px; font-size: 11px; background: rgba(255,255,255,0.06);">-1</button>
+                <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', 1)" style="padding: 1px 7px; font-size: 11px; background: rgba(255,255,255,0.06);">+1</button>
+              </div>
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+      } catch (e) {
+        console.error('loadCustomTargets error:', e);
+      }
+    }
+
+    async function addManualCustomTarget() {
+      const itemEl = document.getElementById('custom-input-item');
+      const countEl = document.getElementById('custom-input-count');
+      if (!itemEl || !countEl) return;
+      const itemName = itemEl.value.trim();
+      const count = parseInt(countEl.value, 10);
+      if (!itemName) {
+        alert('아이템명을 입력해주세요.');
+        return;
+      }
+      if (isNaN(count) || count <= 0) {
+        alert('올바른 목표 수량을 입력해주세요.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/add_custom_target', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_name: itemName, goal: count })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('등록 실패: ' + d.error);
+        } else {
+          itemEl.value = '';
+          loadCustomTargets();
+          loadCustomPlan();
+        }
+      } catch (e) {
+        alert('요청 오류: ' + e);
+      }
+    }
+
+    async function quickAddCustomTarget(itemName, count) {
+      try {
+        const res = await fetch('/api/add_custom_target', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_name: itemName, goal: count })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('등록 실패: ' + d.error);
+        } else {
+          loadCustomTargets();
+          loadCustomPlan();
+        }
+      } catch (e) {
+        alert('요청 오류: ' + e);
+      }
+    }
+
+    async function updateCustomTargetGoal(itemName, delta) {
+      try {
+        const res = await fetch('/api/custom_targets');
+        const data = await res.json();
+        const found = (data.targets || []).find(t => t.item_name === itemName);
+        if (found) {
+          const newGoal = Math.max(1, (found.goal || 1) + delta);
+          await fetch('/api/add_custom_target', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_name: itemName, goal: newGoal })
+          });
+          loadCustomTargets();
+          loadCustomPlan();
+        }
+      } catch (e) {
+        console.error('updateCustomTargetGoal error:', e);
+      }
+    }
+
+    async function deleteCustomTarget(itemName) {
+      if (!confirm(`'${itemName}' 목표를 삭제하시겠습니까?`)) return;
+      try {
+        await fetch('/api/delete_custom_target', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_name: itemName })
+        });
+        loadCustomTargets();
+        loadCustomPlan();
+      } catch (e) {
+        alert('삭제 실패: ' + e);
+      }
+    }
+
+    async function clearCustomTargets() {
+      if (!confirm('등록된 모든 개별 제작 목표를 비우시겠습니까?')) return;
+      try {
+        await fetch('/api/clear_custom_targets', { method: 'POST' });
+        loadCustomTargets();
+        loadCustomPlan();
+      } catch (e) {
+        alert('초기화 실패: ' + e);
+      }
+    }
+
+    async function loadCustomPlan() {
+      try {
+        const res = await fetch(`/api/custom_plan?alter_order=${encodeURIComponent(currentAlterOrder)}&wool_order=${encodeURIComponent(currentWoolGatherOrder)}&wood_order=${encodeURIComponent(currentWoodGatherOrder)}`);
+        const plan = await res.json();
+        cachedCustomPlan = plan;
+
+        const tbody = document.getElementById('custom-batch-materials-tbody');
+        const statusText = document.getElementById('custom-batch-status-text');
+        const btnExec = document.getElementById('btn-custom-execute');
+        const summaryText = document.getElementById('custom-plan-summary-text');
+
+        if (!tbody) return;
+
+        if (plan.error) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f43f5e; padding: 20px;">오류: ${plan.error}</td></tr>`;
+          if (statusText) statusText.innerText = '계획 로드 실패';
+          return;
+        }
+
+        const materials = plan.materials || [];
+        const rawMaterials = plan.raw_materials || [];
+
+        if (materials.length === 0 && rawMaterials.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 24px;">등록된 개별 제작 목표가 없습니다. 위에서 목표를 추가하세요.</td></tr>`;
+          if (statusText) statusText.innerText = '등록된 목표 없음';
+          if (btnExec) {
+            btnExec.disabled = true;
+            btnExec.innerText = '⚡ 개별 지정 재료 일괄 가공 & 제작 시작';
+            btnExec.className = 'btn';
+          }
+          if (summaryText) summaryText.innerHTML = '';
+          return;
+        }
+
+        let rowsHtml = '';
+        materials.forEach(m => {
+          let statusBadge = '';
+          if (m.is_ready) {
+            statusBadge = '<span style="color:#34d399; font-weight:700;">● 재료 준비 완료</span>';
+          } else if (m.in_progress_count > 0 && m.in_progress_count >= m.works_needed) {
+            statusBadge = `<span style="color:#38bdf8; font-weight:700;">⏳ 가공 진행 중 (${m.in_progress_count}/${m.works_needed}회)</span>`;
+          } else {
+            const shortFac = formatFacilityShort(m.facility);
+            statusBadge = `<span style="color:#fbbf24; font-weight:700;">⚙️ ${shortFac} ${m.works_to_queue}회 등록 필요</span>`;
+          }
+
+          const invCnt = m.inventory_count || 0;
+          const storeCnt = m.storage_count || 0;
+          const bagStorageText = `${invCnt}개<span style="color:${storeCnt > 0 ? '#38bdf8' : '#64748b'};">(${storeCnt}개)</span>`;
+          const shortFac = formatFacilityShort(m.facility);
+
+          rowsHtml += `
+            <tr style="${m.deficit > 0 ? 'background: rgba(245, 158, 11, 0.05);' : ''}">
+              <td style="font-weight:700; color:#f1f5f9; white-space:nowrap;">${m.item_name}</td>
+              <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(99,102,241,0.15); color:#a5b4fc; padding:2px 7px; font-size:11px;">${shortFac}</span></td>
+              <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${m.total_needed}개</td>
+              <td style="text-align:center; white-space:nowrap;">${bagStorageText}</td>
+              <td style="font-weight:700; color:${m.deficit > 0 ? '#f43f5e' : '#34d399'}; text-align:right; white-space:nowrap;">
+                ${m.deficit > 0 ? `-${m.deficit}개` : '0개'}
+              </td>
+              <td style="text-align:center; font-weight:700; color:${m.works_to_queue > 0 ? '#fbbf24' : '#64748b'}; white-space:nowrap;">
+                ${m.works_to_queue > 0 ? `+${m.works_to_queue}회` : '-'}
+              </td>
+              <td style="white-space:nowrap;">${statusBadge}</td>
+            </tr>
+          `;
+        });
+
+        // Raw materials
+        if (rawMaterials.length > 0) {
+          rawMaterials.forEach(rm => {
+            let statusBadge = '';
+            if (rm.deficit === 0) {
+              statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>';
+            } else if (rm.tool_ok) {
+              statusBadge = `<span style="color:#34d399; font-weight:700; white-space:nowrap;">🌿 ${rm.deficit}개 자동 채집</span>`;
+            } else {
+              statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">⚠️ 도구 필요 (${rm.deficit}개 부족)</span>`;
+            }
+
+            const rmInvCnt = rm.inventory_count || 0;
+            const rmStoreCnt = rm.storage_count || 0;
+            const rmBagStorageText = `${rmInvCnt}개<span style="color:${rmStoreCnt > 0 ? '#38bdf8' : '#64748b'};">(${rmStoreCnt}개)</span>`;
+
+            rowsHtml += `
+              <tr style="background: rgba(16, 185, 129, 0.05); border-left: 2px solid #34d399;">
+                <td style="font-weight:700; color:#a7f3d0; white-space:nowrap;">🌿 ${rm.item_name}</td>
+                <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; padding:2px 7px; font-size:11px;">채집</span></td>
+                <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
+                <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
+                <td style="font-weight:700; color:${rm.deficit > 0 ? '#f43f5e' : '#34d399'}; text-align:right; white-space:nowrap;">
+                  ${rm.deficit > 0 ? `-${rm.deficit}개` : '0개'}
+                </td>
+                <td style="text-align:center; color:#64748b; white-space:nowrap;">-</td>
+                <td style="white-space:nowrap;">${statusBadge}</td>
+              </tr>
+            `;
+          });
+        }
+
+        tbody.innerHTML = rowsHtml;
+
+        // Button state and text
+        if (btnExec && statusText) {
+          const craftableNote = (plan.craftable_tasks_count > 0) ? ` (즉시 제작 가능: ${plan.craftable_tasks_count}건)` : '';
+          const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0);
+          const gatherNote = (neededRawGather.length > 0) ? ` / 채집 ${neededRawGather.length}종` : '';
+
+          if (plan.all_completed) {
+            btnExec.innerText = '🎉 모든 개별 목표 제작 완료!';
+            btnExec.className = 'btn';
+            btnExec.disabled = true;
+            statusText.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 목표 달성 완료</span>';
+          } else if (plan.can_craft_immediately) {
+            btnExec.innerText = '🚀 재료 준비 완료! 즉시 일괄 최종 제작';
+            btnExec.className = 'btn btn-emerald';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 재료 준비 완료</span>';
+          } else if (plan.total_works_to_queue > 0) {
+            btnExec.innerText = `⚡ 일괄 가공(${plan.total_works_to_queue}회)${gatherNote} & 즉시 제작${craftableNote}`;
+            btnExec.className = 'btn btn-primary';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = `<span style="color:#fbbf24; font-weight:700;">가공 ${plan.total_works_to_queue}회 등록 필요${gatherNote}${craftableNote}</span>`;
+          } else if (neededRawGather.length > 0) {
+            btnExec.innerText = `🌿 부족 채집물 (${neededRawGather.length}종) 맞춤 채집 & 제작 준비${craftableNote}`;
+            btnExec.className = 'btn btn-emerald';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">필드 채집 ${neededRawGather.length}종 필요${craftableNote}</span>`;
+          } else if (plan.craftable_tasks_count > 0) {
+            btnExec.innerText = `🔨 준비된 완제품 (${plan.craftable_tasks_count}건) 즉시 제작`;
+            btnExec.className = 'btn btn-emerald';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">${plan.craftable_tasks_count}건 즉시 제작 가능</span>`;
+          } else {
+            btnExec.innerText = '⏳ 가공 진행 중 (완료 시 제작 가능)';
+            btnExec.className = 'btn';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = '<span style="color:#38bdf8; font-weight:700;">대기열 가공 완료 대기 중</span>';
+          }
+        }
+
+        // Summary Text
+        if (summaryText) {
+          const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0);
+          const rawText = neededRawGather.length > 0 ? `필드 채집 <strong>${neededRawGather.length}종</strong>` : '채집 불필요';
+          const alterText = plan.total_works_to_queue > 0 ? `가공 <strong>${plan.total_works_to_queue}회</strong>` : '가공 불필요';
+          summaryText.innerHTML = `✨ <span>총 분석 결과: ${rawText} · ${alterText} · 제작 <strong>${(plan.custom_tasks || []).length}건</strong></span>`;
+        }
+
+        // Facility Slots
+        const slotsSec = document.getElementById('custom-facility-slots-section');
+        const slotsContainer = document.getElementById('custom-facility-slots-container');
+        const warnBanner = document.getElementById('custom-slot-warnings-banner');
+        const warnList = document.getElementById('custom-slot-warnings-list');
+        const summaryBadge = document.getElementById('custom-slot-summary-badge');
+
+        const facList = plan.facility_slots || [];
+        const warnings = plan.slot_warnings || [];
+
+        if (slotsSec && slotsContainer) {
+          if (facList.length > 0) {
+            slotsSec.style.display = 'block';
+            let html = '';
+            facList.forEach(f => {
+              const max = f.max_slots || 7;
+              const avail = f.available_now;
+              const needed = f.new_works_needed || 0;
+              const isOver = f.overflow > 0;
+              const cardBorder = isOver ? 'rgba(244, 63, 94, 0.4)' : (needed > 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.06)');
+              const cardBg = isOver ? 'rgba(244, 63, 94, 0.08)' : 'rgba(255, 255, 255, 0.03)';
+              
+              html += `
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 8px 10px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-weight: 700; font-size: 12px; color: #e2e8f0;">${f.facility}</span>
+                    <span style="font-size: 11px; font-weight: 600; color: ${avail > 0 ? '#34d399' : '#f43f5e'};">
+                      여유 ${avail} / ${max}
+                    </span>
+                  </div>
+                  <div style="font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                    <span>진행: ${f.in_progress} | 완료: ${f.completed}</span>
+                    ${needed > 0 ? `<span style="font-weight: 700; color: ${isOver ? '#f43f5e' : '#fbbf24'};">필요 +${needed}</span>` : '<span style="color: #64748b;">필요 없음</span>'}
+                  </div>
+                  ${f.overflow > 0 ? `<div style="font-size: 10.5px; color: #fb7185; margin-top: 3px; font-weight: 600;">⚠️ ${f.overflow}회 초과 (단계적 진행)</div>` : ''}
+                </div>
+              `;
+            });
+            slotsContainer.innerHTML = html;
+            if (summaryBadge) {
+              summaryBadge.innerHTML = plan.has_slot_issue 
+                ? '<span style="color: #fbbf24; font-weight: 700;">⚠️ 일부 시설 슬롯 초과 예상</span>' 
+                : '<span style="color: #34d399; font-weight: 600;">✓ 전 시설 슬롯 여유 충분</span>';
+            }
+          } else {
+            slotsSec.style.display = 'none';
+          }
+        }
+
+        if (warnBanner && warnList) {
+          if (warnings.length > 0) {
+            warnBanner.style.display = 'block';
+            warnList.innerHTML = warnings.map(w => `<div style="margin-bottom: 3px;">• ${w}</div>`).join('');
+          } else {
+            warnBanner.style.display = 'none';
+          }
+        }
+      } catch (e) {
+        console.error('loadCustomPlan error:', e);
+      }
+    }
+
+    async function executeCustomPipeline() {
+      const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
+      if (confirm(`등록된 개별 아이템 목표들을 위한 일괄 재료 수급 및 제작 파이프라인을 가동할까요?\\n[가공 우선순위: ${orderDesc}]\\n\\n(원자재 자동 채집 ➔ 시설 가공 일괄 등록 ➔ 최종 아이템 제작 원스톱 수행)`)) {
+        try {
+          const res = await fetch('/api/execute_custom', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ alter_order: currentAlterOrder, wool_order: currentWoolGatherOrder, wood_order: currentWoodGatherOrder })
+          });
+          const d = await res.json();
+          if (d.error) alert('오류: ' + d.error);
+          else {
+            pollLogs();
+            updateStatus();
+            setTimeout(loadCustomTargets, 2000);
+            setTimeout(loadCustomPlan, 2000);
+            setTimeout(loadAlteringQueue, 2000);
+          }
+        } catch (e) {
+          alert('요청 실패: ' + e);
+        }
+      }
+    }
+
     // 4. Status, Quests, Manual Crafting
     let statusFailCount = 0;
     async function updateStatus() {
@@ -4038,6 +5023,8 @@ HTML_PAGE = """<!DOCTYPE html>
       const produceBtn = document.getElementById('btn-produce');
       const batchBtn = document.getElementById('btn-batch-execute');
       const quickAlterBtn = document.getElementById('btn-quick-alter-execute');
+      const customExecuteBtn = document.getElementById('btn-custom-execute');
+      const customAbortBtn = document.getElementById('btn-custom-abort');
 
       try {
         const controller = new AbortController();
@@ -4115,13 +5102,17 @@ HTML_PAGE = """<!DOCTYPE html>
           if (produceBtn) produceBtn.disabled = true;
           if (batchBtn) batchBtn.disabled = true;
           if (quickAlterBtn) quickAlterBtn.disabled = true;
+          if (customExecuteBtn) customExecuteBtn.disabled = true;
           if (abortBtn) abortBtn.style.display = 'inline-flex';
+          if (customAbortBtn) customAbortBtn.style.display = 'inline-flex';
         } else {
           if (busyBox) busyBox.style.display = 'none';
           if (produceBtn) produceBtn.disabled = false;
           if (batchBtn) batchBtn.disabled = false;
           if (quickAlterBtn && cachedQuickPlan) quickAlterBtn.disabled = !cachedQuickPlan.can_start;
+          if (customExecuteBtn && cachedCustomPlan) customExecuteBtn.disabled = cachedCustomPlan.all_completed;
           if (abortBtn) abortBtn.style.display = 'none';
+          if (customAbortBtn) customAbortBtn.style.display = 'none';
         }
 
         // Execution Summary Modal Hook
@@ -4311,16 +5302,20 @@ HTML_PAGE = """<!DOCTYPE html>
       try { loadSettings(); } catch(e) { console.error('loadSettings error:', e); }
       try { updateStatus(); } catch(e) { console.error('updateStatus error:', e); }
       try { loadDeliveryTargets(); } catch(e) { console.error('loadDeliveryTargets error:', e); }
+      try { loadCustomTargets(); } catch(e) { console.error('loadCustomTargets error:', e); }
       try { loadPresets(); } catch(e) { console.error('loadPresets error:', e); }
       try { loadQuickAlterPlan(); } catch(e) { console.error('loadQuickAlterPlan error:', e); }
       try { loadBatchPlan(); } catch(e) { console.error('loadBatchPlan error:', e); }
+      try { loadCustomPlan(); } catch(e) { console.error('loadCustomPlan error:', e); }
       try { loadAlteringQueue(); } catch(e) { console.error('loadAlteringQueue error:', e); }
       try { pollLogs(); } catch(e) { console.error('pollLogs error:', e); }
 
       setInterval(() => { try { updateStatus(); } catch(e) {} }, 3000);
       setInterval(() => { if (document.hidden) return; try { loadDeliveryTargets(); } catch(e) {} }, 6000);
+      setInterval(() => { if (document.hidden) return; try { loadCustomTargets(); } catch(e) {} }, 6000);
       setInterval(() => { if (document.hidden) return; try { loadQuickAlterPlan(); } catch(e) {} }, 8000);
       setInterval(() => { if (document.hidden) return; try { loadBatchPlan(); } catch(e) {} }, 8000);
+      setInterval(() => { if (document.hidden) return; try { loadCustomPlan(); } catch(e) {} }, 8000);
       setInterval(() => { if (document.hidden) return; try { loadAlteringQueue(); } catch(e) {} }, 5000);
       setInterval(() => { if (document.hidden) return; try { pollLogs(); } catch(e) {} }, 1500);
     }
