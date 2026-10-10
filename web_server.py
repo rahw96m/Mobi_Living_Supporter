@@ -139,6 +139,10 @@ def watchdog_loop():
             continue
         if not has_client_connected:
             continue
+        # CRITICAL: If a task is busy running, NEVER shut down and refresh heartbeat!
+        if is_busy:
+            record_heartbeat()
+            continue
         # If no heartbeat or request for more than 60 seconds after client connected (prevents false shutdown from background tab sleep)
         if (now - last_heartbeat_time) > 60.0:
             print("\n🔌 [연결 끊김 감지] 60초 이상 활성 대시보드 신호가 없어 안전하게 종료합니다...")
@@ -150,6 +154,10 @@ cached_status_data = None
 cached_status_time = 0
 cached_character_info = None
 cached_character_time = 0
+cached_altering_works = None
+cached_delivery_targets = None
+cached_custom_targets = None
+cached_quests = None
 status_lock = threading.Lock()
 last_execution_summary: Optional[Dict[str, Any]] = None
 last_summary_id: int = 0
@@ -165,8 +173,32 @@ def get_cached_status() -> Dict[str, Any]:
     global cached_status_data, cached_status_time, cached_character_info, cached_character_time
     now = time.time()
     with status_lock:
-        # If task is busy or cache is fresh (< 3.0s), immediately return cached data without invoking CLI
-        if cached_status_data and (is_busy or (now - cached_status_time) < 3.0):
+        # While a task is busy running, NEVER invoke CLI commands to prevent pipe contention and HTTP socket starvation!
+        if is_busy:
+            if cached_status_data:
+                cached_status_data["is_busy"] = True
+                cached_status_data["current_task"] = current_task_info
+                cached_status_data["abort_requested"] = manager_instance.abort_requested
+                cached_status_data["last_summary"] = last_execution_summary
+                cached_status_data["last_summary_id"] = last_summary_id
+                return cached_status_data
+            return {
+                "connected": True,
+                "activity": {},
+                "character": cached_character_info or {},
+                "wings": 0,
+                "inventory": {},
+                "is_busy": True,
+                "current_task": current_task_info,
+                "abort_requested": manager_instance.abort_requested,
+                "last_summary": last_execution_summary,
+                "last_summary_id": last_summary_id,
+                "cli_path": cli_instance.cli_path or "",
+                "discovery_source": getattr(cli_instance, "discovery_source", "")
+            }
+
+        # If cache is fresh (< 3.0s), immediately return cached data without invoking CLI
+        if cached_status_data and (now - cached_status_time) < 3.0:
             cached_status_data["is_busy"] = is_busy
             cached_status_data["current_task"] = current_task_info
             cached_status_data["abort_requested"] = manager_instance.abort_requested
@@ -319,8 +351,16 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/delivery_targets":
+            global cached_delivery_targets
+            if is_busy:
+                with status_lock:
+                    targets = cached_delivery_targets if cached_delivery_targets is not None else []
+                    self._send_json({"targets": targets, "is_busy": True})
+                    return
             try:
                 targets = manager_instance.get_registered_deliveries_with_status()
+                with status_lock:
+                    cached_delivery_targets = targets
                 self._send_json({"targets": targets})
             except Exception as e:
                 self._send_error(e)
@@ -335,9 +375,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/quests":
+            global cached_quests
+            if is_busy:
+                with status_lock:
+                    tasks = cached_quests if cached_quests is not None else []
+                    self._send_json({"tasks": tasks, "is_busy": True})
+                    return
             try:
                 tasks = manager_instance.detect_delivery_quests()
                 resp = [t.to_dict() for t in tasks]
+                with status_lock:
+                    cached_quests = resp
                 self._send_json({"tasks": resp})
             except Exception as e:
                 self._send_error(e)
@@ -364,8 +412,16 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/custom_targets":
+            global cached_custom_targets
+            if is_busy:
+                with status_lock:
+                    targets = cached_custom_targets if cached_custom_targets is not None else []
+                    self._send_json({"targets": targets, "is_busy": True})
+                    return
             try:
                 targets = manager_instance.get_custom_targets_with_status()
+                with status_lock:
+                    cached_custom_targets = targets
                 self._send_json({"targets": targets})
             except Exception as e:
                 self._send_error(e)
@@ -386,7 +442,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/alarms":
             try:
-                alarm_store.sync_facility_alarms(cli_instance)
+                if not is_busy:
+                    alarm_store.sync_facility_alarms(cli_instance)
                 alarms = alarm_store.get_all()
                 self._send_json({"alarms": alarms})
             except Exception as e:
@@ -394,6 +451,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/search_recipe":
+            if is_busy:
+                self._send_error("작업 진행 중에는 실시간 레시피 검색을 수행할 수 없습니다.", 409)
+                return
             query_params = parse_qs(parsed.query)
             item_name = query_params.get("name", [""])[0].strip()
             if not item_name:
@@ -421,8 +481,19 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/altering":
+            global cached_altering_works
+            if is_busy:
+                with status_lock:
+                    if cached_altering_works is not None:
+                        self._send_json(cached_altering_works)
+                        return
+                    else:
+                        self._send_json({"completedCount": 0, "works": [], "is_busy": True})
+                        return
             try:
                 works = cli_instance.get_altering_works()
+                with status_lock:
+                    cached_altering_works = works
                 self._send_json(works)
             except Exception as e:
                 self._send_error(e)
@@ -584,11 +655,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                     return
 
                 manager_instance.reset_abort()
+                is_busy = True
+                current_task_info = f"'{item_name}' {target_count}개 제작 진행 중..."
 
                 def worker():
                     global is_busy, current_task_info, last_execution_summary, last_summary_id
-                    is_busy = True
-                    current_task_info = f"'{item_name}' {target_count}개 제작 진행 중..."
                     try:
                         res = manager_instance.resolve_and_produce(item_name, target_count, callback=add_log)
                         if isinstance(res, dict) and "summary" in res:
@@ -644,12 +715,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             alter_order = req_json.get("alter_order")
 
             manager_instance.reset_abort()
+            is_busy = True
+            order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
+            current_task_info = f"⚡ 전체 주간 납품 일괄 최적화 제작 진행 중 ({order_name})..."
 
             def batch_worker():
                 global is_busy, current_task_info, last_execution_summary, last_summary_id
-                is_busy = True
-                order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
-                current_task_info = f"⚡ 전체 주간 납품 일괄 최적화 제작 진행 중 ({order_name})..."
                 try:
                     plan = manager_instance.analyze_batch_plan(alter_order=alter_order)
                     res = manager_instance.execute_batch_deliveries(plan, callback=add_log, alter_order=alter_order)
@@ -692,12 +763,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             alter_order = req_json.get("alter_order")
 
             manager_instance.reset_abort()
+            is_busy = True
+            order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
+            current_task_info = f"🔨 개별 지정 아이템 일괄 최적화 제작 진행 중 ({order_name})..."
 
             def custom_batch_worker():
                 global is_busy, current_task_info, last_execution_summary, last_summary_id
-                is_busy = True
-                order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
-                current_task_info = f"🔨 개별 지정 아이템 일괄 최적화 제작 진행 중 ({order_name})..."
                 try:
                     plan = manager_instance.analyze_custom_plan(alter_order=alter_order)
                     res = manager_instance.execute_batch_deliveries(plan, callback=add_log, alter_order=alter_order)
@@ -753,13 +824,13 @@ class RequestHandler(BaseHTTPRequestHandler):
                 alter_order = req_json.get("alter_order")
 
                 manager_instance.reset_abort()
+                is_busy = True
+                cat_disp = "전체 가공대" if category == "all" else f"'{category}' 가공대"
+                order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
+                current_task_info = f"⚡ 7슬롯 최고 레벨 {cat_disp} 빠른 실행 진행 중 ({order_name})..."
 
                 def quick_alter_worker():
                     global is_busy, current_task_info, last_execution_summary, last_summary_id
-                    is_busy = True
-                    cat_disp = "전체 가공대" if category == "all" else f"'{category}' 가공대"
-                    order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
-                    current_task_info = f"⚡ 7슬롯 최고 레벨 {cat_disp} 빠른 실행 진행 중 ({order_name})..."
                     try:
                         plan = manager_instance.analyze_quick_alter(category if category != "all" else None, alter_order=alter_order)
                         res = manager_instance.execute_quick_alter(plan, callback=add_log, alter_order=alter_order)
@@ -780,14 +851,23 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/collect_altering":
+            if is_busy:
+                self._send_error("다른 작업이 진행 중이어서 가공품을 수령할 수 없습니다.", 409)
+                return
             length = int(self.headers.get("Content-Length", 0))
             body_bytes = self.rfile.read(length)
             try:
                 req_json = json.loads(body_bytes.decode("utf-8"))
                 item_name = req_json.get("item_name")
-                res = cli_instance.complete_altering_work(item_name)
-                add_log("success", f"🎁 '{item_name}' 가공품 수령 완료: {res}")
-                self._send_json({"status": "success", "result": res})
+                is_busy = True
+                current_task_info = f"🎁 '{item_name}' 가공품 수령 중..."
+                try:
+                    res = cli_instance.complete_altering_work(item_name)
+                    add_log("success", f"🎁 '{item_name}' 가공품 수령 완료: {res}")
+                    self._send_json({"status": "success", "result": res})
+                finally:
+                    is_busy = False
+                    current_task_info = ""
             except Exception as e:
                 add_log("error", f"❌ 가공품 수령 실패: {str(e)}")
                 self._send_error(e)
@@ -838,6 +918,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/add_current_quest_target":
+            if is_busy:
+                self._send_error("다른 작업 진행 중에는 퀘스트 목록을 조회할 수 없습니다.", 409)
+                return
             try:
                 added = manager_instance.add_detected_quests_to_targets()
                 if added:
@@ -863,7 +946,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     return
                 existing_entry = delivery_target_store.targets.get(item_name, {})
                 prev_cur = int(existing_entry.get("current", 0))
-                eff_cur = manager_instance.get_effective_owned(item_name, include_storage=False)
+                eff_cur = prev_cur if is_busy else manager_instance.get_effective_owned(item_name, include_storage=False)
                 if req_current is not None and str(req_current).strip() != "":
                     try:
                         cur = max(0, int(req_current))
@@ -945,7 +1028,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     return
                 existing_entry = custom_target_store.targets.get(item_name, {})
                 prev_cur = int(existing_entry.get("current", 0))
-                eff_cur = manager_instance.get_effective_owned(item_name)
+                eff_cur = prev_cur if is_busy else manager_instance.get_effective_owned(item_name)
                 if req_current is not None and str(req_current).strip() != "":
                     try:
                         cur = max(0, int(req_current))
@@ -1109,7 +1192,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         else:
                             prev_entry = prev_targets.get(item_name, {})
                             prev_cur = int(prev_entry.get("current", 0))
-                            eff_cur = manager_instance.get_effective_owned(item_name)
+                            eff_cur = prev_cur if is_busy else manager_instance.get_effective_owned(item_name)
                             cur = max(prev_cur, eff_cur)
                         delivery_target_store.add_or_update(item_name, goal, cur, quest_title)
                         loaded_count += 1
@@ -1125,10 +1208,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error("이미 다른 작업이 진행 중입니다.", 409)
                 return
 
+            is_busy = True
+            current_task_info = "🎁 완료 가공품 순차 수령 중..."
+
             def collect_worker():
                 global is_busy, current_task_info
-                is_busy = True
-                current_task_info = "🎁 완료 가공품 순차 수령 중..."
                 try:
                     collected = manager_instance.collect_completed_altering_works(callback=add_log)
                     if not collected:
@@ -1967,7 +2051,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
           </div>
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.4</span></h1>
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.5</span></h1>
             <p>마비노기 모바일 AI 커넥터 연동</p>
           </div>
         </div>
@@ -3851,6 +3935,8 @@ HTML_PAGE = """<!DOCTYPE html>
         return;
       }
 
+      isCurrentlyBusy = true;
+      if (typeof applyBusyUI === 'function') applyBusyUI(true, `⚡ 7슬롯 최고 레벨 ${catText} 빠른 실행 준비 중...`);
       try {
         const res = await fetch('/api/execute_quick_alter', {
           method: 'POST',
@@ -3859,14 +3945,16 @@ HTML_PAGE = """<!DOCTYPE html>
         });
         const d = await res.json();
         if (d.error) {
+          isCurrentlyBusy = false;
+          if (typeof applyBusyUI === 'function') applyBusyUI(false);
           alert('실행 오류: ' + d.error);
         } else {
           pollLogs();
           updateStatus();
-          setTimeout(loadQuickAlterPlan, 2000);
-          setTimeout(loadAlteringQueue, 2000);
         }
       } catch (e) {
+        isCurrentlyBusy = false;
+        if (typeof applyBusyUI === 'function') applyBusyUI(false);
         alert('요청 실패: ' + e);
       }
     }
@@ -4257,17 +4345,22 @@ HTML_PAGE = """<!DOCTYPE html>
 
     async function collectAllCompletedAltering() {
       if (!confirm('모든 시설의 완료된 가공품을 즉시 순차 수령할까요? (슬롯이 비워지고 결과물이 가방에 들어옵니다)')) return;
+      isCurrentlyBusy = true;
+      if (typeof applyBusyUI === 'function') applyBusyUI(true, '🎁 모든 시설 완료 가공품 순차 수령 중...');
       try {
         const res = await fetch('/api/collect_all_completed_altering', { method: 'POST' });
         const d = await res.json();
-        if (d.error) alert('오류: ' + d.error);
-        else {
+        if (d.error) {
+          isCurrentlyBusy = false;
+          if (typeof applyBusyUI === 'function') applyBusyUI(false);
+          alert('오류: ' + d.error);
+        } else {
           pollLogs();
           updateStatus();
-          setTimeout(loadAlteringQueue, 1500);
-          setTimeout(loadBatchPlan, 1500);
         }
       } catch (e) {
+        isCurrentlyBusy = false;
+        if (typeof applyBusyUI === 'function') applyBusyUI(false);
         alert('요청 실패: ' + e);
       }
     }
@@ -4484,6 +4577,8 @@ HTML_PAGE = """<!DOCTYPE html>
     async function executeBatchPipeline() {
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
       if (confirm(`전체 주간 납품 퀘스트를 위한 일괄 재료 수급 및 제작 파이프라인을 가동할까요?\\n[가공 우선순위: ${orderDesc}]\\n\\n(부족한 가공품이 해당 시설에 일괄 등록되며 주간 납품 전용 알람이 설정됩니다)`)) {
+        isCurrentlyBusy = true;
+        if (typeof applyBusyUI === 'function') applyBusyUI(true, '⚡ 전체 주간 납품 일괄 최적화 제작 준비 중...');
         try {
           const res = await fetch('/api/execute_batch', {
             method: 'POST',
@@ -4491,14 +4586,17 @@ HTML_PAGE = """<!DOCTYPE html>
             body: JSON.stringify({ alter_order: currentAlterOrder })
           });
           const d = await res.json();
-          if (d.error) alert('오류: ' + d.error);
-          else {
+          if (d.error) {
+            isCurrentlyBusy = false;
+            if (typeof applyBusyUI === 'function') applyBusyUI(false);
+            alert('오류: ' + d.error);
+          } else {
             pollLogs();
             updateStatus();
-            setTimeout(loadBatchPlan, 2000);
-            setTimeout(loadAlteringQueue, 2000);
           }
         } catch (e) {
+          isCurrentlyBusy = false;
+          if (typeof applyBusyUI === 'function') applyBusyUI(false);
           alert('요청 실패: ' + e);
         }
       }
@@ -4506,6 +4604,8 @@ HTML_PAGE = """<!DOCTYPE html>
 
     async function collectAltering(displayName) {
       if (confirm(`'${displayName}' 가공품을 수령하러 이동할까요?`)) {
+        isCurrentlyBusy = true;
+        if (typeof applyBusyUI === 'function') applyBusyUI(true, `🎁 '${displayName}' 가공품 수령 이동 중...`);
         try {
           const res = await fetch('/api/collect_altering', {
             method: 'POST',
@@ -4513,13 +4613,20 @@ HTML_PAGE = """<!DOCTYPE html>
             body: JSON.stringify({ item_name: displayName })
           });
           const d = await res.json();
-          if (d.error) alert('수령 실패: ' + d.error);
-          else {
+          if (d.error) {
+            isCurrentlyBusy = false;
+            if (typeof applyBusyUI === 'function') applyBusyUI(false);
+            alert('수령 실패: ' + d.error);
+          } else {
+            isCurrentlyBusy = false;
+            if (typeof applyBusyUI === 'function') applyBusyUI(false);
             loadAlteringQueue();
             loadBatchPlan();
             updateStatus();
           }
         } catch (err) {
+          isCurrentlyBusy = false;
+          if (typeof applyBusyUI === 'function') applyBusyUI(false);
           alert('요청 오류: ' + err);
         }
       }
@@ -5155,6 +5262,8 @@ HTML_PAGE = """<!DOCTYPE html>
     async function executeCustomPipeline() {
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
       if (confirm(`등록된 개별 아이템 목표들을 위한 일괄 재료 수급 및 제작 파이프라인을 가동할까요?\\n[가공 우선순위: ${orderDesc}]\\n\\n(원자재 자동 채집 ➔ 시설 가공 일괄 등록 ➔ 최종 아이템 제작 원스톱 수행)`)) {
+        isCurrentlyBusy = true;
+        if (typeof applyBusyUI === 'function') applyBusyUI(true, '🔨 개별 지정 아이템 일괄 최적화 제작 준비 중...');
         try {
           const res = await fetch('/api/execute_custom', {
             method: 'POST',
@@ -5162,15 +5271,17 @@ HTML_PAGE = """<!DOCTYPE html>
             body: JSON.stringify({ alter_order: currentAlterOrder })
           });
           const d = await res.json();
-          if (d.error) alert('오류: ' + d.error);
-          else {
+          if (d.error) {
+            isCurrentlyBusy = false;
+            if (typeof applyBusyUI === 'function') applyBusyUI(false);
+            alert('오류: ' + d.error);
+          } else {
             pollLogs();
             updateStatus();
-            setTimeout(loadCustomTargets, 2000);
-            setTimeout(loadCustomPlan, 2000);
-            setTimeout(loadAlteringQueue, 2000);
           }
         } catch (e) {
+          isCurrentlyBusy = false;
+          if (typeof applyBusyUI === 'function') applyBusyUI(false);
           alert('요청 실패: ' + e);
         }
       }
@@ -5179,16 +5290,41 @@ HTML_PAGE = """<!DOCTYPE html>
     // 4. Status, Quests, Manual Crafting
     let statusFailCount = 0;
     let wasBusy = false;
-    async function updateStatus() {
-      const statusPill = document.getElementById('pill-status');
-      const wingsPill = document.getElementById('pill-wings');
-      const weightPill = document.getElementById('pill-weight');
+
+    function applyBusyUI(busy, taskDesc) {
       const busyBox = document.getElementById('busy-box');
+      const busyText = document.getElementById('busy-text');
       const produceBtn = document.getElementById('btn-produce');
       const batchBtn = document.getElementById('btn-batch-execute');
       const quickAlterBtn = document.getElementById('btn-quick-alter-execute');
       const customExecuteBtn = document.getElementById('btn-custom-execute');
+      const abortBtn = document.getElementById('btn-quick-alter-abort');
       const customAbortBtn = document.getElementById('btn-custom-abort');
+
+      if (busy) {
+        if (busyBox) busyBox.style.display = 'inline-flex';
+        if (busyText && taskDesc) busyText.innerText = taskDesc;
+        if (produceBtn) produceBtn.disabled = true;
+        if (batchBtn) batchBtn.disabled = true;
+        if (quickAlterBtn) quickAlterBtn.disabled = true;
+        if (customExecuteBtn) customExecuteBtn.disabled = true;
+        if (abortBtn) abortBtn.style.display = 'inline-flex';
+        if (customAbortBtn) customAbortBtn.style.display = 'inline-flex';
+      } else {
+        if (busyBox) busyBox.style.display = 'none';
+        if (produceBtn) produceBtn.disabled = false;
+        if (batchBtn) batchBtn.disabled = false;
+        if (quickAlterBtn && cachedQuickPlan) quickAlterBtn.disabled = !cachedQuickPlan.can_start;
+        if (customExecuteBtn && cachedCustomPlan) customExecuteBtn.disabled = cachedCustomPlan.all_completed;
+        if (abortBtn) abortBtn.style.display = 'none';
+        if (customAbortBtn) customAbortBtn.style.display = 'none';
+      }
+    }
+
+    async function updateStatus() {
+      const statusPill = document.getElementById('pill-status');
+      const wingsPill = document.getElementById('pill-wings');
+      const weightPill = document.getElementById('pill-weight');
 
       try {
         const controller = new AbortController();
@@ -5219,9 +5355,15 @@ HTML_PAGE = """<!DOCTYPE html>
         if (data.connected && data.character) {
           const char = data.character;
           if (statusPill) {
-            statusPill.className = "pill online";
-            statusPill.innerHTML = `● ${char.RealmName || '서버'} | Lv.${char.Level || 0} ${char.EnabledCombatJobDisplayName || ''}`;
-            statusPill.title = "정상 연결됨 (클릭하여 설정 확인)";
+            if (currentlyBusy) {
+              statusPill.className = "pill warning";
+              statusPill.innerHTML = `● 작업 진행 중...`;
+              statusPill.title = data.current_task || '작업 진행 중';
+            } else {
+              statusPill.className = "pill online";
+              statusPill.innerHTML = `● ${char.RealmName || '서버'} | Lv.${char.Level || 0} ${char.EnabledCombatJobDisplayName || ''}`;
+              statusPill.title = "정상 연결됨 (클릭하여 설정 확인)";
+            }
           }
           if (cliAlertBanner) cliAlertBanner.style.display = 'none';
           if (wingsPill) {
@@ -5269,27 +5411,8 @@ HTML_PAGE = """<!DOCTYPE html>
           if (cliAlertBanner) cliAlertBanner.style.display = 'block';
         }
         
-        const abortBtn = document.getElementById('btn-quick-alter-abort');
-        isCurrentlyBusy = data.is_busy;
-        if (data.is_busy) {
-          if (busyBox) busyBox.style.display = 'inline-flex';
-          const busyText = document.getElementById('busy-text');
-          if (busyText) busyText.innerText = data.current_task || '작업 진행 중...';
-          if (produceBtn) produceBtn.disabled = true;
-          if (batchBtn) batchBtn.disabled = true;
-          if (quickAlterBtn) quickAlterBtn.disabled = true;
-          if (customExecuteBtn) customExecuteBtn.disabled = true;
-          if (abortBtn) abortBtn.style.display = 'inline-flex';
-          if (customAbortBtn) customAbortBtn.style.display = 'inline-flex';
-        } else {
-          if (busyBox) busyBox.style.display = 'none';
-          if (produceBtn) produceBtn.disabled = false;
-          if (batchBtn) batchBtn.disabled = false;
-          if (quickAlterBtn && cachedQuickPlan) quickAlterBtn.disabled = !cachedQuickPlan.can_start;
-          if (customExecuteBtn && cachedCustomPlan) customExecuteBtn.disabled = cachedCustomPlan.all_completed;
-          if (abortBtn) abortBtn.style.display = 'none';
-          if (customAbortBtn) customAbortBtn.style.display = 'none';
-        }
+        isCurrentlyBusy = !!data.is_busy;
+        applyBusyUI(isCurrentlyBusy, data.current_task || '작업 진행 중...');
 
         // Execution Summary Modal Hook
         if (data.last_summary) {
@@ -5308,7 +5431,7 @@ HTML_PAGE = """<!DOCTYPE html>
       } catch (err) {
         statusFailCount++;
         console.warn('updateStatus fetch failure (' + statusFailCount + '):', err);
-        if (statusFailCount >= 4 && statusPill) {
+        if (statusFailCount >= 3 && statusPill) {
           if (isCurrentlyBusy) {
             statusPill.className = "pill warning";
             statusPill.innerHTML = `● 작업 진행 중 (응답 대기)...`;
@@ -5364,6 +5487,8 @@ HTML_PAGE = """<!DOCTYPE html>
         alert('올바른 아이템명과 수량을 입력해주세요.');
         return;
       }
+      isCurrentlyBusy = true;
+      if (typeof applyBusyUI === 'function') applyBusyUI(true, `🔨 [${item}] ${count}개 제작 준비 중...`);
       try {
         const res = await fetch('/api/produce', {
           method: 'POST',
@@ -5371,12 +5496,17 @@ HTML_PAGE = """<!DOCTYPE html>
           body: JSON.stringify({ item_name: item, target_count: count })
         });
         const data = await res.json();
-        if (data.error) alert('오류: ' + data.error);
-        else {
+        if (data.error) {
+          isCurrentlyBusy = false;
+          if (typeof applyBusyUI === 'function') applyBusyUI(false);
+          alert('오류: ' + data.error);
+        } else {
           pollLogs();
           updateStatus();
         }
       } catch (err) {
+        isCurrentlyBusy = false;
+        if (typeof applyBusyUI === 'function') applyBusyUI(false);
         alert('서버 요청 실패: ' + err);
       }
     }

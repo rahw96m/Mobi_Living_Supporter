@@ -2009,6 +2009,11 @@ class DeliveryManager:
                         "gained": max(0, self.cli.count_item(item_name, include_storage=False) - initial_count)
                     }
 
+                # While the execute_gathering subprocess is actively executing in worker thread,
+                # avoid contending for _CLI_LOCK with simultaneous get_activity or count_item calls
+                if worker_thread.is_alive():
+                    continue
+
                 # 1. Safety check
                 activity = {}
                 try:

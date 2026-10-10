@@ -322,7 +322,7 @@ class MabinogiCLI:
         if encoded is not None:
             args.append(encoded)
 
-        with _CLI_LOCK:
+        if command == "stop_action":
             try:
                 kwargs = {
                     "capture_output": True,
@@ -339,18 +339,38 @@ class MabinogiCLI:
                     kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
                 res = subprocess.run(args, **kwargs)
-            except subprocess.TimeoutExpired as te:
-                raise MabinogiCLIError(f"명령어 '{command}' 실행 시간이 초과되었습니다 ({timeout}초)", exit_code=3, error_code="TIMEOUT") from te
-            except FileNotFoundError as fnf:
-                raise MabinogiCLIError(
-                    f"MabinogiMobile_CLI.exe 실행 파일을 찾을 수 없습니다: {str(fnf)}\n"
-                    f"설정된 경로: {self.cli_path}\n"
-                    f"게임 설치 폴더 및 MM AI 에이전트 활성화 상태를 확인해주세요.",
-                    exit_code=1,
-                    error_code="CLI_NOT_FOUND"
-                ) from fnf
             except Exception as ex:
                 raise MabinogiCLIError(f"CLI 실행 중 오류가 발생했습니다 ('{command}'): {str(ex)}", error_code="EXEC_ERROR") from ex
+        else:
+            with _CLI_LOCK:
+                try:
+                    kwargs = {
+                        "capture_output": True,
+                        "text": True,
+                        "timeout": timeout,
+                        "encoding": "utf-8",
+                        "errors": "replace"
+                    }
+                    if sys.platform == "win32":
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                        kwargs["startupinfo"] = startupinfo
+                        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+                    res = subprocess.run(args, **kwargs)
+                except subprocess.TimeoutExpired as te:
+                    raise MabinogiCLIError(f"명령어 '{command}' 실행 시간이 초과되었습니다 ({timeout}초)", exit_code=3, error_code="TIMEOUT") from te
+                except FileNotFoundError as fnf:
+                    raise MabinogiCLIError(
+                        f"MabinogiMobile_CLI.exe 실행 파일을 찾을 수 없습니다: {str(fnf)}\n"
+                        f"설정된 경로: {self.cli_path}\n"
+                        f"게임 설치 폴더 및 MM AI 에이전트 활성화 상태를 확인해주세요.",
+                        exit_code=1,
+                        error_code="CLI_NOT_FOUND"
+                    ) from fnf
+                except Exception as ex:
+                    raise MabinogiCLIError(f"CLI 실행 중 오류가 발생했습니다 ('{command}'): {str(ex)}", error_code="EXEC_ERROR") from ex
 
         exit_code = res.returncode
         stdout_str = res.stdout.strip()
