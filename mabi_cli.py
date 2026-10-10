@@ -163,6 +163,41 @@ def _is_game_running() -> bool:
     """Fast check whether MabinogiMobile.exe is currently active in the process list."""
     if sys.platform != "win32":
         return False
+    # Method 1: CreateToolhelp32Snapshot (Works reliably even when process is elevated or protected by NGS)
+    try:
+        import ctypes.wintypes
+        kernel32 = ctypes.windll.kernel32
+        class PROCESSENTRY32W(ctypes.Structure):
+            _fields_ = [
+                ('dwSize', ctypes.wintypes.DWORD),
+                ('cntUsage', ctypes.wintypes.DWORD),
+                ('th32ProcessID', ctypes.wintypes.DWORD),
+                ('th32DefaultHeapID', ctypes.c_size_t),
+                ('th32ModuleID', ctypes.wintypes.DWORD),
+                ('cntThreads', ctypes.wintypes.DWORD),
+                ('th32ParentProcessID', ctypes.wintypes.DWORD),
+                ('pcPriClassBase', ctypes.c_long),
+                ('dwFlags', ctypes.wintypes.DWORD),
+                ('szExeFile', ctypes.c_wchar * 260)
+            ]
+        h_snap = kernel32.CreateToolhelp32Snapshot(0x00000002, 0)
+        if h_snap and h_snap != -1:
+            try:
+                pe = PROCESSENTRY32W()
+                pe.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+                target_names = ("mabinogimobile.exe", "mabinogimobile_cli.exe", "mabinogimobile_controller.exe")
+                if kernel32.Process32FirstW(h_snap, ctypes.byref(pe)):
+                    while True:
+                        if pe.szExeFile.lower() in target_names:
+                            return True
+                        if not kernel32.Process32NextW(h_snap, ctypes.byref(pe)):
+                            break
+            finally:
+                kernel32.CloseHandle(h_snap)
+    except Exception:
+        pass
+
+    # Method 2: Fallback EnumProcesses
     try:
         kernel32 = ctypes.windll.kernel32
         psapi = ctypes.windll.psapi

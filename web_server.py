@@ -77,11 +77,17 @@ def record_heartbeat():
             shutdown_timer.cancel()
             shutdown_timer = None
 
-def schedule_shutdown(delay: float = 60.0, reason: str = "웹 대시보드가 닫혔습니다."):
+def schedule_shutdown(delay: float = 1800.0, reason: str = "웹 대시보드가 닫혔습니다."):
     global shutdown_timer
     # Ignore spurious pagehide/disconnect within first 10 seconds of server start
     if (time.time() - server_start_time) < 10.0:
         return
+    # NEVER schedule shutdown if Mabinogi Mobile is running!
+    try:
+        if cli_instance.check_game_running():
+            return
+    except Exception:
+        pass
     with shutdown_timer_lock:
         if shutdown_timer is not None:
             shutdown_timer.cancel()
@@ -146,8 +152,6 @@ def watchdog_loop():
         # Give 30 seconds grace period after server start before requiring heartbeats
         if (now - server_start_time) < 30.0:
             continue
-        if not has_client_connected:
-            continue
         # CRITICAL 1: If a task is busy running, NEVER shut down and refresh heartbeat!
         if is_busy:
             record_heartbeat()
@@ -159,9 +163,9 @@ def watchdog_loop():
                 continue
         except Exception:
             pass
-        # CRITICAL 3: Only shut down if no heartbeat for more than 30 minutes (1800s) AND game is closed
-        if (now - last_heartbeat_time) > 1800.0:
-            print("\n🔌 [장시간 미사용 감지] 마비노기 모바일이 종료되었고 30분 이상 대시보드 신호가 없어 안전하게 종료합니다...")
+        # CRITICAL 3: Only shut down if no heartbeat for more than 4 hours (14400s) AND game is closed
+        if has_client_connected and (now - last_heartbeat_time) > 14400.0:
+            print("\n🔌 [장시간 미사용 감지] 마비노기 모바일이 종료되었고 4시간 이상 대시보드 신호가 없어 안전하게 종료합니다...")
             shutdown_server()
             break
 
@@ -588,7 +592,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/dashboard_closed":
-            schedule_shutdown(delay=45.0, reason="웹 대시보드 창이 닫혀")
+            # If Mabinogi Mobile is running, keep server alive without scheduling shutdown
+            try:
+                if cli_instance.check_game_running():
+                    self._send_json({"status": "game_running_keep_alive"})
+                    return
+            except Exception:
+                pass
+            schedule_shutdown(delay=1800.0, reason="웹 대시보드 창이 닫히고 게임도 종료되어")
             self._send_json({"status": "closing"})
             return
 
@@ -5607,12 +5618,17 @@ HTML_PAGE = """<!DOCTYPE html>
       setInterval(sendHeartbeat, 3000);
     }
 
-    // Visibility change handler: immediately refresh when user switches back to this tab
+    // Visibility change & focus handlers: immediately refresh when user switches back to this tab
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
         sendHeartbeat();
         updateStatus();
       }
+    });
+
+    window.addEventListener('focus', () => {
+      sendHeartbeat();
+      updateStatus();
     });
 
     // Detect browser window / tab closing (beforeunload only fires on actual unload)
