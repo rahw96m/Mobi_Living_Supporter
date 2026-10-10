@@ -6,9 +6,34 @@ import shutil
 import ctypes
 import subprocess
 import threading
+import time
+import copy
 from typing import Any, Dict, List, Optional, Tuple
 
 _CLI_LOCK = threading.RLock()
+
+READ_CACHE_TTL = {
+    "get_inventory": 4.0,
+    "get_altering_works": 4.0,
+    "get_character_storage": 10.0,
+    "get_account_storage": 10.0,
+    "get_activity": 3.0,
+    "get_wings_count": 5.0,
+    "get_currencies": 10.0,
+    "get_items": 4.0,
+    "get_my_info": 30.0,
+    "get_craftable_items": 15.0,
+    "get_alterable_items": 15.0,
+    "get_gatherable_items": 15.0,
+}
+
+ACTION_COMMANDS = {
+    "execute_altering",
+    "execute_gathering",
+    "execute_crafting",
+    "complete_altering_work",
+    "stop_action"
+}
 
 CLI_DEFAULT_PATH = r"C:\Nexon\MabinogiMobile\MabinogiMobile_CLI.exe"
 LAST_RESPONSE_PATH = os.path.expandvars(r"%LOCALAPPDATA%\MabinogiMobileCLI\last-response.json")
@@ -132,6 +157,35 @@ def _find_from_running_processes() -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+def _is_game_running() -> bool:
+    """Fast check whether MabinogiMobile.exe is currently active in the process list."""
+    if sys.platform != "win32":
+        return False
+    try:
+        kernel32 = ctypes.windll.kernel32
+        psapi = ctypes.windll.psapi
+        arr = (ctypes.c_ulong * 1024)()
+        cb_needed = ctypes.c_ulong()
+        if psapi.EnumProcesses(ctypes.byref(arr), ctypes.sizeof(arr), ctypes.byref(cb_needed)):
+            count = cb_needed.value // ctypes.sizeof(ctypes.c_ulong)
+            for i in range(count):
+                pid = arr[i]
+                h_proc = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+                if h_proc:
+                    buf = ctypes.create_unicode_buffer(1024)
+                    size = ctypes.c_ulong(1024)
+                    if kernel32.QueryFullProcessImageNameW(h_proc, 0, buf, ctypes.byref(size)):
+                        exe_path = buf.value
+                        lower = os.path.basename(exe_path).lower()
+                        if lower in ("mabinogimobile.exe", "mabinogimobile_cli.exe", "mabinogimobile_controller.exe"):
+                            kernel32.CloseHandle(h_proc)
+                            return True
+                    kernel32.CloseHandle(h_proc)
+    except Exception:
+        pass
+    return False
 
 
 def _find_from_registry() -> Optional[str]:
@@ -270,7 +324,18 @@ class MabinogiCLI:
     def __init__(self, cli_path: Optional[str] = None):
         self.cli_path: Optional[str] = None
         self.discovery_source: str = ""
+        self._read_cache: Dict[Tuple[str, Optional[str]], Tuple[float, Any]] = {}
+        self._cache_lock = threading.Lock()
         self.discover_cli_path(cli_path)
+
+    def invalidate_cache(self) -> None:
+        """Clears all cached read responses (called after mutations or inventory changes)."""
+        with self._cache_lock:
+            self._read_cache.clear()
+
+    def check_game_running(self) -> bool:
+        """Checks if Mabinogi Mobile game process is running."""
+        return _is_game_running()
 
     def discover_cli_path(self, hint: Optional[str] = None) -> Optional[str]:
         """Runs the intelligent path resolver and records discovery source."""
@@ -300,11 +365,24 @@ class MabinogiCLI:
             return f"base64:{b64_str}"
         return body
 
-    def run_raw(self, command: str, body: Optional[str] = None, timeout: int = 600) -> Tuple[int, Any]:
+    def run_raw(self, command: str, body: Optional[str] = None, timeout: int = 600, bypass_cache: bool = False) -> Tuple[int, Any]:
         """
         Executes a CLI command and returns (exit_code, parsed_json_or_text).
         Automatically resolves CLI path, manages encoding, and transforms errors into user-friendly messages.
+        Includes fast thread-safe TTL caching for read-only queries to prevent subprocess saturation.
         """
+        # Invalidate read cache on mutation commands
+        if command in ACTION_COMMANDS:
+            self.invalidate_cache()
+
+        cache_key = (command, body)
+        if not bypass_cache and command in READ_CACHE_TTL:
+            ttl = READ_CACHE_TTL[command]
+            with self._cache_lock:
+                if cache_key in self._read_cache:
+                    cached_time, cached_val = self._read_cache[cache_key]
+                    if (time.time() - cached_time) < ttl:
+                        return 0, copy.deepcopy(cached_val)
         # If CLI path is missing or invalid, attempt re-discovery
         if not self.cli_path or not os.path.isfile(self.cli_path):
             discovered = self.discover_cli_path()
@@ -445,6 +523,11 @@ class MabinogiCLI:
             if kind:
                 error_msg = f"[{kind}] {error_msg}"
             raise MabinogiCLIError(str(error_msg), exit_code=exit_code, raw_output=stdout_str, response_data=parsed, error_code="GAME_ERROR")
+
+        # Cache successful read-only response
+        if exit_code == 0 and command in READ_CACHE_TTL:
+            with self._cache_lock:
+                self._read_cache[cache_key] = (time.time(), copy.deepcopy(parsed))
 
         return exit_code, parsed
 

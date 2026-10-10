@@ -54,7 +54,7 @@ if os.path.exists(OUTPUT_DIR):
     shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
 
 # 빌드 결과물(dist/Mobi_Living_Supporter)을 배포용 폴더로 복사
-shutil.copytree(DIST_BUILD_DIR, OUTPUT_DIR)
+shutil.copytree(DIST_BUILD_DIR, OUTPUT_DIR, dirs_exist_ok=True)
 
 # 3. 한글 이름 실행 파일도 추가 제공 (사용자 편의)
 exe_src = os.path.join(OUTPUT_DIR, "Mobi_Living_Supporter.exe")
@@ -142,8 +142,8 @@ with open(os.path.join(OUTPUT_DIR, "사용방법.txt"), "w", encoding="utf-8") a
 print("\n🗜️ 배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
-# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v0.5.5.zip)
-VERSION = "v0.5.5"
+# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v0.5.6.zip)
+VERSION = "v0.5.6"
 github_zip_path = os.path.join(BASE_DIR, f"Mobi_Living_Supporter_{VERSION}.zip")
 shutil.copy2(zip_path, github_zip_path)
 

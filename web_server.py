@@ -76,23 +76,31 @@ def record_heartbeat():
             shutdown_timer.cancel()
             shutdown_timer = None
 
-def schedule_shutdown(delay: float = 5.0, reason: str = "웹 대시보드가 닫혔습니다."):
+def schedule_shutdown(delay: float = 60.0, reason: str = "웹 대시보드가 닫혔습니다."):
     global shutdown_timer
     # Ignore spurious pagehide/disconnect within first 10 seconds of server start
     if (time.time() - server_start_time) < 10.0:
         return
-    # If a background task is running, signal abort so actions wind down cleanly
-    if is_busy:
-        try:
-            manager_instance.request_abort()
-            cli_instance.stop_action()
-        except Exception:
-            pass
     with shutdown_timer_lock:
         if shutdown_timer is not None:
             shutdown_timer.cancel()
         def _trigger():
-            print(f"\n🔌 [자동 종료] {reason} 서버를 종료합니다.")
+            now = time.time()
+            # If dashboard reconnected or sent heartbeat recently, cancel shutdown
+            if (now - last_heartbeat_time) < 60.0:
+                return
+            # If a background task is busy running, do not shut down
+            if is_busy:
+                record_heartbeat()
+                return
+            # If Mabinogi Mobile is running, do not shut down!
+            try:
+                if cli_instance.check_game_running():
+                    record_heartbeat()
+                    return
+            except Exception:
+                pass
+            print(f"\n🔌 [자동 종료] {reason} 마비노기 모바일도 실행 중이 아니므로 서버를 안전하게 종료합니다.")
             shutdown_server()
         shutdown_timer = threading.Timer(delay, _trigger)
         shutdown_timer.daemon = True
@@ -132,20 +140,27 @@ def shutdown_server():
 
 def watchdog_loop():
     while not is_shutting_down:
-        time.sleep(2)
+        time.sleep(5)
         now = time.time()
-        # Give 20 seconds grace period after server start before requiring heartbeats
-        if (now - server_start_time) < 20.0:
+        # Give 30 seconds grace period after server start before requiring heartbeats
+        if (now - server_start_time) < 30.0:
             continue
         if not has_client_connected:
             continue
-        # CRITICAL: If a task is busy running, NEVER shut down and refresh heartbeat!
+        # CRITICAL 1: If a task is busy running, NEVER shut down and refresh heartbeat!
         if is_busy:
             record_heartbeat()
             continue
-        # If no heartbeat or request for more than 60 seconds after client connected (prevents false shutdown from background tab sleep)
-        if (now - last_heartbeat_time) > 60.0:
-            print("\n🔌 [연결 끊김 감지] 60초 이상 활성 대시보드 신호가 없어 안전하게 종료합니다...")
+        # CRITICAL 2: If Mabinogi Mobile is running, NEVER shut down and refresh heartbeat!
+        try:
+            if cli_instance.check_game_running():
+                record_heartbeat()
+                continue
+        except Exception:
+            pass
+        # CRITICAL 3: Only shut down if no heartbeat for more than 30 minutes (1800s) AND game is closed
+        if (now - last_heartbeat_time) > 1800.0:
+            print("\n🔌 [장시간 미사용 감지] 마비노기 모바일이 종료되었고 30분 이상 대시보드 신호가 없어 안전하게 종료합니다...")
             shutdown_server()
             break
 
@@ -181,11 +196,11 @@ def get_cached_status() -> Dict[str, Any]:
                 cached_status_data["abort_requested"] = manager_instance.abort_requested
                 cached_status_data["last_summary"] = last_execution_summary
                 cached_status_data["last_summary_id"] = last_summary_id
-                return cached_status_data
+                return copy.deepcopy(cached_status_data)
             return {
                 "connected": True,
                 "activity": {},
-                "character": cached_character_info or {},
+                "character": copy.deepcopy(cached_character_info or {}),
                 "wings": 0,
                 "inventory": {},
                 "is_busy": True,
@@ -197,78 +212,84 @@ def get_cached_status() -> Dict[str, Any]:
                 "discovery_source": getattr(cli_instance, "discovery_source", "")
             }
 
-        # If cache is fresh (< 3.0s), immediately return cached data without invoking CLI
-        if cached_status_data and (now - cached_status_time) < 3.0:
+        # If cache is fresh (< 5.0s), immediately return cached data without invoking CLI
+        if cached_status_data and (now - cached_status_time) < 5.0:
             cached_status_data["is_busy"] = is_busy
             cached_status_data["current_task"] = current_task_info
             cached_status_data["abort_requested"] = manager_instance.abort_requested
             cached_status_data["last_summary"] = last_execution_summary
             cached_status_data["last_summary_id"] = last_summary_id
-            return cached_status_data
+            return copy.deepcopy(cached_status_data)
 
-        try:
-            # Character info (level, realm, job) rarely changes - cache for 30 seconds
-            if not cached_character_info or (now - cached_character_time) > 30.0:
-                try:
-                    cached_character_info = cli_instance.get_my_info()
-                    cached_character_time = now
-                except MabinogiCLIError:
-                    cached_character_info = None
-                    raise
-                except Exception:
-                    pass
+        need_char_refresh = (not cached_character_info) or ((now - cached_character_time) > 30.0)
+        prev_char_info = copy.deepcopy(cached_character_info) if cached_character_info else {}
 
-            activity = cli_instance.get_activity()
-            wings = cli_instance.get_wings_count()
-            inv = cli_instance.get_inventory()
+    # Invoke CLI outside status_lock to avoid blocking other requests
+    try:
+        new_char_info = None
+        if need_char_refresh:
+            try:
+                new_char_info = cli_instance.get_my_info()
+            except Exception:
+                new_char_info = None
 
-            data = {
-                "connected": True,
-                "activity": activity,
-                "character": cached_character_info or {},
-                "wings": wings,
-                "inventory": inv,
-                "is_busy": is_busy,
-                "current_task": current_task_info,
-                "abort_requested": manager_instance.abort_requested,
-                "last_summary": last_execution_summary,
-                "last_summary_id": last_summary_id,
-                "cli_path": cli_instance.cli_path or "",
-                "discovery_source": getattr(cli_instance, "discovery_source", "")
-            }
+        activity = cli_instance.get_activity()
+        wings = cli_instance.get_wings_count()
+        inv = cli_instance.get_inventory()
+
+        data = {
+            "connected": True,
+            "activity": activity,
+            "character": new_char_info or prev_char_info,
+            "wings": wings,
+            "inventory": inv,
+            "is_busy": is_busy,
+            "current_task": current_task_info,
+            "abort_requested": manager_instance.abort_requested,
+            "last_summary": last_execution_summary,
+            "last_summary_id": last_summary_id,
+            "cli_path": cli_instance.cli_path or "",
+            "discovery_source": getattr(cli_instance, "discovery_source", "")
+        }
+        with status_lock:
+            if new_char_info:
+                cached_character_info = new_char_info
+                cached_character_time = time.time()
             cached_status_data = data
             cached_status_time = time.time()
-            return data
-        except MabinogiCLIError as e:
-            err_data = {
-                "connected": False,
-                "error": str(e),
-                "error_code": e.error_code or "CLI_ERROR",
-                "cli_path": cli_instance.cli_path or "",
-                "discovery_source": getattr(cli_instance, "discovery_source", ""),
-                "is_busy": is_busy,
-                "current_task": current_task_info,
-                "last_summary": last_execution_summary,
-                "last_summary_id": last_summary_id
-            }
+        return copy.deepcopy(data)
+    except MabinogiCLIError as e:
+        err_data = {
+            "connected": False,
+            "error": str(e),
+            "error_code": e.error_code or "CLI_ERROR",
+            "cli_path": cli_instance.cli_path or "",
+            "discovery_source": getattr(cli_instance, "discovery_source", ""),
+            "is_busy": is_busy,
+            "current_task": current_task_info,
+            "last_summary": last_execution_summary,
+            "last_summary_id": last_summary_id
+        }
+        with status_lock:
             cached_status_data = err_data
             cached_status_time = time.time()
-            return err_data
-        except Exception as e:
-            err_data = {
-                "connected": False,
-                "error": str(e),
-                "error_code": "UNKNOWN",
-                "cli_path": cli_instance.cli_path or "",
-                "discovery_source": getattr(cli_instance, "discovery_source", ""),
-                "is_busy": is_busy,
-                "current_task": current_task_info,
-                "last_summary": last_execution_summary,
-                "last_summary_id": last_summary_id
-            }
+        return copy.deepcopy(err_data)
+    except Exception as e:
+        err_data = {
+            "connected": False,
+            "error": str(e),
+            "error_code": "UNKNOWN",
+            "cli_path": cli_instance.cli_path or "",
+            "discovery_source": getattr(cli_instance, "discovery_source", ""),
+            "is_busy": is_busy,
+            "current_task": current_task_info,
+            "last_summary": last_execution_summary,
+            "last_summary_id": last_summary_id
+        }
+        with status_lock:
             cached_status_data = err_data
             cached_status_time = time.time()
-            return err_data
+        return copy.deepcopy(err_data)
 
 class RequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -2051,7 +2072,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
           </div>
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.5</span></h1>
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.6</span></h1>
             <p>마비노기 모바일 AI 커넥터 연동</p>
           </div>
         </div>
@@ -3304,7 +3325,10 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    let currentMainMode = 'delivery';
+
     function switchMainMode(mode) {
+      currentMainMode = mode;
       // If summary modal is somehow active, close it so it never blocks user tab view
       closeSummaryModal();
 
@@ -5328,7 +5352,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
         const res = await fetch('/api/status', { signal: controller.signal });
         clearTimeout(timeoutId);
         const data = await res.json();
@@ -5336,13 +5360,21 @@ HTML_PAGE = """<!DOCTYPE html>
 
         const currentlyBusy = !!data.is_busy;
         if (!currentlyBusy && wasBusy) {
-          // Task just finished! Trigger a one-time fresh refresh of targets and plans
-          try { loadDeliveryTargets(); } catch(e) {}
-          try { loadCustomTargets(); } catch(e) {}
-          try { loadBatchPlan(); } catch(e) {}
-          try { loadCustomPlan(); } catch(e) {}
-          try { loadQuickAlterPlan(); } catch(e) {}
+          // Task just finished! Stagger refreshes to avoid CLI process queue contention
           try { loadAlteringQueue(); } catch(e) {}
+          setTimeout(() => {
+            try {
+              if (currentMainMode === 'delivery') {
+                loadDeliveryTargets();
+                loadBatchPlan();
+              } else if (currentMainMode === 'custom_craft') {
+                loadCustomTargets();
+                loadCustomPlan();
+              } else {
+                loadQuickAlterPlan();
+              }
+            } catch(e) {}
+          }, 300);
         }
         wasBusy = currentlyBusy;
 
@@ -5632,12 +5664,17 @@ HTML_PAGE = """<!DOCTYPE html>
       setTimeout(() => { try { loadCustomPlan(); } catch(e) {} }, 1300);
 
       setInterval(() => { try { updateStatus(); } catch(e) {} }, 3000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadDeliveryTargets(); } catch(e) {} }, 6000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadCustomTargets(); } catch(e) {} }, 6000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadQuickAlterPlan(); } catch(e) {} }, 8000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadBatchPlan(); } catch(e) {} }, 8000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadCustomPlan(); } catch(e) {} }, 8000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadAlteringQueue(); } catch(e) {} }, 5000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadDeliveryTargets(); } catch(e) {} }, 8000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadCustomTargets(); } catch(e) {} }, 8000);
+      setInterval(() => {
+        if (document.hidden || isCurrentlyBusy) return;
+        try {
+          if (currentMainMode === 'delivery') loadBatchPlan();
+          else if (currentMainMode === 'custom_craft') loadCustomPlan();
+          else if (currentMainMode === 'quick_alter') loadQuickAlterPlan();
+        } catch(e) {}
+      }, 8000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadAlteringQueue(); } catch(e) {} }, 6000);
       setInterval(() => { if (document.hidden) return; try { pollLogs(); } catch(e) {} }, 1500);
     }
 
