@@ -43,6 +43,17 @@ DEFAULT_RECIPES: Dict[str, Dict[str, int]] = {
     "린넨 로브": {"옷감": 3, "가죽": 2},
     "마블 힐링 완드S": {"상급 목재": 3, "강철괴": 3},
     "달걀프라이": {"달걀": 1},
+    "삶은 달걀": {"달걀": 1, "물이 든 병": 1},
+    "여행자 간식": {"달걀": 1, "고기": 1},
+    "조개찜": {"조개": 5, "물이 든 병": 1},
+    "사과 주스": {"사과": 4, "물이 든 병": 1},
+    "옥수수차": {"옥수수": 4, "물이 든 병": 1},
+    "녹차": {"말린 찻잎": 2, "물이 든 병": 1},
+    "홍차": {"발효된 찻잎": 2, "물이 든 병": 1, "옷감": 1},
+    "구운 고기": {"고기": 4, "허브": 2, "소금": 1},
+    "마요네즈 고기볶음": {"고기": 4, "양배추": 1, "마요네즈": 1},
+    "통감자구이": {"감자": 4, "허브": 2, "설탕": 2},
+    "야채볶음": {"감자": 8, "양파": 3, "양배추": 6, "허브": 2},
     "라이트 크로스보우S": {"상급 목재": 3, "강철괴": 3},
     "가죽 갑옷 신발S": {"상급 가죽": 3, "강철괴": 2},
     "두꺼운 가죽 갑옷 신발": {"가죽+": 2, "강철괴": 1},
@@ -820,6 +831,7 @@ class RegisteredDeliveryStore:
                 "current": int(current),
                 "needed": needed,
                 "is_completed": (int(current) >= int(goal)),
+                "override_current": None,
                 "updated_at": int(time.time() * 1000)
             }
             self.targets[key] = data
@@ -842,6 +854,7 @@ class RegisteredDeliveryStore:
                 t["current"] = cur
                 t["needed"] = max(0, goal - cur)
                 t["is_completed"] = (cur >= goal)
+                t["override_current"] = cur
                 t["updated_at"] = int(time.time() * 1000)
                 self.targets[found_key] = t
                 self.save()
@@ -871,6 +884,18 @@ class RegisteredDeliveryStore:
                 t["needed"] = goal
                 t["is_completed"] = False
                 t["inventory_count"] = 0
+                t["override_current"] = 0
+                t["updated_at"] = int(time.time() * 1000)
+                count += 1
+            self.save()
+            return count
+
+    def clear_all_overrides(self) -> int:
+        """Clears manual overrides on all targets to re-sync with game inventory."""
+        with self._lock:
+            count = 0
+            for item_name, t in self.targets.items():
+                t["override_current"] = None
                 t["updated_at"] = int(time.time() * 1000)
                 count += 1
             self.save()
@@ -1026,9 +1051,25 @@ class DeliveryManager:
             try:
                 with open(RECIPE_CACHE_FILE, "r", encoding="utf-8") as f:
                     cached = json.load(f)
+                    # Self-heal against incomplete known recipes (e.g. 삶은 달걀 missing 달걀)
+                    for default_item, default_ings in DEFAULT_RECIPES.items():
+                        if default_item in cached:
+                            cached_ings = cached[default_item]
+                            if not isinstance(cached_ings, dict):
+                                cached[default_item] = dict(default_ings)
+                            else:
+                                for k, v in default_ings.items():
+                                    if k not in cached_ings:
+                                        cached_ings[k] = v
                     self.recipes.update(cached)
             except Exception:
                 pass
+
+    def update_recipe(self, item_name: str, ingredients: Dict[str, int]):
+        """Manually sets/updates the recipe for item_name and persists to cache."""
+        item_name = item_name.strip()
+        self.recipes[item_name] = dict(ingredients)
+        self.save_recipe_cache()
 
     def save_recipe_cache(self):
         try:
@@ -1460,7 +1501,9 @@ class DeliveryManager:
                 quest_detected = active_delivery_tasks[item_name].current
 
             # Direct delivery target: count ONLY inventory (bag), EXCLUDE warehouse / storage!
-            if inv_count > 0:
+            if t.get("override_current") is not None:
+                current = int(t["override_current"])
+            elif inv_count > 0:
                 current = inv_count
             elif quest_detected > 0:
                 current = quest_detected
@@ -1479,6 +1522,10 @@ class DeliveryManager:
             t["character_storage_count"] = breakdown["character_storage"]
             t["account_storage_count"] = breakdown["account_storage"]
             t["storage_count"] = breakdown["storage_total"]
+
+            rec = self.get_recipe_ingredients(item_name)
+            t["recipe"] = rec
+            t["is_recipe_known"] = bool(rec)
 
             # Guard against resurrecting items deleted while this polling cycle was running
             with delivery_target_store._lock:
@@ -1524,7 +1571,9 @@ class DeliveryManager:
 
             breakdown = self.cli.get_item_location_breakdown(item_name)
 
-            if breakdown["total"] > 0:
+            if t.get("override_current") is not None:
+                current = int(t["override_current"])
+            elif breakdown["total"] > 0:
                 current = breakdown["total"]
             elif prev_current > 0 or is_equipment_item(item_name):
                 current = prev_current
@@ -1541,6 +1590,10 @@ class DeliveryManager:
             t["character_storage_count"] = breakdown["character_storage"]
             t["account_storage_count"] = breakdown["account_storage"]
             t["storage_count"] = breakdown["storage_total"]
+
+            rec = self.get_recipe_ingredients(item_name)
+            t["recipe"] = rec
+            t["is_recipe_known"] = bool(rec)
 
             # Guard against resurrecting items deleted while this polling cycle was running
             with custom_target_store._lock:
@@ -1585,6 +1638,17 @@ class DeliveryManager:
                     updated = dict(existing)
                     for ing in missing:
                         updated[ing["DisplayName"]] = int(ing.get("Required", 1))
+
+                    # Heuristic: check if raw material is in item_name (e.g. "달걀" in "삶은 달걀")
+                    for raw_cand in ["달걀", "우유", "사과", "감자", "조개", "옥수수", "양파", "양배추", "통나무", "마나 허브"]:
+                        if raw_cand in item_name and raw_cand != item_name and raw_cand not in updated:
+                            try:
+                                cand_res = self.cli.get_craftable_items(raw_cand)
+                                if any(it.get("DisplayName") == item_name for it in cand_res.get("items", [])):
+                                    updated[raw_cand] = 1
+                            except Exception:
+                                pass
+
                     self.recipes[item_name] = updated
                     self.save_recipe_cache()
                 return item
@@ -1607,16 +1671,30 @@ class DeliveryManager:
 
     def get_recipe_ingredients(self, item_name: str) -> Dict[str, int]:
         """Returns ingredient dict {ing_name: qty_per_craft} for item_name."""
-        if item_name in self.recipes:
+        if item_name in self.recipes and self.recipes[item_name]:
             return self.recipes[item_name]
 
         # Try querying CLI
         recipe_data = self.find_craft_recipe(item_name)
+        if item_name in self.recipes and self.recipes[item_name]:
+            return self.recipes[item_name]
+
         if recipe_data and recipe_data.get("MissingIngredients"):
             rec_dict = {ing["DisplayName"]: int(ing.get("Required", 1)) for ing in recipe_data["MissingIngredients"]}
             existing = self.recipes.get(item_name, {})
             updated = dict(existing)
             updated.update(rec_dict)
+
+            # Heuristic check
+            for raw_cand in ["달걀", "우유", "사과", "감자", "조개", "옥수수", "양파", "양배추", "통나무", "마나 허브"]:
+                if raw_cand in item_name and raw_cand != item_name and raw_cand not in updated:
+                    try:
+                        cand_res = self.cli.get_craftable_items(raw_cand)
+                        if any(it.get("DisplayName") == item_name for it in cand_res.get("items", [])):
+                            updated[raw_cand] = 1
+                    except Exception:
+                        pass
+
             self.recipes[item_name] = updated
             self.save_recipe_cache()
             return updated

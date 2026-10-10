@@ -5,7 +5,10 @@ import base64
 import shutil
 import ctypes
 import subprocess
+import threading
 from typing import Any, Dict, List, Optional, Tuple
+
+_CLI_LOCK = threading.RLock()
 
 CLI_DEFAULT_PATH = r"C:\Nexon\MabinogiMobile\MabinogiMobile_CLI.exe"
 LAST_RESPONSE_PATH = os.path.expandvars(r"%LOCALAPPDATA%\MabinogiMobileCLI\last-response.json")
@@ -319,34 +322,35 @@ class MabinogiCLI:
         if encoded is not None:
             args.append(encoded)
 
-        try:
-            kwargs = {
-                "capture_output": True,
-                "text": True,
-                "timeout": timeout,
-                "encoding": "utf-8",
-                "errors": "replace"
-            }
-            if sys.platform == "win32":
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                kwargs["startupinfo"] = startupinfo
-                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        with _CLI_LOCK:
+            try:
+                kwargs = {
+                    "capture_output": True,
+                    "text": True,
+                    "timeout": timeout,
+                    "encoding": "utf-8",
+                    "errors": "replace"
+                }
+                if sys.platform == "win32":
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    kwargs["startupinfo"] = startupinfo
+                    kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-            res = subprocess.run(args, **kwargs)
-        except subprocess.TimeoutExpired as te:
-            raise MabinogiCLIError(f"명령어 '{command}' 실행 시간이 초과되었습니다 ({timeout}초)", exit_code=3, error_code="TIMEOUT") from te
-        except FileNotFoundError as fnf:
-            raise MabinogiCLIError(
-                f"MabinogiMobile_CLI.exe 실행 파일을 찾을 수 없습니다: {str(fnf)}\n"
-                f"설정된 경로: {self.cli_path}\n"
-                f"게임 설치 폴더 및 MM AI 에이전트 활성화 상태를 확인해주세요.",
-                exit_code=1,
-                error_code="CLI_NOT_FOUND"
-            ) from fnf
-        except Exception as ex:
-            raise MabinogiCLIError(f"CLI 실행 중 오류가 발생했습니다 ('{command}'): {str(ex)}", error_code="EXEC_ERROR") from ex
+                res = subprocess.run(args, **kwargs)
+            except subprocess.TimeoutExpired as te:
+                raise MabinogiCLIError(f"명령어 '{command}' 실행 시간이 초과되었습니다 ({timeout}초)", exit_code=3, error_code="TIMEOUT") from te
+            except FileNotFoundError as fnf:
+                raise MabinogiCLIError(
+                    f"MabinogiMobile_CLI.exe 실행 파일을 찾을 수 없습니다: {str(fnf)}\n"
+                    f"설정된 경로: {self.cli_path}\n"
+                    f"게임 설치 폴더 및 MM AI 에이전트 활성화 상태를 확인해주세요.",
+                    exit_code=1,
+                    error_code="CLI_NOT_FOUND"
+                ) from fnf
+            except Exception as ex:
+                raise MabinogiCLIError(f"CLI 실행 중 오류가 발생했습니다 ('{command}'): {str(ex)}", error_code="EXEC_ERROR") from ex
 
         exit_code = res.returncode
         stdout_str = res.stdout.strip()
@@ -427,31 +431,31 @@ class MabinogiCLI:
     # --- Core Status & Info ---
 
     def status(self) -> Dict[str, Any]:
-        _, data = self.run_raw("status")
+        _, data = self.run_raw("status", timeout=10)
         return data if isinstance(data, dict) else {}
 
     def get_my_info(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_my_info")
+        _, data = self.run_raw("get_my_info", timeout=15)
         return data if isinstance(data, dict) else {}
 
     def get_current_environment(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_current_environment")
+        _, data = self.run_raw("get_current_environment", timeout=15)
         return data if isinstance(data, dict) else {}
 
     def get_activity(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_activity")
+        _, data = self.run_raw("get_activity", timeout=15)
         return data if isinstance(data, dict) else {}
 
     def get_inventory(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_inventory")
+        _, data = self.run_raw("get_inventory", timeout=15)
         return data if isinstance(data, dict) else {}
 
     def get_quests(self) -> List[Dict[str, Any]]:
-        _, data = self.run_raw("get_quests")
+        _, data = self.run_raw("get_quests", timeout=20)
         return data if isinstance(data, list) else []
 
     def get_currencies(self) -> List[Dict[str, Any]]:
-        _, data = self.run_raw("get_currencies")
+        _, data = self.run_raw("get_currencies", timeout=15)
         return data if isinstance(data, list) else []
 
     def get_wings_count(self) -> int:
@@ -472,7 +476,7 @@ class MabinogiCLI:
             body_dict["category"] = category
 
         body_str = json.dumps(body_dict, ensure_ascii=False) if body_dict else None
-        _, data = self.run_raw("get_items", body_str)
+        _, data = self.run_raw("get_items", body_str, timeout=25)
         return data if isinstance(data, list) else []
 
     def count_item(self, item_name: str, include_storage: bool = True) -> int:
@@ -513,7 +517,7 @@ class MabinogiCLI:
     # --- Crafting ---
 
     def get_craftable_items(self, filter_name: str = "") -> Dict[str, Any]:
-        _, data = self.run_raw("get_craftable_items", filter_name if filter_name else None)
+        _, data = self.run_raw("get_craftable_items", filter_name if filter_name else None, timeout=25)
         return data if isinstance(data, dict) else {"craftingUnlocked": False, "items": []}
 
     def execute_crafting(self, display_name: str, craft_count: int = 1) -> Dict[str, Any]:
@@ -524,7 +528,7 @@ class MabinogiCLI:
     # --- Altering (가공) ---
 
     def get_alterable_items(self, filter_name: str = "") -> Dict[str, Any]:
-        _, data = self.run_raw("get_alterable_items", filter_name if filter_name else None)
+        _, data = self.run_raw("get_alterable_items", filter_name if filter_name else None, timeout=25)
         return data if isinstance(data, dict) else {"items": []}
 
     def execute_altering(self, display_name: str) -> Dict[str, Any]:
@@ -533,7 +537,7 @@ class MabinogiCLI:
         return data
 
     def get_altering_works(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_altering_works")
+        _, data = self.run_raw("get_altering_works", timeout=20)
         return data if isinstance(data, dict) else {"completedCount": 0, "works": []}
 
     def complete_altering_work(self, display_name: str) -> Dict[str, Any]:
@@ -544,7 +548,7 @@ class MabinogiCLI:
     # --- Gathering (채집) ---
 
     def get_gatherable_items(self, filter_name: str = "") -> Dict[str, Any]:
-        _, data = self.run_raw("get_gatherable_items", filter_name if filter_name else None)
+        _, data = self.run_raw("get_gatherable_items", filter_name if filter_name else None, timeout=25)
         return data if isinstance(data, dict) else {"items": []}
 
     def execute_gathering(self, display_name: str) -> Dict[str, Any]:
@@ -553,5 +557,5 @@ class MabinogiCLI:
         return data
 
     def stop_action(self) -> Dict[str, Any]:
-        _, data = self.run_raw("stop_action")
+        _, data = self.run_raw("stop_action", timeout=15)
         return data

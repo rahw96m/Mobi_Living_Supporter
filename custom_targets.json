@@ -1,0 +1,21 @@
+{
+  "삶은 달걀": {
+    "quest_title": "주간 납품",
+    "item_name": "삶은 달걀",
+    "goal": 20,
+    "current": 0,
+    "needed": 20,
+    "is_completed": false,
+    "override_current": 0,
+    "updated_at": 1791557703070,
+    "inventory_count": 13,
+    "character_storage_count": 0,
+    "account_storage_count": 0,
+    "storage_count": 0,
+    "recipe": {
+      "달걀": 1,
+      "물이 든 병": 1
+    },
+    "is_recipe_known": true
+  }
+}

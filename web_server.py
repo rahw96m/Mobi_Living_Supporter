@@ -139,9 +139,9 @@ def watchdog_loop():
             continue
         if not has_client_connected:
             continue
-        # If no heartbeat or request for more than 15 seconds after client connected
-        if (now - last_heartbeat_time) > 15.0:
-            print("\n🔌 [연결 끊김 감지] 15초 이상 활성 대시보드 신호가 없어 안전하게 종료합니다...")
+        # If no heartbeat or request for more than 60 seconds after client connected (prevents false shutdown from background tab sleep)
+        if (now - last_heartbeat_time) > 60.0:
+            print("\n🔌 [연결 끊김 감지] 60초 이상 활성 대시보드 신호가 없어 안전하게 종료합니다...")
             shutdown_server()
             break
 
@@ -165,7 +165,8 @@ def get_cached_status() -> Dict[str, Any]:
     global cached_status_data, cached_status_time, cached_character_info, cached_character_time
     now = time.time()
     with status_lock:
-        if cached_status_data and (now - cached_status_time) < 2.5:
+        # If task is busy or cache is fresh (< 3.0s), immediately return cached data without invoking CLI
+        if cached_status_data and (is_busy or (now - cached_status_time) < 3.0):
             cached_status_data["is_busy"] = is_busy
             cached_status_data["current_task"] = current_task_info
             cached_status_data["abort_requested"] = manager_instance.abort_requested
@@ -350,6 +351,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/batch_plan":
+            if is_busy:
+                self._send_json({"is_busy": True, "can_start": False, "items": [], "steps": []})
+                return
             query_params = parse_qs(parsed.query)
             alter_order = query_params.get("alter_order", [None])[0]
             try:
@@ -368,6 +372,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/custom_plan":
+            if is_busy:
+                self._send_json({"is_busy": True, "can_start": False, "items": [], "steps": []})
+                return
             query_params = parse_qs(parsed.query)
             alter_order = query_params.get("alter_order", [None])[0]
             try:
@@ -422,6 +429,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/quick_alter_plan":
+            if is_busy:
+                self._send_json({"is_busy": True, "can_start": False, "facilities": []})
+                return
             query_params = parse_qs(parsed.query)
             category = query_params.get("category", ["all"])[0].strip()
             alter_order = query_params.get("alter_order", [None])[0]
@@ -443,6 +453,31 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "saved_path": saved_path,
                     "discovery_source": getattr(cli_instance, "discovery_source", ""),
                 })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/recipe":
+            query_params = parse_qs(parsed.query)
+            item_name = query_params.get("name", [""])[0].strip()
+            if not item_name:
+                self._send_error("아이템 이름을 입력해주세요.", 400)
+                return
+            try:
+                recipe = manager_instance.get_recipe_ingredients(item_name)
+                is_known = bool(recipe)
+                self._send_json({
+                    "item_name": item_name,
+                    "ingredients": recipe,
+                    "is_known": is_known
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/recipes_all":
+            try:
+                self._send_json({"recipes": manager_instance.recipes})
             except Exception as e:
                 self._send_error(e)
             return
@@ -964,6 +999,51 @@ class RequestHandler(BaseHTTPRequestHandler):
                 custom_target_store.clear()
                 add_log("info", "🗑️ [개별 제작 초기화] 모든 등록된 개별 제작 목표가 삭제되었습니다.")
                 self._send_json({"status": "success"})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/reset_custom_targets_current":
+            try:
+                reset_count = custom_target_store.reset_all_current()
+                add_log("info", f"🔄 [개별 제작 수량 초기화] 등록된 {reset_count}개 목표의 보유 수량이 모두 0개로 초기화되었습니다.")
+                self._send_json({"status": "success", "reset_count": reset_count})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/sync_custom_targets_inventory":
+            try:
+                sync_count = custom_target_store.clear_all_overrides()
+                add_log("info", f"🎒 [인벤토리 동기화] 등록된 {sync_count}개 개별 제작 목표의 수동 수량이 해제되어 실제 인벤토리와 다시 동기화됩니다.")
+                self._send_json({"status": "success", "sync_count": sync_count})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/update_recipe":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length)
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8"))
+                item_name = req_json.get("item_name", "").strip()
+                ingredients = req_json.get("ingredients", {})
+                if not item_name:
+                    self._send_error("아이템 이름을 입력해주세요.", 400)
+                    return
+                clean_ingredients = {}
+                if isinstance(ingredients, dict):
+                    for k, v in ingredients.items():
+                        k_str = str(k).strip()
+                        try:
+                            v_int = int(v)
+                        except Exception:
+                            continue
+                        if k_str and v_int > 0:
+                            clean_ingredients[k_str] = v_int
+                manager_instance.update_recipe(item_name, clean_ingredients)
+                add_log("success", f"📖 [레시피 갱신] '{item_name}' 제작 레시피 저장 완료: {clean_ingredients}")
+                self._send_json({"status": "success", "item_name": item_name, "ingredients": clean_ingredients})
             except Exception as e:
                 self._send_error(e)
             return
@@ -1887,7 +1967,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
           </div>
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.3</span></h1>
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.4</span></h1>
             <p>마비노기 모바일 AI 커넥터 연동</p>
           </div>
         </div>
@@ -2269,6 +2349,15 @@ HTML_PAGE = """<!DOCTYPE html>
             <span id="custom-target-count-badge" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">0개 등록됨</span>
           </div>
           <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+            <button class="btn btn-sm" onclick="resetAllCustomTargetsCurrent()" style="color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.1); padding: 6px 12px;" title="모든 개별 제작 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">
+              🔄 수량 0개로 초기화
+            </button>
+            <button class="btn btn-sm" onclick="syncCustomTargetsInventory()" style="color: #38bdf8; border-color: rgba(56,189,248,0.35); background: rgba(56,189,248,0.1); padding: 6px 12px;" title="게임 내 인벤토리/창고 실제 보유량으로 수량을 다시 동기화합니다">
+              🎒 인벤 동기화
+            </button>
+            <button class="btn btn-sm" onclick="openRecipeManagerModal()" style="background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.35); color: #6ee7b7; padding: 6px 12px;" title="아이템별 1회 제작 소요 재료를 확인하고 수정합니다">
+              📖 레시피 도감/수정
+            </button>
             <button class="btn btn-sm" onclick="clearCustomTargets()" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 6px 12px;">
               🗑️ 전체 비우기
             </button>
@@ -2561,6 +2650,51 @@ HTML_PAGE = """<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Recipe Manager & Edit Modal -->
+  <div class="modal-overlay" id="recipe-modal-overlay" onclick="handleRecipeModalOverlayClick(event)">
+    <div class="modal-dialog" style="max-width: 560px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 20px;">📖</span>
+          <div>
+            <h3 id="recipe-modal-title" style="font-size: 16px; font-weight: 800; color: #fff; margin: 0;">제작 레시피 설정 / 수정</h3>
+            <div id="recipe-modal-subtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">아이템 1회 제작에 필요한 소요 재료를 설정합니다</div>
+          </div>
+        </div>
+        <button class="btn btn-sm" onclick="closeRecipeModal()" style="padding: 4px 10px; background: rgba(255,255,255,0.08); border-radius: 8px;">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 18px 20px;">
+        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #a7f3d0; line-height: 1.5;">
+          💡 <strong>레시피 안내:</strong> 게임 내 인벤토리에 이미 보유 중인 재료는 게임 클라이언트가 누락된 것으로 파악하지 못할 수 있습니다. 여기서 올바른 1회 제작 필요 재료와 수량을 등록해두면 모든 하위 재료/채집이 정확히 계산됩니다.
+        </div>
+
+        <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12.5px; font-weight: 700; color: #e2e8f0; white-space: nowrap;">대상 아이템:</span>
+          <input type="text" id="recipe-modal-item-name" style="flex: 1; padding: 8px 12px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px;" placeholder="예: 삶은 달걀">
+          <button type="button" class="btn btn-sm" onclick="loadRecipeForCurrentInput()" style="padding: 8px 12px; font-size: 12px;">조회</button>
+        </div>
+
+        <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 12.5px; font-weight: 700; color: #cbd5e1;">필요 재료 목록 (1회 제작당)</span>
+          <button type="button" class="btn btn-sm" onclick="addRecipeModalRow('', 1)" style="padding: 4px 10px; font-size: 11.5px; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">
+            ➕ 재료 추가
+          </button>
+        </div>
+
+        <div id="recipe-modal-rows-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; padding-right: 4px;">
+          <!-- Dynamically generated rows -->
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <span id="recipe-modal-msg" style="font-size: 12px; color: #94a3b8;"></span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-sm" onclick="closeRecipeModal()">취소</button>
+          <button class="btn btn-sm btn-primary" onclick="saveRecipeFromModal()" style="padding: 6px 16px; font-weight: 700; background: linear-gradient(135deg, #059669, #10b981);">💾 레시피 저장</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Global Error Handlers (Reports browser errors to server logs)
     window.onerror = function(msg, url, lineNo, colNo, err) {
@@ -2611,6 +2745,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (e.key === 'Escape') {
         closeSummaryModal();
         if (typeof closeCliModal === 'function') closeCliModal();
+        if (typeof closeRecipeModal === 'function') closeRecipeModal();
       }
     });
 
@@ -3810,6 +3945,24 @@ HTML_PAGE = """<!DOCTYPE html>
           const isDone = t.is_completed || (t.current >= t.goal);
           const percent = Math.min(100, Math.round((t.current / (t.goal || 1)) * 100));
           const safeName = (t.item_name || '').replace(/'/g, "\\'");
+
+          let recHtml = '';
+          const rec = t.recipe || {};
+          const ingKeys = Object.keys(rec);
+          if (ingKeys.length > 0) {
+            const ingListStr = ingKeys.map(k => `${k} ${rec[k]}개`).join(', ');
+            recHtml = `
+              <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 6px; padding: 4px 8px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <span style="color: #e9d5ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="1회 제작 재료: ${ingListStr}">
+                  📦 1회 재료: <strong>${ingListStr}</strong>
+                </span>
+                <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')" style="padding: 1px 6px; font-size: 10px; white-space: nowrap; background: rgba(168, 85, 247, 0.2); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.35);">
+                  ✏️ 레시피
+                </button>
+              </div>
+            `;
+          }
+
           html += `
             <div style="background: rgba(0,0,0,0.3); border: 1px solid ${isDone ? 'rgba(52,211,153,0.35)' : 'rgba(255,255,255,0.08)'}; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -3822,6 +3975,8 @@ HTML_PAGE = """<!DOCTYPE html>
                   <button class="btn btn-sm" style="padding: 2px 6px; font-size: 11px; color: #f87171; border-color: rgba(248,113,113,0.3);" onclick="deleteDeliveryTarget('${safeName}')" title="삭제">✕</button>
                 </div>
               </div>
+
+              ${recHtml}
 
               <!-- Progress bar -->
               <div style="background: rgba(255,255,255,0.08); border-radius: 4px; height: 6px; overflow: hidden; width: 100%;">
@@ -3836,6 +3991,7 @@ HTML_PAGE = """<!DOCTYPE html>
                   <button class="btn btn-sm" style="padding: 1px 6px; font-size: 11px; min-height: 20px; line-height: 18px;" onclick="adjustTargetCurrent('${safeName}', ${t.current}, 1)" title="1개 증가">+</button>
                   <span style="color: #94a3b8;">/ ${t.goal}개</span>
                   <button class="btn btn-sm" style="padding: 1px 5px; font-size: 10px; min-height: 20px; line-height: 18px; color: #a5b4fc; border-color: rgba(165,180,252,0.3);" onclick="promptEditCurrent('${safeName}', ${t.current})" title="보유 수량 직접 수정">✏️</button>
+                  <button class="btn btn-sm" style="padding: 1px 5px; font-size: 10px; min-height: 20px; line-height: 18px; color: #fbbf24; border-color: rgba(251,191,36,0.3);" onclick="updateTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">🔄 0개로</button>
                   ${t.storage_count > 0 ? `<small style="color: #38bdf8; font-size: 10.5px; margin-left: 2px;">(가방 ${t.inventory_count || 0} + 창고 ${t.storage_count})</small>` : ''}
                 </div>
                 <span style="color: ${isDone ? '#34d399' : '#f43f5e'}; font-weight: 600;">${isDone ? '납품 준비 완료' : `${t.needed}개 부족`}</span>
@@ -4397,6 +4553,33 @@ HTML_PAGE = """<!DOCTYPE html>
           const isDone = t.is_completed || (t.current >= t.goal);
           const percent = Math.min(100, Math.round((t.current / (t.goal || 1)) * 100));
           const safeName = (t.item_name || '').replace(/'/g, "\\'");
+
+          let recHtml = '';
+          const rec = t.recipe || {};
+          const ingKeys = Object.keys(rec);
+          if (ingKeys.length > 0) {
+            const ingListStr = ingKeys.map(k => `${k} ${rec[k]}개`).join(', ');
+            recHtml = `
+              <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px; padding: 4px 8px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <span style="color: #a7f3d0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="1회 제작 재료: ${ingListStr}">
+                  📦 1회 재료: <strong>${ingListStr}</strong>
+                </span>
+                <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')" style="padding: 1px 6px; font-size: 10.5px; white-space: nowrap; background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.35);">
+                  ✏️ 레시피
+                </button>
+              </div>
+            `;
+          } else {
+            recHtml = `
+              <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 4px 8px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <span style="color: #fcd34d;">⚠️ 재료 미확인 (클릭하여 직접 입력)</span>
+                <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')" style="padding: 1px 6px; font-size: 10.5px; white-space: nowrap; background: rgba(245, 158, 11, 0.2); color: #fbbf24; border-color: rgba(245, 158, 11, 0.35);">
+                  ➕ 재료 등록
+                </button>
+              </div>
+            `;
+          }
+
           html += `
             <div style="background: rgba(0,0,0,0.3); border: 1px solid ${isDone ? 'rgba(52,211,153,0.35)' : 'rgba(255,255,255,0.08)'}; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -4412,6 +4595,8 @@ HTML_PAGE = """<!DOCTYPE html>
                 </div>
               </div>
 
+              ${recHtml}
+
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 4px;">
                   <span style="color: #94a3b8;">진행도</span>
@@ -4422,9 +4607,21 @@ HTML_PAGE = """<!DOCTYPE html>
                 </div>
               </div>
 
-              <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.04);">
-                <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', -1)" style="padding: 1px 7px; font-size: 11px; background: rgba(255,255,255,0.06);">-1</button>
-                <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', 1)" style="padding: 1px 7px; font-size: 11px; background: rgba(255,255,255,0.06);">+1</button>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; flex-wrap: wrap; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.04);">
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <span style="color: #cbd5e1;">보유:</span>
+                  <button class="btn btn-sm" style="padding: 1px 6px; font-size: 11px; min-height: 20px; line-height: 18px;" onclick="adjustCustomTargetCurrent('${safeName}', ${t.current}, -1)" title="1개 감소">-</button>
+                  <strong style="color: ${isDone ? '#34d399' : '#fbbf24'}; cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCustomCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 입력">${t.current}</strong>
+                  <button class="btn btn-sm" style="padding: 1px 6px; font-size: 11px; min-height: 20px; line-height: 18px;" onclick="adjustCustomTargetCurrent('${safeName}', ${t.current}, 1)" title="1개 증가">+</button>
+                  <button class="btn btn-sm" style="padding: 1px 5px; font-size: 10px; min-height: 20px; line-height: 18px; color: #a5b4fc; border-color: rgba(165,180,252,0.3);" onclick="promptEditCustomCurrent('${safeName}', ${t.current})" title="보유 수량 직접 수정">✏️</button>
+                  <button class="btn btn-sm" style="padding: 1px 5px; font-size: 10px; min-height: 20px; line-height: 18px; color: #fbbf24; border-color: rgba(251,191,36,0.3);" onclick="updateCustomTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">🔄 0개로</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <span style="color: #94a3b8;">목표:</span>
+                  <strong style="color: #e2e8f0;">${t.goal}개</strong>
+                  <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', -1)" style="padding: 1px 7px; font-size: 11px; background: rgba(255,255,255,0.06);">-1</button>
+                  <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', 1)" style="padding: 1px 7px; font-size: 11px; background: rgba(255,255,255,0.06);">+1</button>
+                </div>
               </div>
             </div>
           `;
@@ -4508,6 +4705,76 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    async function updateCustomTargetCurrent(itemName, currentVal) {
+      try {
+        const res = await fetch('/api/update_custom_target_current', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_name: itemName, current: parseInt(currentVal, 10) })
+        });
+        const d = await res.json();
+        if (d.status === 'success') {
+          pollLogs();
+          loadCustomTargets();
+          loadCustomPlan();
+        } else {
+          alert('수량 변경 실패: ' + (d.error || '알 수 없는 오류'));
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    function adjustCustomTargetCurrent(itemName, currentVal, delta) {
+      const nextVal = Math.max(0, currentVal + delta);
+      updateCustomTargetCurrent(itemName, nextVal);
+    }
+
+    function promptEditCustomCurrent(itemName, currentVal) {
+      const val = prompt(`'${itemName}'의 현재 보유(또는 제작 완료) 수량을 입력하세요:`, currentVal);
+      if (val !== null) {
+        const num = parseInt(val, 10);
+        if (!isNaN(num) && num >= 0) {
+          updateCustomTargetCurrent(itemName, num);
+        } else {
+          alert('0 이상의 숫자를 입력해주세요.');
+        }
+      }
+    }
+
+    async function resetAllCustomTargetsCurrent() {
+      if (!confirm('등록된 모든 개별 제작 목표의 현재 보유 수량을 0개로 초기화할까요?\\n\\n(모든 목표 아이템을 처음부터 다시 제작하고자 할 때 유용합니다)')) return;
+      try {
+        const res = await fetch('/api/reset_custom_targets_current', { method: 'POST' });
+        const d = await res.json();
+        if (d.status === 'success') {
+          pollLogs();
+          loadCustomTargets();
+          loadCustomPlan();
+        } else {
+          alert('초기화 실패: ' + (d.error || '알 수 없는 오류'));
+        }
+      } catch (e) {
+        alert('초기화 요청 실패: ' + e);
+      }
+    }
+
+    async function syncCustomTargetsInventory() {
+      try {
+        const res = await fetch('/api/sync_custom_targets_inventory', { method: 'POST' });
+        const d = await res.json();
+        if (d.status === 'success') {
+          pollLogs();
+          loadCustomTargets();
+          loadCustomPlan();
+        } else {
+          alert('동기화 실패: ' + (d.error || '알 수 없는 오류'));
+        }
+      } catch (e) {
+        alert('동기화 요청 실패: ' + e);
+      }
+    }
+
     async function deleteCustomTarget(itemName) {
       if (!confirm(`'${itemName}' 목표를 삭제하시겠습니까?`)) return;
       try {
@@ -4531,6 +4798,146 @@ HTML_PAGE = """<!DOCTYPE html>
         loadCustomPlan();
       } catch (e) {
         alert('초기화 실패: ' + e);
+      }
+    }
+
+    // ==========================================
+    // Recipe Manager & Modal JavaScript
+    // ==========================================
+    let currentRecipeModalItem = '';
+
+    async function openRecipeModal(itemName) {
+      currentRecipeModalItem = itemName || '';
+      const overlay = document.getElementById('recipe-modal-overlay');
+      const inputEl = document.getElementById('recipe-modal-item-name');
+      const titleEl = document.getElementById('recipe-modal-title');
+      const container = document.getElementById('recipe-modal-rows-container');
+      const msgEl = document.getElementById('recipe-modal-msg');
+      if (msgEl) msgEl.innerText = '';
+
+      if (inputEl) inputEl.value = currentRecipeModalItem;
+      if (titleEl) titleEl.innerText = currentRecipeModalItem ? `📖 제작 레시피 설정: '${currentRecipeModalItem}'` : '📖 제작 레시피 설정 / 수정';
+      if (overlay) overlay.classList.add('active');
+
+      if (currentRecipeModalItem) {
+        await loadRecipeForCurrentInput();
+      } else {
+        if (container) container.innerHTML = '';
+        addRecipeModalRow('', 1);
+      }
+    }
+
+    function openRecipeManagerModal() {
+      openRecipeModal('');
+    }
+
+    function closeRecipeModal() {
+      const overlay = document.getElementById('recipe-modal-overlay');
+      if (overlay) overlay.classList.remove('active');
+    }
+
+    function handleRecipeModalOverlayClick(e) {
+      if (e.target && e.target.id === 'recipe-modal-overlay') {
+        closeRecipeModal();
+      }
+    }
+
+    async function loadRecipeForCurrentInput() {
+      const inputEl = document.getElementById('recipe-modal-item-name');
+      const container = document.getElementById('recipe-modal-rows-container');
+      const msgEl = document.getElementById('recipe-modal-msg');
+      if (!inputEl || !container) return;
+      const itemName = inputEl.value.trim();
+      if (!itemName) return;
+
+      container.innerHTML = '<div style="color:#94a3b8; font-size:12px; padding:8px;">레시피 조회 중...</div>';
+      try {
+        const res = await fetch(`/api/recipe?name=${encodeURIComponent(itemName)}`);
+        const data = await res.json();
+        container.innerHTML = '';
+        const ings = data.ingredients || {};
+        const keys = Object.keys(ings);
+        if (keys.length === 0) {
+          if (msgEl) msgEl.innerText = '⚠️ 등록된 레시피가 없습니다. 아래에 재료를 추가해주세요.';
+          addRecipeModalRow('', 1);
+        } else {
+          if (msgEl) msgEl.innerText = `총 ${keys.length}개 재료 로드됨`;
+          keys.forEach(k => {
+            addRecipeModalRow(k, ings[k]);
+          });
+        }
+      } catch (e) {
+        container.innerHTML = `<div style="color:#f87171; font-size:12px; padding:8px;">조회 실패: ${e}</div>`;
+      }
+    }
+
+    function addRecipeModalRow(name, count) {
+      const container = document.getElementById('recipe-modal-rows-container');
+      if (!container) return;
+      const row = document.createElement('div');
+      row.className = 'recipe-modal-row';
+      row.style.cssText = 'display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);';
+      row.innerHTML = `
+        <input type="text" class="recipe-row-name" value="${(name || '').replace(/"/g, '&quot;')}" placeholder="재료명 (예: 달걀, 물이 든 병)" style="flex: 2; padding: 7px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #fff; font-size: 12.5px;">
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <input type="number" class="recipe-row-qty" value="${count || 1}" min="1" max="999" style="width: 65px; padding: 7px 8px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #fff; font-size: 12.5px; text-align: center;">
+          <span style="font-size: 11.5px; color: #94a3b8;">개</span>
+        </div>
+        <button type="button" class="btn btn-sm" onclick="this.closest('.recipe-modal-row').remove()" style="padding: 4px 8px; font-size: 11px; color: #f87171; border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.1);" title="이 재료 삭제">✕</button>
+      `;
+      container.appendChild(row);
+    }
+
+    async function saveRecipeFromModal() {
+      const inputEl = document.getElementById('recipe-modal-item-name');
+      const container = document.getElementById('recipe-modal-rows-container');
+      const msgEl = document.getElementById('recipe-modal-msg');
+      if (!inputEl || !container) return;
+      const itemName = inputEl.value.trim();
+      if (!itemName) {
+        alert('대상 아이템명을 입력해주세요.');
+        inputEl.focus();
+        return;
+      }
+
+      const rows = container.querySelectorAll('.recipe-modal-row');
+      const ingredients = {};
+      rows.forEach(r => {
+        const nameInput = r.querySelector('.recipe-row-name');
+        const qtyInput = r.querySelector('.recipe-row-qty');
+        if (nameInput && qtyInput) {
+          const ingName = nameInput.value.trim();
+          const qty = parseInt(qtyInput.value, 10);
+          if (ingName && !isNaN(qty) && qty > 0) {
+            ingredients[ingName] = qty;
+          }
+        }
+      });
+
+      if (Object.keys(ingredients).length === 0) {
+        if (!confirm(`'${itemName}'의 필요 재료가 아무것도 입력되지 않았습니다. 빈 레시피로 저장할까요?`)) return;
+      }
+
+      try {
+        const res = await fetch('/api/update_recipe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_name: itemName, ingredients: ingredients })
+        });
+        const d = await res.json();
+        if (d.status === 'success') {
+          if (msgEl) msgEl.innerText = '✅ 저장 완료!';
+          closeRecipeModal();
+          pollLogs();
+          loadCustomTargets();
+          loadCustomPlan();
+          loadDeliveryTargets();
+          loadBatchPlan();
+        } else {
+          alert('레시피 저장 실패: ' + (d.error || '알 수 없는 오류'));
+        }
+      } catch (e) {
+        alert('저장 요청 실패: ' + e);
       }
     }
 
@@ -4771,6 +5178,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     // 4. Status, Quests, Manual Crafting
     let statusFailCount = 0;
+    let wasBusy = false;
     async function updateStatus() {
       const statusPill = document.getElementById('pill-status');
       const wingsPill = document.getElementById('pill-wings');
@@ -4784,11 +5192,23 @@ HTML_PAGE = """<!DOCTYPE html>
 
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
         const res = await fetch('/api/status', { signal: controller.signal });
         clearTimeout(timeoutId);
         const data = await res.json();
         statusFailCount = 0;
+
+        const currentlyBusy = !!data.is_busy;
+        if (!currentlyBusy && wasBusy) {
+          // Task just finished! Trigger a one-time fresh refresh of targets and plans
+          try { loadDeliveryTargets(); } catch(e) {}
+          try { loadCustomTargets(); } catch(e) {}
+          try { loadBatchPlan(); } catch(e) {}
+          try { loadCustomPlan(); } catch(e) {}
+          try { loadQuickAlterPlan(); } catch(e) {}
+          try { loadAlteringQueue(); } catch(e) {}
+        }
+        wasBusy = currentlyBusy;
 
         const cliAlertBanner = document.getElementById('cli-connection-alert');
         const alertTitle = document.getElementById('cli-alert-title');
@@ -4888,9 +5308,14 @@ HTML_PAGE = """<!DOCTYPE html>
       } catch (err) {
         statusFailCount++;
         console.warn('updateStatus fetch failure (' + statusFailCount + '):', err);
-        if (statusFailCount >= 3 && statusPill) {
-          statusPill.className = "pill offline";
-          statusPill.innerHTML = `● 연결 재시도 중...`;
+        if (statusFailCount >= 4 && statusPill) {
+          if (isCurrentlyBusy) {
+            statusPill.className = "pill warning";
+            statusPill.innerHTML = `● 작업 진행 중 (응답 대기)...`;
+          } else {
+            statusPill.className = "pill offline";
+            statusPill.innerHTML = `● 연결 재시도 중...`;
+          }
         }
       }
     }
@@ -5062,23 +5487,27 @@ HTML_PAGE = """<!DOCTYPE html>
       try { applyDeliveryTargetsView(); } catch(e) { console.error('applyDeliveryTargetsView error:', e); }
       try { applyMainModeView(); } catch(e) { console.error('applyMainModeView error:', e); }
       try { loadSettings(); } catch(e) { console.error('loadSettings error:', e); }
-      try { updateStatus(); } catch(e) { console.error('updateStatus error:', e); }
-      try { loadDeliveryTargets(); } catch(e) { console.error('loadDeliveryTargets error:', e); }
-      try { loadCustomTargets(); } catch(e) { console.error('loadCustomTargets error:', e); }
       try { loadPresets(); } catch(e) { console.error('loadPresets error:', e); }
-      try { loadQuickAlterPlan(); } catch(e) { console.error('loadQuickAlterPlan error:', e); }
-      try { loadBatchPlan(); } catch(e) { console.error('loadBatchPlan error:', e); }
-      try { loadCustomPlan(); } catch(e) { console.error('loadCustomPlan error:', e); }
-      try { loadAlteringQueue(); } catch(e) { console.error('loadAlteringQueue error:', e); }
       try { pollLogs(); } catch(e) { console.error('pollLogs error:', e); }
 
+      // Status executes first immediately
+      try { updateStatus(); } catch(e) { console.error('updateStatus error:', e); }
+
+      // Stagger heavy queries to prevent simultaneous CLI subprocess flood on boot
+      setTimeout(() => { try { loadDeliveryTargets(); } catch(e) {} }, 150);
+      setTimeout(() => { try { loadCustomTargets(); } catch(e) {} }, 300);
+      setTimeout(() => { try { loadAlteringQueue(); } catch(e) {} }, 500);
+      setTimeout(() => { try { loadQuickAlterPlan(); } catch(e) {} }, 750);
+      setTimeout(() => { try { loadBatchPlan(); } catch(e) {} }, 1000);
+      setTimeout(() => { try { loadCustomPlan(); } catch(e) {} }, 1300);
+
       setInterval(() => { try { updateStatus(); } catch(e) {} }, 3000);
-      setInterval(() => { if (document.hidden) return; try { loadDeliveryTargets(); } catch(e) {} }, 6000);
-      setInterval(() => { if (document.hidden) return; try { loadCustomTargets(); } catch(e) {} }, 6000);
-      setInterval(() => { if (document.hidden) return; try { loadQuickAlterPlan(); } catch(e) {} }, 8000);
-      setInterval(() => { if (document.hidden) return; try { loadBatchPlan(); } catch(e) {} }, 8000);
-      setInterval(() => { if (document.hidden) return; try { loadCustomPlan(); } catch(e) {} }, 8000);
-      setInterval(() => { if (document.hidden) return; try { loadAlteringQueue(); } catch(e) {} }, 5000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadDeliveryTargets(); } catch(e) {} }, 6000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadCustomTargets(); } catch(e) {} }, 6000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadQuickAlterPlan(); } catch(e) {} }, 8000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadBatchPlan(); } catch(e) {} }, 8000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadCustomPlan(); } catch(e) {} }, 8000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadAlteringQueue(); } catch(e) {} }, 5000);
       setInterval(() => { if (document.hidden) return; try { pollLogs(); } catch(e) {} }, 1500);
     }
 
