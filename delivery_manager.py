@@ -1871,7 +1871,7 @@ class DeliveryManager:
         if not tool_ok:
             raise MabinogiCLIError(f"'{item_name}' 채집 도구가 없거나 내구도가 0입니다.")
 
-        initial_count = self.cli.count_item(item_name, include_storage=False)
+        initial_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
         target_count = initial_count + required_count
 
         # --- 양털 및 벌목 계열 다단계 우선순위 및 레벨 필터링 설정 ---
@@ -1962,7 +1962,7 @@ class DeliveryManager:
         consecutive_zero_gains = 0
 
         while not self.abort_requested and candidate_idx < len(candidate_list):
-            curr_count = self.cli.count_item(item_name, include_storage=False)
+            curr_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
             gained = max(0, curr_count - initial_count)
             if curr_count >= target_count or gained >= required_count:
                 stopped_by_target = True
@@ -2006,13 +2006,8 @@ class DeliveryManager:
                         "status": "aborted",
                         "item": item_name,
                         "required": required_count,
-                        "gained": max(0, self.cli.count_item(item_name, include_storage=False) - initial_count)
+                        "gained": max(0, self.cli.count_item(item_name, include_storage=False, bypass_cache=True) - initial_count)
                     }
-
-                # While the execute_gathering subprocess is actively executing in worker thread,
-                # avoid contending for _CLI_LOCK with simultaneous get_activity or count_item calls
-                if worker_thread.is_alive():
-                    continue
 
                 # 1. Safety check
                 activity = {}
@@ -2025,7 +2020,7 @@ class DeliveryManager:
                             "status": "dead",
                             "item": item_name,
                             "required": required_count,
-                            "gained": max(0, self.cli.count_item(item_name, include_storage=False) - initial_count)
+                            "gained": max(0, self.cli.count_item(item_name, include_storage=False, bypass_cache=True) - initial_count)
                         }
                 except Exception:
                     pass
@@ -2047,9 +2042,9 @@ class DeliveryManager:
                 except Exception:
                     pass
 
-                # 2. Check current count in inventory (항상 원래 목표 아이템 추적)
+                # 2. Check current count in inventory (항상 원래 목표 아이템 실시간 추적)
                 try:
-                    curr_count = self.cli.count_item(item_name, include_storage=False)
+                    curr_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
                 except Exception:
                     continue
                 gained = max(0, curr_count - initial_count)
@@ -2125,7 +2120,7 @@ class DeliveryManager:
                 break
 
             # Check if this round gained any items
-            curr_count = self.cli.count_item(item_name, include_storage=False)
+            curr_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
             round_gained = curr_count - round_initial_count
             if round_gained <= 0:
                 consecutive_zero_gains += 1
@@ -2161,7 +2156,7 @@ class DeliveryManager:
                 time.sleep(1.0)
 
         # Final recount
-        final_count = self.cli.count_item(item_name, include_storage=False)
+        final_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
         total_gained = max(0, final_count - initial_count)
 
         if total_gained >= required_count or final_count >= target_count:

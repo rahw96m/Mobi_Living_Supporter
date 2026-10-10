@@ -6,7 +6,7 @@
 
 파이썬 설치 없이 윈도우 환경에서 즉시 실행할 수 있는 독립 실행형 패키지를 제공합니다.
 
-1. [GitHub Releases](https://github.com/rahw96m/Mobi_Living_Supporter/releases/latest)에서 최신 압축 파일(`Mobi_Living_Supporter_v0.5.6.zip`)을 다운로드합니다.
+1. [GitHub Releases](https://github.com/rahw96m/Mobi_Living_Supporter/releases/latest)에서 최신 압축 파일(`Mobi_Living_Supporter_v0.5.7.zip`)을 다운로드합니다.
 2. 다운로드한 ZIP 파일의 압축을 원하는 폴더에 해제합니다.
 3. 폴더 내의 `모비노기_생활_지원도구.exe`를 실행하거나 `바탕화면_바로가기_만들기.bat`을 실행합니다.
 4. 브라우저에서 대시보드(`http://localhost:8080`)가 자동으로 열립니다. (웹 브라우저 창 종료 시 서버 자동 종료)

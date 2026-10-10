@@ -436,7 +436,10 @@ class MabinogiCLI:
         if encoded is not None:
             args.append(encoded)
 
-        if command == "stop_action":
+        # Commands that must not block the shared _CLI_LOCK:
+        # - stop_action: emergency interrupt of in-progress actions
+        # - execute_gathering: long-running background action monitored concurrently by worker loop
+        if command in ("stop_action", "execute_gathering"):
             try:
                 kwargs = {
                     "capture_output": True,
@@ -453,6 +456,16 @@ class MabinogiCLI:
                     kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
                 res = subprocess.run(args, **kwargs)
+            except subprocess.TimeoutExpired as te:
+                raise MabinogiCLIError(f"명령어 '{command}' 실행 시간이 초과되었습니다 ({timeout}초)", exit_code=3, error_code="TIMEOUT") from te
+            except FileNotFoundError as fnf:
+                raise MabinogiCLIError(
+                    f"MabinogiMobile_CLI.exe 실행 파일을 찾을 수 없습니다: {str(fnf)}\n"
+                    f"설정된 경로: {self.cli_path}\n"
+                    f"게임 설치 폴더 및 MM AI 에이전트 활성화 상태를 확인해주세요.",
+                    exit_code=1,
+                    error_code="CLI_NOT_FOUND"
+                ) from fnf
             except Exception as ex:
                 raise MabinogiCLIError(f"CLI 실행 중 오류가 발생했습니다 ('{command}'): {str(ex)}", error_code="EXEC_ERROR") from ex
         else:
@@ -607,7 +620,7 @@ class MabinogiCLI:
 
     # --- Items & Inventory ---
 
-    def get_items(self, name: Optional[str] = None, category: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_items(self, name: Optional[str] = None, category: Optional[str] = None, bypass_cache: bool = False) -> List[Dict[str, Any]]:
         body_dict = {}
         if name:
             body_dict["name"] = name
@@ -615,16 +628,16 @@ class MabinogiCLI:
             body_dict["category"] = category
 
         body_str = json.dumps(body_dict, ensure_ascii=False) if body_dict else None
-        _, data = self.run_raw("get_items", body_str, timeout=25)
+        _, data = self.run_raw("get_items", body_str, timeout=25, bypass_cache=bypass_cache)
         return data if isinstance(data, list) else []
 
-    def get_all_item_locations_map(self) -> Dict[str, Dict[str, int]]:
+    def get_all_item_locations_map(self, bypass_cache: bool = False) -> Dict[str, Dict[str, int]]:
         """
         Returns a high-speed cached mapping of all owned items:
         item_name -> {inventory, character_storage, account_storage, storage_total, total}.
-        Queries get_items() once without filters (benefiting from 4.0s READ_CACHE_TTL).
+        Queries get_items() once without filters (benefiting from 4.0s READ_CACHE_TTL when bypass_cache is False).
         """
-        items = self.get_items()
+        items = self.get_items(bypass_cache=bypass_cache)
         mapping: Dict[str, Dict[str, int]] = {}
         for it in items:
             name = it.get("DisplayName", "")
@@ -651,19 +664,19 @@ class MabinogiCLI:
             mapping[name]["total"] += cnt
         return mapping
 
-    def count_item(self, item_name: str, include_storage: bool = True) -> int:
+    def count_item(self, item_name: str, include_storage: bool = True, bypass_cache: bool = False) -> int:
         """Counts how many of item_name the player owns (in inventory and optionally storage)."""
-        breakdown = self.get_item_location_breakdown(item_name)
+        breakdown = self.get_item_location_breakdown(item_name, bypass_cache=bypass_cache)
         return breakdown["total"] if include_storage else breakdown["inventory"]
 
-    def get_item_location_breakdown(self, item_name: str) -> Dict[str, int]:
+    def get_item_location_breakdown(self, item_name: str, bypass_cache: bool = False) -> Dict[str, int]:
         """
         Returns a breakdown of where item_name is stored:
         inventory (가방), character_storage (개인 창고), account_storage (공용 창고),
         storage_total (창고 합계), and total (전체 총합).
         Uses fast batch-cached item locations map to prevent subprocess flood.
         """
-        mapping = self.get_all_item_locations_map()
+        mapping = self.get_all_item_locations_map(bypass_cache=bypass_cache)
         if item_name in mapping:
             return copy.deepcopy(mapping[item_name])
         return {

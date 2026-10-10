@@ -183,11 +183,14 @@ last_execution_summary: Optional[Dict[str, Any]] = None
 last_summary_id: int = 0
 
 def add_log(level: str, message: str):
+    global current_task_info
     timestamp = time.strftime("%H:%M:%S")
     with log_lock:
         console_logs.append({"time": timestamp, "level": level, "message": message})
         if len(console_logs) > 300:
             console_logs.pop(0)
+    if is_busy and (level == "action" or message.startswith("🌾") or message.startswith("🌿") or message.startswith("🎯") or message.startswith("✅")):
+        current_task_info = message
 
 def get_cached_status() -> Dict[str, Any]:
     global cached_status_data, cached_status_time, cached_character_info, cached_character_time
