@@ -21,6 +21,7 @@ READ_CACHE_TTL = {
     "get_wings_count": 5.0,
     "get_currencies": 10.0,
     "get_items": 4.0,
+    "get_quests": 5.0,
     "get_my_info": 30.0,
     "get_craftable_items": 15.0,
     "get_alterable_items": 15.0,
@@ -617,40 +618,61 @@ class MabinogiCLI:
         _, data = self.run_raw("get_items", body_str, timeout=25)
         return data if isinstance(data, list) else []
 
+    def get_all_item_locations_map(self) -> Dict[str, Dict[str, int]]:
+        """
+        Returns a high-speed cached mapping of all owned items:
+        item_name -> {inventory, character_storage, account_storage, storage_total, total}.
+        Queries get_items() once without filters (benefiting from 4.0s READ_CACHE_TTL).
+        """
+        items = self.get_items()
+        mapping: Dict[str, Dict[str, int]] = {}
+        for it in items:
+            name = it.get("DisplayName", "")
+            if not name:
+                continue
+            loc = it.get("Location", "")
+            cnt = int(it.get("Count", 0) or 0)
+            if name not in mapping:
+                mapping[name] = {
+                    "inventory": 0,
+                    "character_storage": 0,
+                    "account_storage": 0,
+                    "storage_total": 0,
+                    "total": 0
+                }
+            if loc == "inventory":
+                mapping[name]["inventory"] += cnt
+            elif loc == "character_storage":
+                mapping[name]["character_storage"] += cnt
+                mapping[name]["storage_total"] += cnt
+            elif loc == "account_storage":
+                mapping[name]["account_storage"] += cnt
+                mapping[name]["storage_total"] += cnt
+            mapping[name]["total"] += cnt
+        return mapping
+
     def count_item(self, item_name: str, include_storage: bool = True) -> int:
         """Counts how many of item_name the player owns (in inventory and optionally storage)."""
-        items = self.get_items(name=item_name)
-        total = 0
-        for it in items:
-            if it.get("DisplayName") == item_name:
-                loc = it.get("Location")
-                if loc == "inventory" or (include_storage and loc in ("account_storage", "character_storage")):
-                    total += int(it.get("Count", 0))
-        return total
+        breakdown = self.get_item_location_breakdown(item_name)
+        return breakdown["total"] if include_storage else breakdown["inventory"]
 
     def get_item_location_breakdown(self, item_name: str) -> Dict[str, int]:
         """
         Returns a breakdown of where item_name is stored:
         inventory (가방), character_storage (개인 창고), account_storage (공용 창고),
         storage_total (창고 합계), and total (전체 총합).
+        Uses fast batch-cached item locations map to prevent subprocess flood.
         """
-        items = self.get_items(name=item_name)
-        breakdown = {
+        mapping = self.get_all_item_locations_map()
+        if item_name in mapping:
+            return copy.deepcopy(mapping[item_name])
+        return {
             "inventory": 0,
             "character_storage": 0,
             "account_storage": 0,
             "storage_total": 0,
             "total": 0
         }
-        for it in items:
-            if it.get("DisplayName") == item_name:
-                loc = it.get("Location")
-                cnt = int(it.get("Count", 0))
-                if loc in breakdown:
-                    breakdown[loc] += cnt
-        breakdown["storage_total"] = breakdown["character_storage"] + breakdown["account_storage"]
-        breakdown["total"] = breakdown["inventory"] + breakdown["storage_total"]
-        return breakdown
 
     # --- Crafting ---
 

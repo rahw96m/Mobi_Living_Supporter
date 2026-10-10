@@ -316,6 +316,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(data_bytes)
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
             pass
+        finally:
+            self.close_connection = True
 
     def _send_json(self, obj, status=200):
         body_bytes = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -4022,8 +4024,10 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
-    // Delivery Targets Manager
+    let isDeliveryTargetsLoading = false;
     async function loadDeliveryTargets() {
+      if (isDeliveryTargetsLoading) return;
+      isDeliveryTargetsLoading = true;
       try {
         const res = await fetch('/api/delivery_targets');
         const data = await res.json();
@@ -4126,6 +4130,8 @@ HTML_PAGE = """<!DOCTYPE html>
         container.innerHTML = html;
       } catch (e) {
         console.error('loadDeliveryTargets error:', e);
+      } finally {
+        isDeliveryTargetsLoading = false;
       }
     }
 
@@ -4671,9 +4677,10 @@ HTML_PAGE = """<!DOCTYPE html>
     // ==========================================
     // Custom Craft Targets & Unified Planner JS
     // ==========================================
-    let cachedCustomPlan = null;
-
+    let isCustomTargetsLoading = false;
     async function loadCustomTargets() {
+      if (isCustomTargetsLoading) return;
+      isCustomTargetsLoading = true;
       try {
         const res = await fetch('/api/custom_targets');
         const data = await res.json();
@@ -4772,6 +4779,8 @@ HTML_PAGE = """<!DOCTYPE html>
         container.innerHTML = html;
       } catch (e) {
         console.error('loadCustomTargets error:', e);
+      } finally {
+        isCustomTargetsLoading = false;
       }
     }
 
@@ -5357,14 +5366,17 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    let isUpdatingStatus = false;
     async function updateStatus() {
+      if (isUpdatingStatus) return;
+      isUpdatingStatus = true;
       const statusPill = document.getElementById('pill-status');
       const wingsPill = document.getElementById('pill-wings');
       const weightPill = document.getElementById('pill-weight');
 
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
         const res = await fetch('/api/status', { signal: controller.signal });
         clearTimeout(timeoutId);
         const data = await res.json();
@@ -5484,6 +5496,8 @@ HTML_PAGE = """<!DOCTYPE html>
             statusPill.innerHTML = `● 연결 재시도 중...`;
           }
         }
+      } finally {
+        isUpdatingStatus = false;
       }
     }
 
@@ -5681,18 +5695,22 @@ HTML_PAGE = """<!DOCTYPE html>
       setTimeout(() => { try { loadCustomPlan(); } catch(e) {} }, 1300);
 
       setInterval(() => { try { updateStatus(); } catch(e) {} }, 3000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadDeliveryTargets(); } catch(e) {} }, 8000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadCustomTargets(); } catch(e) {} }, 8000);
       setInterval(() => {
         if (document.hidden || isCurrentlyBusy) return;
         try {
-          if (currentMainMode === 'delivery') loadBatchPlan();
-          else if (currentMainMode === 'custom_craft') loadCustomPlan();
-          else if (currentMainMode === 'quick_alter') loadQuickAlterPlan();
+          if (currentMainMode === 'delivery') {
+            loadDeliveryTargets();
+            loadBatchPlan();
+          } else if (currentMainMode === 'custom_craft') {
+            loadCustomTargets();
+            loadCustomPlan();
+          } else if (currentMainMode === 'quick_alter') {
+            loadQuickAlterPlan();
+          }
         } catch(e) {}
-      }, 8000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadAlteringQueue(); } catch(e) {} }, 6000);
-      setInterval(() => { if (document.hidden) return; try { pollLogs(); } catch(e) {} }, 1500);
+      }, 12000);
+      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadAlteringQueue(); } catch(e) {} }, 8000);
+      setInterval(() => { if (document.hidden) return; try { pollLogs(); } catch(e) {} }, 2500);
     }
 
     if (document.readyState === 'loading') {
