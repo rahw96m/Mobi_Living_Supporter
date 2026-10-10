@@ -3,6 +3,7 @@ import sys
 import json
 import threading
 import time
+import copy
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from typing import Dict, Any, List
