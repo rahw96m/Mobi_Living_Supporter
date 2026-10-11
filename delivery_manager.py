@@ -42,7 +42,7 @@ DEFAULT_RECIPES: Dict[str, Dict[str, int]] = {
     "린넨 로브S": {"상급 옷감": 3, "옷감+": 2},
     "린넨 로브": {"옷감": 3, "가죽": 2},
     "마블 힐링 완드S": {"상급 목재": 3, "강철괴": 3},
-    "달걀프라이": {"달걀": 1},
+    "달걀프라이": {"달걀": 1, "소금": 1},
     "삶은 달걀": {"달걀": 1, "물이 든 병": 1},
     "여행자 간식": {"달걀": 1, "고기": 1},
     "조개찜": {"조개": 5, "물이 든 병": 1},
@@ -62,7 +62,7 @@ DEFAULT_RECIPES: Dict[str, Dict[str, int]] = {
     "그랜드 크로스보우": {"목재+": 2, "강철괴": 2},
     "전투복 신발S": {"상급 옷감": 3, "강철괴": 2},
     "크레센트 엣지소드": {"강철괴": 2, "가죽+": 2},
-    "마법 유탄 부품": {"마나 허브": 2},
+    "마법 유탄 부품": {"분해된 장비 부품": 50, "마나 허브": 10, "협곡의 마나석": 1, "연금술 부스러기": 50},
     "캠프파이어 키트": {"통나무": 5},
     "숙련 캠프파이어 키트": {"상급 통나무": 5},
     "전문 캠프파이어 키트": {"상급 통나무+": 4},
@@ -1077,17 +1077,25 @@ class DeliveryManager:
             try:
                 with open(RECIPE_CACHE_FILE, "r", encoding="utf-8") as f:
                     cached = json.load(f)
-                    # Self-heal against incomplete known recipes (e.g. 삶은 달걀 missing 달걀)
+                    needs_save = False
+                    # Self-heal against incomplete or outdated known recipes
                     for default_item, default_ings in DEFAULT_RECIPES.items():
                         if default_item in cached:
                             cached_ings = cached[default_item]
                             if not isinstance(cached_ings, dict):
                                 cached[default_item] = dict(default_ings)
+                                needs_save = True
                             else:
                                 for k, v in default_ings.items():
                                     if k not in cached_ings:
                                         cached_ings[k] = v
+                                        needs_save = True
+                                    elif k == "마나 허브" and default_item == "마법 유탄 부품" and cached_ings[k] < 10:
+                                        cached_ings[k] = 10
+                                        needs_save = True
                     self.recipes.update(cached)
+                    if needs_save:
+                        self.save_recipe_cache()
             except Exception:
                 pass
 
@@ -2735,14 +2743,25 @@ class DeliveryManager:
                         consume_v_stock(clean_it, goal_qty)
                 continue
 
-            # Check if this delivery item is a raw gatherable item (e.g. 우유, 달걀, 사과, 감자 등)
+            # Check if this delivery item is a raw gatherable item (e.g. 양털, 우유, 달걀, 사과, 감자 등)
             if is_gath or clean_it in KNOWN_GATHERABLE_ITEMS:
                 t["is_gather_item"] = True
                 recipe_details[it_name] = {}
-                target_qty = t.get("goal") or (t.get("current", 0) + needed)
-                raw_total_demands[clean_it] += target_qty
-                used = consume_v_stock(clean_it, target_qty)
-                net_def = max(0, target_qty - used)
+                # CRITICAL: Direct delivery targets MUST be physically in the inventory (가방) to submit to NPC!
+                # Warehouse / storage counts cannot be submitted directly without manual withdrawal.
+                # Therefore, only inventory count satisfies direct delivery demand:
+                bd_stock = get_stock(clean_it)
+                cur_bag = bd_stock["inventory"]
+                goal_qty = t.get("goal") or (cur_bag + needed)
+                raw_total_demands[clean_it] += goal_qty
+
+                # Deduct only used inventory amount from virtual_stock so other downstream crafts don't double-consume it:
+                used_inv = min(cur_bag, goal_qty)
+                if clean_it not in virtual_stock:
+                    get_v_stock(clean_it)
+                virtual_stock[clean_it] = max(0, virtual_stock[clean_it] - used_inv)
+
+                net_def = max(0, goal_qty - cur_bag)
                 if net_def > 0:
                     raw_gather_demands[clean_it] += net_def
                 else:
@@ -3425,15 +3444,15 @@ class DeliveryManager:
                     break
                 item_name = t["item_name"]
                 goal = int(t.get("goal", 1))
-                cur_owned = self.get_effective_owned(item_name)
-                if cur_owned >= goal:
+                # For direct delivery tasks, count bag-only stock so warehouse stock doesn't prevent crafting required delivery items:
+                is_delivery_task = bool(t.get("quest_title") and "납품" in t.get("quest_title", ""))
+                cur_owned = self.get_effective_owned(item_name, include_storage=not is_delivery_task)
+                needed = t.get("needed") if (t.get("needed") is not None and t.get("needed") > 0) else max(0, goal - cur_owned)
+                if needed <= 0 or cur_owned >= goal:
                     self.log(f"🎉 '{item_name}'은(는) 이미 목표 수량({cur_owned}/{goal}개)을 보유 중이므로 제작을 건너뜁니다.", "success", callback)
                     craft_results.append({"item_name": item_name, "crafted": 0, "status": "already_completed"})
                     continue
-                needed = max(0, goal - cur_owned)
-                if needed <= 0:
-                    continue
-                self.log(f"🔨 [완제품 제작 시작] '{item_name}' {needed}개 제작 진행... (현재 보유: {cur_owned}/{goal}개)", "action", callback)
+                self.log(f"🔨 [완제품 제작 시작] '{item_name}' {needed}개 제작 진행... (현재 가방 보유: {cur_owned}/{goal}개)", "action", callback)
                 try:
                     crafted_count = self.auto_craft(item_name, needed, callback=callback)
                     craft_results.append({"item_name": item_name, "crafted": crafted_count, "status": "success"})
@@ -3501,28 +3520,8 @@ class DeliveryManager:
             raise MabinogiCLIError(msg, response_data={"error": "blocked", "kind": "dead"})
 
         owned = self.get_effective_owned(item_name)
-        self.log(f"📊 현재 보유량: {owned}개 / 목표 수량: {target_count}개", "info", callback)
-
-        if owned >= target_count:
-            msg = f"'{item_name}'을(를) 이미 {owned}개 보유하고 있어 추가 제작이 필요 없습니다!"
-            self.log(f"🎉 {msg}", "success", callback)
-            final_wings = self._safe_get_wings(initial_wings)
-            summary = self.format_and_log_summary(
-                summary_title=f"'{item_name}' 제작 불필요 (이미 목표 수량 보유)",
-                initial_wings=initial_wings,
-                final_wings=final_wings,
-                gathered_list=gathered_list,
-                altered_list=altered_list,
-                crafted_list=craft_results,
-                collected_facilities=collected_facilities_all,
-                duration_sec=time.time() - start_time,
-                status="completed",
-                callback=callback
-            )
-            return {"status": "already_satisfied", "owned": owned, "target": target_count, "summary": summary}
-
-        needed = target_count - owned
-        self.log(f"🎯 추가 제작 필요 수량: {needed}개", "info", callback)
+        needed = target_count
+        self.log(f"📊 현재 보유량: {owned}개 (가방+창고) / 제작 요청 수량: {needed}개 진행 시작", "info", callback)
 
         # 1. Collect completed altering works first to free slots and update stock
         cf = self.collect_completed_altering_works(callback=callback)
@@ -3706,25 +3705,8 @@ class DeliveryManager:
         if not craft_recipe:
             raise MabinogiCLIError(f"'{item_name}'에 대한 제작 레시피를 찾을 수 없습니다.")
 
-        # Re-check current owned before proceeding with final craft
-        owned = self.get_effective_owned(item_name)
-        if owned >= target_count:
-            self.log(f"🎉 '{item_name}'은(는) 이미 목표 수량({owned}/{target_count}개)을 보유하여 추가 제작이 불필요합니다!", "success", callback)
-            final_wings = self._safe_get_wings(initial_wings)
-            summary = self.format_and_log_summary(
-                summary_title=f"'{item_name}' 이미 보유 충족",
-                initial_wings=initial_wings,
-                final_wings=final_wings,
-                gathered_list=gathered_list,
-                altered_list=altered_list,
-                crafted_list=craft_results,
-                collected_facilities=collected_facilities_all,
-                duration_sec=time.time() - start_time,
-                status="completed",
-                callback=callback
-            )
-            return {"status": "already_satisfied", "item": item_name, "owned": owned, "target": target_count, "summary": summary}
-        needed = max(0, target_count - owned)
+        # Ensure needed count reflects user's requested production quantity
+        needed = max(1, target_count)
 
         ingredients = self.get_recipe_ingredients(item_name)
         for ing_name, per_craft in ingredients.items():
