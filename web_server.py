@@ -28,7 +28,7 @@ else:
 
 import webbrowser
 import subprocess
-from mabi_cli import MabinogiCLI, MabinogiCLIError, get_saved_cli_path, find_cli_path
+from mabi_cli import MabinogiCLI, MabinogiCLIError, get_saved_cli_path, find_cli_path, get_user_data_dir, get_user_data_path
 from delivery_manager import DeliveryManager, DeliveryTask, alarm_store, delivery_target_store, delivery_preset_store, custom_target_store, settings_store, get_facility_for_material
 
 BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
@@ -429,6 +429,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error(e)
             return
 
+        if path == "/api/user_data_info":
+            try:
+                data_dir = get_user_data_dir()
+                files = []
+                if os.path.isdir(data_dir):
+                    for f in sorted(os.listdir(data_dir)):
+                        fp = os.path.join(data_dir, f)
+                        if os.path.isfile(fp):
+                            files.append({"name": f, "size": os.path.getsize(fp)})
+                self._send_json({"data_dir": data_dir, "files": files})
+            except Exception as e:
+                self._send_error(e)
+            return
+
         if path == "/api/batch_plan":
             if is_busy:
                 self._send_json({"is_busy": True, "can_start": False, "items": [], "steps": []})
@@ -660,6 +674,19 @@ class RequestHandler(BaseHTTPRequestHandler):
                         "status": "not_found",
                         "message": "게임 프로세스, 레지스트리 및 드라이브에서 MabinogiMobile_CLI.exe를 찾을 수 없습니다."
                     })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/open_data_folder":
+            try:
+                data_dir = get_user_data_dir()
+                if sys.platform == "win32":
+                    os.startfile(data_dir)
+                else:
+                    subprocess.Popen(["xdg-open", data_dir])
+                add_log("info", f"📂 [데이터 폴더] 설정 및 레시피 저장 폴더를 열었습니다: {data_dir}")
+                self._send_json({"status": "ok", "path": data_dir})
             except Exception as e:
                 self._send_error(e)
             return
@@ -2089,11 +2116,14 @@ HTML_PAGE = """<!DOCTYPE html>
             <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
           </div>
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.6</span></h1>
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.8</span></h1>
             <p>마비노기 모바일 AI 커넥터 연동</p>
           </div>
         </div>
         <div class="header-actions">
+          <button class="header-action-btn" onclick="openUserDataFolder()" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #6ee7b7;" title="레시피, 프리셋, 설정이 저장되는 내 문서 폴더 열기 (버전 업데이트 시 자동 유지)">
+            <span class="btn-icon">📂</span><span class="btn-label">데이터 폴더</span>
+          </button>
           <button class="header-action-btn btn-settings" onclick="openCliModal()" title="게임 CLI 설치 경로 및 연결 설정">
             <span class="btn-icon">⚙️</span><span class="btn-label">연결 설정</span>
           </button>
@@ -2765,6 +2795,26 @@ HTML_PAGE = """<!DOCTYPE html>
             <li><strong>설치 드라이브 확인:</strong> 게임이 D:, E: 드라이브 등 기본 경로와 다른 곳에 설치된 경우 위의 폴더 경로를 입력해주세요.</li>
           </ol>
         </div>
+
+        <!-- Persistent User Data Folder Card -->
+        <div style="margin-top: 16px; padding: 13px 16px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 240px;">
+            <div style="font-weight: 700; color: #34d399; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+              <span>📂</span> <span>사용자 설정 & 레시피 영구 저장소</span>
+            </div>
+            <div style="font-size: 11.5px; color: #cbd5e1; margin-top: 3px; line-height: 1.4;">
+              새 버전을 다운받아도 레시피·프리셋·목표·설정은 <strong style="color: #6ee7b7;">내 문서</strong>에 안전하게 자동 보존됩니다.
+            </div>
+            <div id="cli-modal-data-folder-path" style="font-size: 11px; color: #94a3b8; margin-top: 3px; word-break: break-all;">
+              -
+            </div>
+          </div>
+          <div>
+            <button class="btn btn-sm" onclick="openUserDataFolder()" style="padding: 6px 14px; font-weight: 700; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); white-space: nowrap;">
+              📂 폴더 열기
+            </button>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-sm btn-primary" onclick="closeCliModal()">닫기</button>
@@ -2783,7 +2833,12 @@ HTML_PAGE = """<!DOCTYPE html>
             <div id="recipe-modal-subtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">아이템 1회 제작에 필요한 소요 재료를 설정합니다</div>
           </div>
         </div>
-        <button class="btn btn-sm" onclick="closeRecipeModal()" style="padding: 4px 10px; background: rgba(255,255,255,0.08); border-radius: 8px;">✕</button>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <button class="btn btn-sm" onclick="openUserDataFolder()" style="padding: 4px 10px; font-size: 11.5px; background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3);" title="내 문서의 레시피 파일(recipes_cache.json) 저장 폴더 열기">
+            📂 저장 폴더
+          </button>
+          <button class="btn btn-sm" onclick="closeRecipeModal()" style="padding: 4px 10px; background: rgba(255,255,255,0.08); border-radius: 8px;">✕</button>
+        </div>
       </div>
       <div class="modal-body" style="padding: 18px 20px;">
         <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #a7f3d0; line-height: 1.5;">
@@ -3091,8 +3146,34 @@ HTML_PAGE = """<!DOCTYPE html>
     // CLI Connection & Setup Modal Logic
     function openCliModal() {
       fetchCliConfig();
+      fetchUserDataInfo();
       const modal = document.getElementById('cli-modal-overlay');
       if (modal) modal.classList.add('active');
+    }
+
+    async function openUserDataFolder() {
+      try {
+        const res = await fetch('/api/open_data_folder', { method: 'POST' });
+        const data = await res.json();
+        if (data && data.path) {
+          console.log('Opened data folder:', data.path);
+        }
+      } catch (e) {
+        alert('데이터 폴더 열기 실패: ' + e);
+      }
+    }
+
+    async function fetchUserDataInfo() {
+      try {
+        const res = await fetch('/api/user_data_info');
+        const data = await res.json();
+        const pEl = document.getElementById('cli-modal-data-folder-path');
+        if (pEl && data && data.data_dir) {
+          pEl.innerText = data.data_dir;
+        }
+      } catch (e) {
+        console.error('fetchUserDataInfo error:', e);
+      }
     }
 
     function closeCliModal() {
@@ -5684,6 +5765,7 @@ HTML_PAGE = """<!DOCTYPE html>
       try { applyMainModeView(); } catch(e) { console.error('applyMainModeView error:', e); }
       try { loadSettings(); } catch(e) { console.error('loadSettings error:', e); }
       try { loadPresets(); } catch(e) { console.error('loadPresets error:', e); }
+      try { fetchUserDataInfo(); } catch(e) { console.error('fetchUserDataInfo error:', e); }
       try { pollLogs(); } catch(e) { console.error('pollLogs error:', e); }
 
       // Status executes first immediately

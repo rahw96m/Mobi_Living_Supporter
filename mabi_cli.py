@@ -44,8 +44,53 @@ if getattr(sys, "frozen", False):
 else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CONFIG_FILE = os.path.join(APP_DIR, "mabi_config.json")
-LEGACY_CONFIG_FILE = os.path.join(APP_DIR, "mabi_helper_config.json")
+
+def get_user_data_dir() -> str:
+    """Returns the persistent user data directory in Windows Documents (내 문서\\MobiLivingSupporter)."""
+    docs_dir = ""
+    if sys.platform == "win32":
+        try:
+            import ctypes.wintypes
+            CSIDL_PERSONAL = 5       # My Documents
+            SHGFP_TYPE_CURRENT = 0   # Get current, not default
+            buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+            ctypes.windll.shell32.SHGetFolderPathW(None, CSIDL_PERSONAL, None, SHGFP_TYPE_CURRENT, buf)
+            docs_dir = buf.value
+        except Exception:
+            docs_dir = ""
+
+    if not docs_dir or not os.path.exists(docs_dir):
+        docs_dir = os.path.join(os.path.expanduser("~"), "Documents")
+
+    data_dir = os.path.join(docs_dir, "MobiLivingSupporter")
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+    except Exception:
+        pass
+    return data_dir
+
+
+def get_user_data_path(filename: str, fallback_dir: Optional[str] = None) -> str:
+    """
+    Returns the path to a user data file located in the persistent Documents directory.
+    If the file does not exist in the Documents directory yet, but exists in fallback_dir
+    (e.g. current program directory or legacy location), it is automatically copied over (migrated).
+    """
+    data_dir = get_user_data_dir()
+    target_path = os.path.join(data_dir, filename)
+
+    if not os.path.exists(target_path) and fallback_dir:
+        local_cand = os.path.join(fallback_dir, filename)
+        if os.path.isfile(local_cand):
+            try:
+                shutil.copy2(local_cand, target_path)
+            except Exception:
+                pass
+    return target_path
+
+
+CONFIG_FILE = get_user_data_path("mabi_config.json", APP_DIR)
+LEGACY_CONFIG_FILE = get_user_data_path("mabi_helper_config.json", APP_DIR)
 
 
 def _normalize_cli_path(p: Optional[str]) -> Optional[str]:

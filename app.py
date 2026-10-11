@@ -1,6 +1,7 @@
+import os
 import sys
 import argparse
-from delivery_manager import DeliveryManager, DeliveryTask, settings_store
+from delivery_manager import DeliveryManager, DeliveryTask, settings_store, get_user_data_dir
 
 # Ensure UTF-8 output on Windows console
 if sys.platform == "win32":
@@ -51,6 +52,7 @@ def run_interactive(dm: DeliveryManager):
         print("4. 🌐 웹 대시보드(Web UI) 실행 (브라우저로 편리하게 사용)")
         print(f"5. ⚡ 7슬롯 최고 레벨 가공대 빠른 실행 [{order_str}]")
         print(f"6. ⚙️ 가공 우선순위 설정 변경 (현재: {order_str})")
+        print("7. 📂 내 문서 데이터 폴더 열기 (레시피·설정 영구 보존)")
         print("q. 종료")
 
         choice = input("\n선택 > ").strip()
@@ -189,6 +191,19 @@ def run_interactive(dm: DeliveryManager):
             settings_store.set("alter_order", new_val)
             new_str = "상위 티어 우선 (오래 걸리는 가공부터)" if new_val != "low_tier" else "하위 티어 우선 (기초 재료부터)"
             print(f"\n✅ 가공 우선순위가 변경되었습니다: {new_str}")
+
+        elif choice == "7":
+            data_dir = get_user_data_dir()
+            print(f"\n📂 내 문서 데이터 저장 폴더: {data_dir}")
+            try:
+                if sys.platform == "win32":
+                    os.startfile(data_dir)
+                else:
+                    import subprocess
+                    subprocess.Popen(["xdg-open", data_dir])
+                print("탐색기에서 데이터 폴더를 열었습니다.")
+            except Exception as ex:
+                print(f"폴더 열기 실패: {ex}")
 
         elif choice.lower() in ("q", "quit", "exit"):
             print("프로그램을 종료합니다.")

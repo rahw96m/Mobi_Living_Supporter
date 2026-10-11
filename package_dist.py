@@ -117,6 +117,11 @@ guide_text = """[ 🗡️ 모비노기 생활 지원도구 ]
 3. [MM AI 에이전트 활성화] 옵션을 ON으로 켜주세요.
    * 이 옵션을 켜야 넥슨 공식 연동 CLI(MabinogiMobile_CLI.exe)가 자동 설치/작동합니다.
 
+■ 레시피 및 설정 영구 보존 & 자동 이전:
+- 버전을 업데이트하여 새 버전 폴더를 받더라도, 등록/학습하신 레시피와 설정, 프리셋은 사용자의 '내 문서\\MobiLivingSupporter'에 안전하게 영구 저장됩니다.
+- 이전 버전에서 사용하던 설정 파일들을 새 버전 폴더로 매번 복사해올 필요가 전혀 없습니다!
+- 웹 대시보드 상단 또는 [⚙️ 연결 설정] 모달에서 '📂 데이터 폴더'를 누르면 언제든 탐색기로 확인/백업할 수 있습니다.
+
 ■ 혹시 윈도우 SmartScreen / 디펜더 알림이 뜨는 경우:
 - 본 프로그램은 인증서(코드사인) 비용이 없는 오픈소스 유틸리티이므로, 인터넷에서 처음 받은 파일에 대해 윈도우가 "PC 보호" 알림을 띄울 수 있습니다.
 - [추가 정보] → [실행]을 눌러주시면 정상 실행됩니다.
@@ -142,8 +147,8 @@ with open(os.path.join(OUTPUT_DIR, "사용방법.txt"), "w", encoding="utf-8") a
 print("\n🗜️ 배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
-# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v0.5.7.zip)
-VERSION = "v0.5.7"
+# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v0.5.8.zip)
+VERSION = "v0.5.8"
 github_zip_path = os.path.join(BASE_DIR, f"Mobi_Living_Supporter_{VERSION}.zip")
 shutil.copy2(zip_path, github_zip_path)
 

@@ -15,7 +15,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-from mabi_cli import MabinogiCLI, MabinogiCLIError
+from mabi_cli import MabinogiCLI, MabinogiCLIError, get_user_data_dir, get_user_data_path
 
 LogCallback = Callable[[str, str], None]  # (level, message)
 AlarmCallback = Callable[[Dict[str, Any]], None]
@@ -24,9 +24,9 @@ if getattr(sys, "frozen", False):
     SCRIPT_DIR = os.path.dirname(sys.executable)
 else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-RECIPE_CACHE_FILE = os.path.join(SCRIPT_DIR, "recipes_cache.json")
-ALARMS_FILE = os.path.join(SCRIPT_DIR, "delivery_alarms.json")
-DELIVERY_TARGETS_FILE = os.path.join(SCRIPT_DIR, "registered_deliveries.json")
+RECIPE_CACHE_FILE = get_user_data_path("recipes_cache.json", SCRIPT_DIR)
+ALARMS_FILE = get_user_data_path("delivery_alarms.json", SCRIPT_DIR)
+DELIVERY_TARGETS_FILE = get_user_data_path("registered_deliveries.json", SCRIPT_DIR)
 
 # Default known recipes for common weekly delivery items
 DEFAULT_RECIPES: Dict[str, Dict[str, int]] = {
@@ -907,7 +907,7 @@ class RegisteredDeliveryStore:
 
 delivery_target_store = RegisteredDeliveryStore()
 
-CUSTOM_TARGETS_FILE = os.path.join(SCRIPT_DIR, "custom_targets.json")
+CUSTOM_TARGETS_FILE = get_user_data_path("custom_targets.json", SCRIPT_DIR)
 
 class CustomTargetStore(RegisteredDeliveryStore):
     """Manages user-specified custom craft targets (개별 아이템 지정 제작 목표 관리)."""
@@ -916,7 +916,7 @@ class CustomTargetStore(RegisteredDeliveryStore):
 
 custom_target_store = CustomTargetStore()
 
-PRESETS_FILE = os.path.join(SCRIPT_DIR, "delivery_presets.json")
+PRESETS_FILE = get_user_data_path("delivery_presets.json", SCRIPT_DIR)
 
 class DeliveryPresetStore:
     """Manages saved weekly delivery quest presets for reuse across weeks."""
@@ -926,12 +926,26 @@ class DeliveryPresetStore:
         self.load()
 
     def load(self):
+        # 1. Base load from bundled defaults if present in program dir
+        bundled_preset_file = os.path.join(SCRIPT_DIR, "delivery_presets.json")
+        if os.path.normpath(bundled_preset_file) != os.path.normpath(self.filepath) and os.path.exists(bundled_preset_file):
+            try:
+                with open(bundled_preset_file, "r", encoding="utf-8") as f:
+                    bundled = json.load(f)
+                    if isinstance(bundled, dict):
+                        self.presets.update(bundled)
+            except Exception:
+                pass
+
+        # 2. Overlay user's persistent presets from Documents
         if os.path.exists(self.filepath):
             try:
                 with open(self.filepath, "r", encoding="utf-8") as f:
-                    self.presets = json.load(f)
+                    user_presets = json.load(f)
+                    if isinstance(user_presets, dict):
+                        self.presets.update(user_presets)
             except Exception:
-                self.presets = {}
+                pass
 
     def save(self):
         try:
@@ -965,7 +979,7 @@ class DeliveryPresetStore:
 
 delivery_preset_store = DeliveryPresetStore()
 
-SETTINGS_FILE = os.path.join(SCRIPT_DIR, "settings.json")
+SETTINGS_FILE = get_user_data_path("settings.json", SCRIPT_DIR)
 
 class SettingsStore:
     """Manages persistent application settings (e.g. alter order, wool gather order, wood gather order, etc.)."""
@@ -1047,6 +1061,18 @@ class DeliveryManager:
             worker_thread.join(timeout=1.5)
 
     def load_recipe_cache(self):
+        # 1. Base load from bundled defaults if present in program dir
+        bundled_recipe_file = os.path.join(SCRIPT_DIR, "recipes_cache.json")
+        if os.path.normpath(bundled_recipe_file) != os.path.normpath(RECIPE_CACHE_FILE) and os.path.exists(bundled_recipe_file):
+            try:
+                with open(bundled_recipe_file, "r", encoding="utf-8") as f:
+                    bundled = json.load(f)
+                    if isinstance(bundled, dict):
+                        self.recipes.update(bundled)
+            except Exception:
+                pass
+
+        # 2. Overlay user's persistent recipes from Documents
         if os.path.exists(RECIPE_CACHE_FILE):
             try:
                 with open(RECIPE_CACHE_FILE, "r", encoding="utf-8") as f:
