@@ -1674,6 +1674,7 @@ class DeliveryManager:
                 "current": t["current"],
                 "goal": t["goal"],
                 "needed": t["needed"],
+                "override_current": t.get("override_current"),
                 "is_completed": t.get("is_completed", False)
             })
         return self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
@@ -2236,6 +2237,8 @@ class DeliveryManager:
             new_cur = prev + total_gained
             goal = int(t.get("goal", 1))
             t["current"] = new_cur
+            if t.get("override_current") is not None:
+                t["override_current"] = new_cur
             t["needed"] = max(0, goal - new_cur)
             t["is_completed"] = (new_cur >= goal)
             t["updated_at"] = int(time.time() * 1000)
@@ -2250,6 +2253,8 @@ class DeliveryManager:
             new_cur_c = prev_c + total_gained
             goal_c = int(ct.get("goal", 1))
             ct["current"] = new_cur_c
+            if ct.get("override_current") is not None:
+                ct["override_current"] = new_cur_c
             ct["needed"] = max(0, goal_c - new_cur_c)
             ct["is_completed"] = (new_cur_c >= goal_c)
             ct["updated_at"] = int(time.time() * 1000)
@@ -2468,10 +2473,11 @@ class DeliveryManager:
         produced_per_craft = max(1, self.get_produced_per_craft(item_name))
         total_produced = 0
         remaining_needed = needed_target
+        max_batch_limit = None
 
         while remaining_needed > 0:
             crafts_needed = math.ceil(remaining_needed / produced_per_craft)
-            batch = crafts_needed
+            batch = crafts_needed if max_batch_limit is None else min(crafts_needed, max_batch_limit)
             self.log(
                 f"🔨 [제작 시작] '{item_name}' {batch}회 제작 시도... "
                 f"(필요: {remaining_needed}개, 1회당 산출: {produced_per_craft}개)",
@@ -2502,6 +2508,7 @@ class DeliveryManager:
 
                 if err_code == "invalid_count":
                     max_count = data.get("maxCount", 1)
+                    max_batch_limit = max_count
                     batch = min(crafts_needed, max_count)
                     self.log(f"⚠️ 1회 최대 제작량 제한({max_count}회)으로 분할 제작합니다.", "warn", callback)
                     try:
@@ -2596,6 +2603,8 @@ class DeliveryManager:
             new_cur = prev + total_produced
             goal = int(t.get("goal", 1))
             t["current"] = new_cur
+            if t.get("override_current") is not None:
+                t["override_current"] = new_cur
             t["needed"] = max(0, goal - new_cur)
             t["is_completed"] = (new_cur >= goal)
             t["last_crafted_at"] = time.time()
@@ -2603,6 +2612,22 @@ class DeliveryManager:
             delivery_target_store.targets[item_name] = t
             delivery_target_store.save()
             self.log(f"📊 [납품 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 ➔ 현재 {new_cur}/{goal}개", "info", callback)
+
+        # Update custom_target_store if this item is in registered custom targets
+        if item_name in custom_target_store.targets and total_produced > 0:
+            ct = custom_target_store.targets[item_name]
+            prev_c = int(ct.get("current", 0))
+            new_cur_c = prev_c + total_produced
+            goal_c = int(ct.get("goal", 1))
+            ct["current"] = new_cur_c
+            if ct.get("override_current") is not None:
+                ct["override_current"] = new_cur_c
+            ct["needed"] = max(0, goal_c - new_cur_c)
+            ct["is_completed"] = (new_cur_c >= goal_c)
+            ct["updated_at"] = int(time.time() * 1000)
+            custom_target_store.targets[item_name] = ct
+            custom_target_store.save()
+            self.log(f"📊 [개별 제작 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 ➔ 현재 {new_cur_c}/{goal_c}개", "info", callback)
 
         return total_produced
 
@@ -2644,6 +2669,7 @@ class DeliveryManager:
                         "current": t["current"],
                         "goal": t["goal"],
                         "needed": t["needed"],
+                        "override_current": t.get("override_current"),
                         "is_completed": t.get("is_completed", False)
                     })
             # 2. Automatically merge active quests in Quest Tracker that are not yet in registered list
@@ -3528,13 +3554,22 @@ class DeliveryManager:
                 goal = int(t.get("goal", 1))
                 # Weekly deliveries require items to be physically in inventory (가방) to turn in to NPC:
                 is_custom_task = bool(t.get("quest_title") == "개별 지정 제작")
+                has_override = (t.get("override_current") is not None)
                 cur_owned = self.get_effective_owned(item_name, include_storage=is_custom_task)
-                needed = t.get("needed") if (t.get("needed") is not None and t.get("needed") > 0) else max(0, goal - cur_owned)
-                if needed <= 0 or cur_owned >= goal:
-                    self.log(f"🎉 '{item_name}'은(는) 이미 가방에 목표 수량({cur_owned}/{goal}개)을 보유 중이므로 제작을 건너뜁니다.", "success", callback)
+
+                if is_custom_task or has_override:
+                    needed = int(t.get("needed", 0))
+                else:
+                    needed = t.get("needed") if (t.get("needed") is not None and t.get("needed") > 0) else max(0, goal - cur_owned)
+
+                if needed <= 0 or (not is_custom_task and not has_override and cur_owned >= goal):
+                    loc_text = "전체 보유" if is_custom_task else "가방"
+                    self.log(f"🎉 '{item_name}'은(는) 이미 {loc_text}에 목표 수량({cur_owned}/{goal}개)을 보유 중이므로 제작을 건너뜁니다.", "success", callback)
                     craft_results.append({"item_name": item_name, "crafted": 0, "status": "already_completed"})
                     continue
-                self.log(f"🔨 [완제품 제작 시작] '{item_name}' {needed}개 제작 진행... (현재 가방 보유: {cur_owned}/{goal}개)", "action", callback)
+
+                storage_info = " (창고 포함)" if is_custom_task else ""
+                self.log(f"🔨 [완제품 제작 시작] '{item_name}' {needed}개 제작 진행... (현재 보유: {cur_owned}개{storage_info}, 목표: {goal}개)", "action", callback)
                 try:
                     crafted_count = self.auto_craft(item_name, needed, callback=callback)
                     craft_results.append({"item_name": item_name, "crafted": crafted_count, "status": "success"})

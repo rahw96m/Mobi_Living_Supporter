@@ -833,7 +833,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             current_task_info = f"🔨 개별 지정 아이템 일괄 최적화 제작 진행 중 ({order_name})..."
 
             def custom_batch_worker():
-                global is_busy, current_task_info, last_execution_summary, last_summary_id
+                global is_busy, current_task_info, last_execution_summary, last_summary_id, cached_custom_targets
                 try:
                     plan = manager_instance.analyze_custom_plan(alter_order=alter_order)
                     res = manager_instance.execute_batch_deliveries(plan, callback=add_log, alter_order=alter_order)
@@ -861,6 +861,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 finally:
                     is_busy = False
                     current_task_info = ""
+                    with status_lock:
+                        cached_custom_targets = None
 
             threading.Thread(target=custom_batch_worker, daemon=True).start()
             self._send_json({"status": "started"})
@@ -2116,7 +2118,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
           </div>
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.10</span></h1>
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.5.11</span></h1>
             <p>마비노기 모바일 AI 커넥터 연동</p>
           </div>
         </div>
