@@ -4529,12 +4529,8 @@ HTML_PAGE = """<!DOCTYPE html>
         const statusText = document.getElementById('batch-status-text');
 
         if (tbody) {
-          if (reqs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 12px;">필요한 1차 가공품이 없습니다.</td></tr>';
-            if (btnExec) btnExec.disabled = true;
-            if (statusText) statusText.innerText = plan.all_completed ? '모든 목표 달성 완료' : '납품 퀘스트 없음';
-          } else {
-            let rowsHtml = '';
+          let rowsHtml = '';
+          if (reqs.length > 0) {
             reqs.forEach(r => {
               const queuedBadge = r.queued_works_count > 0 ? `<span style="color:#818cf8; font-size:11px; margin-left:4px;">(대기 ${r.queued_works_count}회)</span>` : '';
               const completedBadge = r.completed_works_count > 0 ? `<span style="color:#38bdf8; font-size:11px; margin-left:4px;">(수령가능 ${r.completed_works_count}회)</span>` : '';
@@ -4565,72 +4561,113 @@ HTML_PAGE = """<!DOCTYPE html>
                 </tr>
               `;
             });
-            if (plan.raw_materials && plan.raw_materials.length > 0) {
-              plan.raw_materials.forEach(rm => {
-                let statusBadge = '';
-                if (rm.deficit === 0) {
-                  statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>';
-                } else if (rm.tool_ok) {
-                  statusBadge = `<span style="color:#34d399; font-weight:700; white-space:nowrap;">🌿 ${rm.deficit}개 자동 채집</span>`;
-                } else {
-                  statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">⚠️ 도구 필요 (${rm.deficit}개 부족)</span>`;
-                }
+          } else if (tasks.length > 0 && !plan.all_completed) {
+            rowsHtml += `
+              <tr>
+                <td colspan="5" style="text-align: center; color: #34d399; padding: 10px; background: rgba(52, 211, 153, 0.05); font-weight: 600; font-size: 12.5px;">
+                  ✨ 1차 가공품 준비 완료 (추가 가공 불필요)
+                </td>
+              </tr>
+            `;
+          }
 
-                const rmInvCnt = rm.inventory_count || 0;
-                const rmStoreCnt = rm.storage_count || 0;
-                const rmBagStorageText = `${rmInvCnt}개<span style="color:${rmStoreCnt > 0 ? '#38bdf8' : '#64748b'};">(${rmStoreCnt}개)</span>`;
-
-                rowsHtml += `
-                  <tr style="background: rgba(16, 185, 129, 0.05); border-left: 2px solid #34d399;">
-                    <td style="font-weight:700; color:#a7f3d0; white-space:nowrap;">🌿 ${rm.item_name}</td>
-                    <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; padding:2px 7px; font-size:11px;">채집</span></td>
-                    <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
-                    <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
-                    <td style="white-space:nowrap;">${statusBadge}</td>
-                  </tr>
-                `;
-              });
-            }
-
-            tbody.innerHTML = rowsHtml;
-
-            if (btnExec && statusText) {
-              const craftableNote = (plan.craftable_tasks_count > 0) ? ` (즉시 제작 가능: ${plan.craftable_tasks_count}건)` : '';
-              const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0);
-              const gatherNote = (neededRawGather.length > 0) ? ` / 채집 ${neededRawGather.length}종` : '';
-
-              if (plan.all_completed) {
-                btnExec.innerText = '🎉 모든 납품 목표 달성 완료!';
-                btnExec.className = 'btn';
-                btnExec.disabled = true;
-                statusText.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 목표 달성 완료</span>';
-              } else if (plan.can_craft_immediately) {
-                btnExec.innerText = '🚀 재료 준비 완료! 즉시 일괄 최종 제작';
-                btnExec.className = 'btn btn-emerald';
-                btnExec.disabled = false;
-                statusText.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 재료 준비 완료</span>';
-              } else if (plan.total_works_to_queue > 0) {
-                btnExec.innerText = `⚡ 일괄 가공(${plan.total_works_to_queue}회)${gatherNote} & 즉시 제작${craftableNote}`;
-                btnExec.className = 'btn btn-primary';
-                btnExec.disabled = false;
-                statusText.innerHTML = `<span style="color:#fbbf24; font-weight:700;">가공 ${plan.total_works_to_queue}회 등록 필요${gatherNote}${craftableNote}</span>`;
-              } else if (neededRawGather.length > 0) {
-                btnExec.innerText = `🌿 부족 채집물 (${neededRawGather.length}종) 맞춤 채집 & 납품 준비${craftableNote}`;
-                btnExec.className = 'btn btn-emerald';
-                btnExec.disabled = false;
-                statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">필드 채집 ${neededRawGather.length}종 필요${craftableNote}</span>`;
-              } else if (plan.craftable_tasks_count > 0) {
-                btnExec.innerText = `🔨 준비된 완제품 (${plan.craftable_tasks_count}건) 즉시 제작`;
-                btnExec.className = 'btn btn-emerald';
-                btnExec.disabled = false;
-                statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">${plan.craftable_tasks_count}건 즉시 제작 가능</span>`;
+          if (plan.raw_materials && plan.raw_materials.length > 0) {
+            plan.raw_materials.forEach(rm => {
+              let statusBadge = '';
+              const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
+              if (rm.deficit === 0) {
+                statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>';
+              } else if (isSpecial) {
+                statusBadge = `<span style="color:#fbbf24; font-weight:700; white-space:nowrap;">🛒 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
+              } else if (rm.tool_ok) {
+                statusBadge = `<span style="color:#34d399; font-weight:700; white-space:nowrap;">🌿 ${rm.deficit}개 자동 채집</span>`;
               } else {
-                btnExec.innerText = '⏳ 가공 진행 중 (완료 시 제작 가능)';
-                btnExec.className = 'btn';
-                btnExec.disabled = false;
-                statusText.innerHTML = '<span style="color:#38bdf8; font-weight:700;">대기열 가공 완료 대기 중</span>';
+                statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">⚠️ 도구 필요 (${rm.deficit}개 부족)</span>`;
               }
+
+              const rmInvCnt = rm.inventory_count || 0;
+              const rmStoreCnt = rm.storage_count || 0;
+              const rmBagStorageText = `${rmInvCnt}개<span style="color:${rmStoreCnt > 0 ? '#38bdf8' : '#64748b'};">(${rmStoreCnt}개)</span>`;
+
+              const typeBadge = isSpecial
+                ? '<span class="badge" style="background:rgba(251,191,36,0.15); color:#fbbf24; padding:2px 7px; font-size:11px;">상점/드랍</span>'
+                : '<span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; padding:2px 7px; font-size:11px;">채집</span>';
+              const rowIcon = isSpecial ? '🛒' : '🌿';
+              const rowBg = isSpecial
+                ? 'background: rgba(251, 191, 36, 0.05); border-left: 2px solid #fbbf24;'
+                : 'background: rgba(16, 185, 129, 0.05); border-left: 2px solid #34d399;';
+              const titleColor = isSpecial ? '#fef08a' : '#a7f3d0';
+
+              rowsHtml += `
+                <tr style="${rowBg}">
+                  <td style="font-weight:700; color:${titleColor}; white-space:nowrap;">${rowIcon} ${rm.item_name}</td>
+                  <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
+                  <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
+                  <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
+                  <td style="white-space:nowrap;">${statusBadge}</td>
+                </tr>
+              `;
+            });
+          }
+
+          if (reqs.length === 0 && (!plan.raw_materials || plan.raw_materials.length === 0)) {
+            if (plan.all_completed) {
+              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: #34d399; padding: 16px; font-weight: 700;">🎉 모든 주간 납품 목표가 달성 완료되었습니다!</td></tr>';
+            } else if (tasks.length === 0) {
+              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 16px;">등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</td></tr>';
+            } else {
+              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: #38bdf8; padding: 16px; font-weight: 600;">✨ 모든 원자재 및 가공품 준비 완료! 아래 버튼을 눌러 즉시 완제품을 제작하세요.</td></tr>';
             }
+          }
+
+          tbody.innerHTML = rowsHtml;
+        }
+
+        // Button state and status text (ALWAYS executed)
+        if (btnExec && statusText) {
+          const craftableCount = plan.craftable_tasks_count || 0;
+          const craftableNote = (craftableCount > 0) ? ` (즉시 제작 가능: ${craftableCount}건)` : '';
+          const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0 && r.is_gatherable);
+          const neededSpecial = (plan.raw_materials || []).filter(r => r.deficit > 0 && (r.is_special_obtain || !r.is_gatherable));
+          const gatherNote = (neededRawGather.length > 0) ? ` / 채집 ${neededRawGather.length}종` : '';
+          const specialNote = (neededSpecial.length > 0) ? ` (🛒 별도 확보 ${neededSpecial.length}종 필요)` : '';
+          const alterCount = plan.total_works_to_queue || 0;
+
+          if (tasks.length === 0) {
+            btnExec.innerText = '⚡ 전체 납품 재료 일괄 가공 & 제작 시작';
+            btnExec.className = 'btn';
+            btnExec.disabled = true;
+            statusText.innerText = '납품 퀘스트 없음';
+          } else if (plan.all_completed) {
+            btnExec.innerText = '🎉 모든 납품 목표 달성 완료!';
+            btnExec.className = 'btn';
+            btnExec.disabled = true;
+            statusText.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 목표 달성 완료</span>';
+          } else if (plan.can_craft_immediately || (alterCount === 0 && neededRawGather.length === 0 && craftableCount > 0)) {
+            btnExec.innerText = craftableCount > 0 ? `🚀 준비된 완제품 (${craftableCount}건) 즉시 제작` : '🚀 재료 준비 완료! 즉시 일괄 최종 제작';
+            btnExec.className = 'btn btn-emerald';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">${craftableCount > 0 ? `${craftableCount}건 완제품 즉시 제작 가능` : '모든 재료 준비 완료'}${specialNote}</span>`;
+          } else if (alterCount > 0) {
+            btnExec.innerText = `⚡ 일괄 가공(${alterCount}회)${gatherNote} & 즉시 제작${craftableNote}`;
+            btnExec.className = 'btn btn-primary';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = `<span style="color:#fbbf24; font-weight:700;">가공 ${alterCount}회 등록 필요${gatherNote}${craftableNote}${specialNote}</span>`;
+          } else if (neededRawGather.length > 0) {
+            btnExec.innerText = `🌿 부족 채집물 (${neededRawGather.length}종) 맞춤 채집 & 납품 준비${craftableNote}`;
+            btnExec.className = 'btn btn-emerald';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">필드 채집 ${neededRawGather.length}종 필요${craftableNote}${specialNote}</span>`;
+          } else if (craftableCount > 0) {
+            btnExec.innerText = `🔨 준비된 완제품 (${craftableCount}건) 즉시 제작`;
+            btnExec.className = 'btn btn-emerald';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">${craftableCount}건 즉시 제작 가능</span>`;
+          } else {
+            btnExec.innerText = '⏳ 가공 진행 중 (완료 시 제작 가능)';
+            btnExec.className = 'btn';
+            btnExec.disabled = isCurrentlyBusy;
+            statusText.innerHTML = '<span style="color:#38bdf8; font-weight:700;">대기열 가공 완료 대기 중</span>';
           }
         }
 
@@ -5249,8 +5286,11 @@ HTML_PAGE = """<!DOCTYPE html>
         if (rawMaterials.length > 0) {
           rawMaterials.forEach(rm => {
             let statusBadge = '';
+            const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
             if (rm.deficit === 0) {
               statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>';
+            } else if (isSpecial) {
+              statusBadge = `<span style="color:#fbbf24; font-weight:700; white-space:nowrap;">🛒 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
             } else if (rm.tool_ok) {
               statusBadge = `<span style="color:#34d399; font-weight:700; white-space:nowrap;">🌿 ${rm.deficit}개 자동 채집</span>`;
             } else {
@@ -5261,10 +5301,19 @@ HTML_PAGE = """<!DOCTYPE html>
             const rmStoreCnt = rm.storage_count || 0;
             const rmBagStorageText = `${rmInvCnt}개<span style="color:${rmStoreCnt > 0 ? '#38bdf8' : '#64748b'};">(${rmStoreCnt}개)</span>`;
 
+            const typeBadge = isSpecial
+              ? '<span class="badge" style="background:rgba(251,191,36,0.15); color:#fbbf24; padding:2px 7px; font-size:11px;">상점/드랍</span>'
+              : '<span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; padding:2px 7px; font-size:11px;">채집</span>';
+            const rowIcon = isSpecial ? '🛒' : '🌿';
+            const rowBg = isSpecial
+              ? 'background: rgba(251, 191, 36, 0.05); border-left: 2px solid #fbbf24;'
+              : 'background: rgba(16, 185, 129, 0.05); border-left: 2px solid #34d399;';
+            const titleColor = isSpecial ? '#fef08a' : '#a7f3d0';
+
             rowsHtml += `
-              <tr style="background: rgba(16, 185, 129, 0.05); border-left: 2px solid #34d399;">
-                <td style="font-weight:700; color:#a7f3d0; white-space:nowrap;">🌿 ${rm.item_name}</td>
-                <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; padding:2px 7px; font-size:11px;">채집</span></td>
+              <tr style="${rowBg}">
+                <td style="font-weight:700; color:${titleColor}; white-space:nowrap;">${rowIcon} ${rm.item_name}</td>
+                <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
                 <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
                 <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
                 <td style="font-weight:700; color:${rm.deficit > 0 ? '#f43f5e' : '#34d399'}; text-align:right; white-space:nowrap;">
@@ -5282,8 +5331,10 @@ HTML_PAGE = """<!DOCTYPE html>
         // Button state and text
         if (btnExec && statusText) {
           const craftableNote = (plan.craftable_tasks_count > 0) ? ` (즉시 제작 가능: ${plan.craftable_tasks_count}건)` : '';
-          const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0);
+          const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0 && r.is_gatherable);
+          const neededSpecial = (plan.raw_materials || []).filter(r => r.deficit > 0 && (r.is_special_obtain || !r.is_gatherable));
           const gatherNote = (neededRawGather.length > 0) ? ` / 채집 ${neededRawGather.length}종` : '';
+          const specialNote = (neededSpecial.length > 0) ? ` (🛒 별도 확보 ${neededSpecial.length}종 필요)` : '';
 
           if (plan.all_completed) {
             btnExec.innerText = '🎉 모든 개별 목표 제작 완료!';
@@ -5294,17 +5345,17 @@ HTML_PAGE = """<!DOCTYPE html>
             btnExec.innerText = '🚀 재료 준비 완료! 즉시 일괄 최종 제작';
             btnExec.className = 'btn btn-emerald';
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 재료 준비 완료</span>';
+            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">모든 재료 준비 완료${specialNote}</span>`;
           } else if (plan.total_works_to_queue > 0) {
             btnExec.innerText = `⚡ 일괄 가공(${plan.total_works_to_queue}회)${gatherNote} & 즉시 제작${craftableNote}`;
             btnExec.className = 'btn btn-primary';
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#fbbf24; font-weight:700;">가공 ${plan.total_works_to_queue}회 등록 필요${gatherNote}${craftableNote}</span>`;
+            statusText.innerHTML = `<span style="color:#fbbf24; font-weight:700;">가공 ${plan.total_works_to_queue}회 등록 필요${gatherNote}${craftableNote}${specialNote}</span>`;
           } else if (neededRawGather.length > 0) {
             btnExec.innerText = `🌿 부족 채집물 (${neededRawGather.length}종) 맞춤 채집 & 제작 준비${craftableNote}`;
             btnExec.className = 'btn btn-emerald';
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">필드 채집 ${neededRawGather.length}종 필요${craftableNote}</span>`;
+            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">필드 채집 ${neededRawGather.length}종 필요${craftableNote}${specialNote}</span>`;
           } else if (plan.craftable_tasks_count > 0) {
             btnExec.innerText = `🔨 준비된 완제품 (${plan.craftable_tasks_count}건) 즉시 제작`;
             btnExec.className = 'btn btn-emerald';

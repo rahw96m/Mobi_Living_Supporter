@@ -555,10 +555,21 @@ def is_wood_family(item_name: str) -> bool:
     clean = item_name.split("(")[0].strip()
     return clean in WOOD_FAMILY_ITEMS or any(k in clean for k in ["통나무", "나무 진액", "나뭇가지"])
 
+# 채집이나 시설 가공으로 얻을 수 없고 상점(식료품점/잡화점) 구매 또는 몬스터 사냥으로 확보해야 하는 재료 목록
+KNOWN_NON_GATHERABLE_MATERIALS: Set[str] = {
+    "소금", "설탕", "마요네즈", "밀랍", "후추", "식용유", "버터",
+    "분해된 장비 부품", "연금술 부스러기", "협곡의 마나석", "마나석",
+    "마력 기폭제", "마나 에센스"
+}
+
+def is_non_gatherable_material(item_name: str) -> bool:
+    clean = item_name.split("(")[0].strip()
+    return clean in KNOWN_NON_GATHERABLE_MATERIALS
+
 def get_wood_gather_candidates(target_item: str, preference: str = "drop_rate") -> List[Dict[str, Any]]:
     """
     항상 가장 빨리 필요한 재료를 확보할 수 있는 최적의 나무 후보 목록을 반환합니다.
-    - 나무 진액: 뾰족 나무 (진액 최다 드롭) ➔ 굵은 나무 ➔ 상급 나무 ➔ 상급 나무+
+    - 나무 진액: 뾰족 나무 (진액 최다 드롭 타겟 고정, 일반 통나무 나무로 오인 폴백 방지)
     - 통나무: 굵은 나무 (통나무 최다 드롭) ➔ 뾰족 나무 ➔ 상급 나무 ➔ 상급 나무+
     - 상급 통나무: 상급 나무 (상급 통나무 최다 드롭) ➔ 상급 나무+ ➔ 굵은 나무 ➔ 뾰족 나무
     - 상급 통나무+: 상급 나무+ (상급 통나무+ 최다 드롭) ➔ 상급 나무 ➔ 굵은 나무 ➔ 뾰족 나무
@@ -572,7 +583,9 @@ def get_wood_gather_candidates(target_item: str, preference: str = "drop_rate") 
     clean = target_item.split("(")[0].strip()
 
     if "진액" in clean:
-        return [pointy, thick, high, cloud]
+        # 나무 진액은 '나무 진액' 타겟으로 지정해야만 뾰족 나무 등 진액 노드를 집중 채집합니다.
+        # 일반 통나무나 상급 나무로 폴백하면 나무 진액 대신 통나무만 대량으로 캐게 되므로 폴백 없이 진액 전용 타겟을 유지합니다.
+        return [pointy]
     elif clean == "통나무":
         return [thick, pointy, high, cloud]
     elif clean == "상급 통나무":
@@ -1145,6 +1158,7 @@ class DeliveryManager:
         duration_sec: float = 0.0,
         status: str = "completed",
         callback: Optional[LogCallback] = None,
+        special_materials: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Builds a comprehensive, aggregated execution report detailing:
@@ -1153,6 +1167,7 @@ class DeliveryManager:
         - Altering works queued (facility, recipe, slots, estimated yield)
         - Finished goods crafted (item, quantity)
         - Pre-collected completed alters & deferred tasks
+        - Non-gatherable materials requiring manual acquisition (e.g. 소금)
         Logs lines via self.log and returns structured dictionary.
         """
         wings_used = max(0, initial_wings - final_wings)
@@ -1249,6 +1264,13 @@ class DeliveryManager:
         else:
             lines.append("🌿 [원자재 맞춤 채집] 채집 작업 없음 (필요 원자재가 가방/창고에 충분함)")
 
+        # 2.5 Non-gatherable / Special Materials Alert
+        if special_materials:
+            lines.append("")
+            lines.append(f"🛒 [별도 확보 필요 재료] 상점 구매 또는 사냥으로 직접 확보 필요한 재료 {len(special_materials)}종:")
+            for sm in special_materials:
+                lines.append(f"   • {sm['item_name']}: {sm['deficit']}개 부족 (가방 {sm.get('inventory_count', 0)}개 / 필요 {sm.get('total_needed', 0)}개) ➔ 잡화점/식료품점 구매 또는 사냥 필요")
+
         # 3. Alter
         lines.append("")
         if altered_aggregated:
@@ -1341,6 +1363,7 @@ class DeliveryManager:
             "collected_facilities": unique_collected,
             "deferred": deferred_works or [],
             "deferred_works": deferred_works or [],
+            "special_materials": special_materials or [],
             "total_gathered_count": total_gathered_qty,
             "total_altered_slots": total_altered_slots,
             "total_crafted_count": total_crafted_qty,
@@ -2611,8 +2634,10 @@ class DeliveryManager:
         else:
             # 1. First check registered targets
             registered = self.get_registered_deliveries_with_status()
+            existing_items = set()
             if registered:
                 for t in registered:
+                    existing_items.add(t["item_name"])
                     tasks_to_plan.append({
                         "quest_title": t.get("quest_title", "주간 납품"),
                         "item_name": t["item_name"],
@@ -2621,10 +2646,10 @@ class DeliveryManager:
                         "needed": t["needed"],
                         "is_completed": t.get("is_completed", False)
                     })
-            else:
-                # 2. Fallback to active quests in Quest Tracker
-                active_quests = self.detect_delivery_quests()
-                for q in active_quests:
+            # 2. Automatically merge active quests in Quest Tracker that are not yet in registered list
+            active_quests = self.detect_delivery_quests()
+            for q in active_quests:
+                if q.item_name not in existing_items:
                     tasks_to_plan.append({
                         "quest_title": q.quest_title,
                         "item_name": q.item_name,
@@ -2734,15 +2759,6 @@ class DeliveryManager:
             clean_it = it_name.split("(")[0].strip()
             is_gath, _ = self.is_gatherable(it_name)
 
-            if needed <= 0:
-                # If this completed task is a raw gatherable item (e.g. 달걀, 우유),
-                # reserve its required stock so other recipes won't consume it:
-                if is_gath or clean_it in KNOWN_GATHERABLE_ITEMS:
-                    goal_qty = t.get("goal") or t.get("current", 0)
-                    if goal_qty > 0:
-                        consume_v_stock(clean_it, goal_qty)
-                continue
-
             # Check if this delivery item is a raw gatherable item (e.g. 양털, 우유, 달걀, 사과, 감자 등)
             if is_gath or clean_it in KNOWN_GATHERABLE_ITEMS:
                 t["is_gather_item"] = True
@@ -2753,7 +2769,13 @@ class DeliveryManager:
                 bd_stock = get_stock(clean_it)
                 cur_bag = bd_stock["inventory"]
                 goal_qty = t.get("goal") or (cur_bag + needed)
-                raw_total_demands[clean_it] += goal_qty
+                t["current"] = cur_bag
+                net_def = max(0, goal_qty - cur_bag)
+                t["needed"] = net_def
+                t["is_completed"] = (cur_bag >= goal_qty)
+
+                if goal_qty > 0:
+                    raw_total_demands[clean_it] += goal_qty
 
                 # Deduct only used inventory amount from virtual_stock so other downstream crafts don't double-consume it:
                 used_inv = min(cur_bag, goal_qty)
@@ -2761,11 +2783,11 @@ class DeliveryManager:
                     get_v_stock(clean_it)
                 virtual_stock[clean_it] = max(0, virtual_stock[clean_it] - used_inv)
 
-                net_def = max(0, goal_qty - cur_bag)
                 if net_def > 0:
                     raw_gather_demands[clean_it] += net_def
-                else:
-                    craftable_tasks_count += 1
+                continue
+
+            if needed <= 0:
                 continue
 
             # Check if this delivery item is an alterable item (e.g. 옷감+, 강철괴, 목재+ 등)
@@ -2802,8 +2824,6 @@ class DeliveryManager:
 
                     for sub_name, sub_req in alt_info.get("ingredients", {}).items():
                         pending_demands[sub_name] += sub_req * works
-                else:
-                    craftable_tasks_count += 1
                 continue
 
             # Finished Goods (crafted items)
@@ -2817,12 +2837,10 @@ class DeliveryManager:
             recipe_details[it_name] = rec
 
             if net_needed > 0:
-                prod_pc = self.get_produced_per_craft(it_name)
+                prod_pc = max(1, self.get_produced_per_craft(it_name))
                 crafts_needed = math.ceil(net_needed / prod_pc)
                 for ing_name, per_craft in rec.items():
                     pending_demands[ing_name] += per_craft * crafts_needed
-            else:
-                craftable_tasks_count += 1
 
         # 4. Multi-tier Recursive BOM Resolution
 
@@ -2936,6 +2954,16 @@ class DeliveryManager:
             actual_def = raw_gather_demands.get(raw_name, 0)
             bd = get_stock(raw_name)
             is_gath, tool_ok = self.is_gatherable(raw_name)
+            is_special = is_non_gatherable_material(raw_name) or not is_gath
+
+            if is_special:
+                status = "satisfied" if actual_def == 0 else "special_obtain"
+            elif actual_def == 0:
+                status = "satisfied"
+            elif tool_ok:
+                status = "ready_to_gather"
+            else:
+                status = "tool_missing"
 
             raw_materials_analysis.append({
                 "item_name": raw_name,
@@ -2946,9 +2974,10 @@ class DeliveryManager:
                 "storage_count": bd["storage_total"],
                 "total_owned": bd["total"],
                 "deficit": actual_def,
-                "is_gatherable": is_gath,
-                "tool_ok": tool_ok,
-                "status": "satisfied" if actual_def == 0 else ("ready_to_gather" if tool_ok else "tool_missing")
+                "is_gatherable": is_gath and not is_special,
+                "is_special_obtain": is_special,
+                "tool_ok": tool_ok if not is_special else True,
+                "status": status
             })
 
         # 7. Facility Slot Analysis & Slot Warnings
@@ -2995,6 +3024,37 @@ class DeliveryManager:
                     f"ℹ️ '{fac}': 완료된 가공 {usage['completed']}건을 먼저 수령하면 "
                     f"슬롯 {available_after_collect}개 확보 가능 (필요: {new_demand}회)"
                 )
+
+        # Count immediately craftable finished goods tasks (needed > 0 and all required ingredients fully owned)
+        craftable_tasks_count = 0
+        for t in tasks_to_plan:
+            it_name = t["item_name"]
+            needed = t.get("needed", 0)
+            clean_it = it_name.split("(")[0].strip()
+            is_gath, _ = self.is_gatherable(it_name)
+            is_alt, _ = self.get_alter_info(clean_it)
+
+            if t.get("is_gather_item") or is_gath or clean_it in KNOWN_GATHERABLE_ITEMS:
+                continue
+            if t.get("is_alter_item") or is_alt:
+                continue
+            if needed <= 0:
+                continue
+
+            rec = recipe_details.get(it_name) or self.get_recipe_ingredients(it_name)
+            if not rec:
+                continue
+
+            prod_pc = max(1, self.get_produced_per_craft(it_name))
+            crafts_needed = math.ceil(needed / prod_pc)
+            can_craft_now = True
+            for ing_name, per_craft in rec.items():
+                total_ing_needed = per_craft * crafts_needed
+                if get_stock(ing_name)["total"] < total_ing_needed:
+                    can_craft_now = False
+                    break
+            if can_craft_now:
+                craftable_tasks_count += 1
 
         can_craft_all_immediately = (
             total_works_to_queue == 0 and sum(raw_gather_demands.values()) == 0
@@ -3109,6 +3169,13 @@ class DeliveryManager:
                 callback=callback
             )
             return {"status": "aborted", "message": "사용자에 의해 작업이 중지되었습니다.", "summary": summary}
+
+        # Stage 1.5: Warn about non-gatherable / shop materials
+        special_needed = [r for r in raw_mats if r.get("deficit", 0) > 0 and (r.get("is_special_obtain") or not r.get("is_gatherable"))]
+        if special_needed:
+            self.log(f"🛒 [별도 확보 필요 안내] 상점 구매 또는 드랍으로 획득해야 하는 재료 {len(special_needed)}종이 부족합니다.", "warn", callback)
+            for sm in special_needed:
+                self.log(f"   • '{sm['item_name']}': 필요 {sm['total_needed']}개 / 보유 {sm['total_owned']}개 ({sm['deficit']}개 부족) -> 잡화점/식료품점 구매 또는 사냥으로 별도 확보 필요", "warn", callback)
 
         # Stage 2: Gather missing raw materials (부족한 원자재 사전 자동 채집)
         if raw_mats:
@@ -3420,8 +3487,11 @@ class DeliveryManager:
             can_craft_this = True
             missing_for_this = []
 
+            prod_pc = max(1, self.get_produced_per_craft(item_name))
+            crafts_needed = math.ceil(needed / prod_pc)
+
             for ing_name, per_craft in recipe.items():
-                total_ing_needed = per_craft * needed
+                total_ing_needed = per_craft * crafts_needed
                 owned_ing = self.get_effective_owned(ing_name, include_storage=True)
                 if owned_ing < total_ing_needed:
                     can_craft_this = False
@@ -3433,8 +3503,20 @@ class DeliveryManager:
                 waiting_tasks.append((t, missing_for_this))
 
         if gather_ready_tasks:
-            g_names = [gt["item_name"] for gt in gather_ready_tasks]
-            self.log(f"🌿 [채집 납품 품목 준비 완료] {len(gather_ready_tasks)}건의 채집 납품 품목({', '.join(g_names)})은 필드 채집으로 가방에 준비 완료되었습니다.", "success", callback)
+            ready_names = []
+            short_names = []
+            for gt in gather_ready_tasks:
+                gn = gt["item_name"]
+                g_goal = int(gt.get("goal", 1))
+                g_cur = self.get_effective_owned(gn, include_storage=False)
+                if g_cur >= g_goal:
+                    ready_names.append(f"{gn} ({g_cur}/{g_goal}개)")
+                else:
+                    short_names.append(f"{gn} ({g_cur}/{g_goal}개, {g_goal - g_cur}개 부족)")
+            if ready_names:
+                self.log(f"🌿 [채집 납품 품목 가방 준비 완료] {len(ready_names)}건({', '.join(ready_names)})은 가방에 준비 완료되었습니다.", "success", callback)
+            if short_names:
+                self.log(f"⚠️ [채집 납품 품목 가방 부족] {len(short_names)}건({', '.join(short_names)})은 가방 수량이 부족합니다. 추가 채집/확보가 필요합니다.", "warn", callback)
 
         if craftable_tasks:
             self.log(f"🎯 [즉시 제작 가능 목표] 총 {len(craftable_tasks)}개 품목은 재료가 모두 준비되어 있어 즉시 제작을 진행합니다!", "action", callback)
@@ -3444,12 +3526,12 @@ class DeliveryManager:
                     break
                 item_name = t["item_name"]
                 goal = int(t.get("goal", 1))
-                # For direct delivery tasks, count bag-only stock so warehouse stock doesn't prevent crafting required delivery items:
-                is_delivery_task = bool(t.get("quest_title") and "납품" in t.get("quest_title", ""))
-                cur_owned = self.get_effective_owned(item_name, include_storage=not is_delivery_task)
+                # Weekly deliveries require items to be physically in inventory (가방) to turn in to NPC:
+                is_custom_task = bool(t.get("quest_title") == "개별 지정 제작")
+                cur_owned = self.get_effective_owned(item_name, include_storage=is_custom_task)
                 needed = t.get("needed") if (t.get("needed") is not None and t.get("needed") > 0) else max(0, goal - cur_owned)
                 if needed <= 0 or cur_owned >= goal:
-                    self.log(f"🎉 '{item_name}'은(는) 이미 목표 수량({cur_owned}/{goal}개)을 보유 중이므로 제작을 건너뜁니다.", "success", callback)
+                    self.log(f"🎉 '{item_name}'은(는) 이미 가방에 목표 수량({cur_owned}/{goal}개)을 보유 중이므로 제작을 건너뜁니다.", "success", callback)
                     craft_results.append({"item_name": item_name, "crafted": 0, "status": "already_completed"})
                     continue
                 self.log(f"🔨 [완제품 제작 시작] '{item_name}' {needed}개 제작 진행... (현재 가방 보유: {cur_owned}/{goal}개)", "action", callback)
@@ -3485,6 +3567,7 @@ class DeliveryManager:
             deferred_works=deferred_works,
             duration_sec=duration,
             status=status_str,
+            special_materials=special_needed,
             callback=callback
         )
 
@@ -3707,10 +3790,12 @@ class DeliveryManager:
 
         # Ensure needed count reflects user's requested production quantity
         needed = max(1, target_count)
+        prod_pc = max(1, self.get_produced_per_craft(item_name))
+        crafts_needed = math.ceil(needed / prod_pc)
 
         ingredients = self.get_recipe_ingredients(item_name)
         for ing_name, per_craft in ingredients.items():
-            tot_needed_for_craft = per_craft * needed
+            tot_needed_for_craft = per_craft * crafts_needed
             owned_ing = self.get_effective_owned(ing_name, include_storage=True)
             if owned_ing < tot_needed_for_craft:
                 missing = tot_needed_for_craft - owned_ing
