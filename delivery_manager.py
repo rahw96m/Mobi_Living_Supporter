@@ -15,7 +15,28 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+import ctypes
 from mabi_cli import MabinogiCLI, MabinogiCLIError, get_user_data_dir, get_user_data_path
+
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+ES_AWAYMODE_REQUIRED = 0x00000040
+
+def enable_prevent_sleep() -> None:
+    """Prevents Windows PC from entering sleep/standby mode while long automated routines run."""
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED)
+        except Exception:
+            pass
+
+def disable_prevent_sleep() -> None:
+    """Restores default Windows power management state."""
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+        except Exception:
+            pass
 
 LogCallback = Callable[[str, str], None]  # (level, message)
 AlarmCallback = Callable[[Dict[str, Any]], None]
@@ -998,6 +1019,8 @@ class SettingsStore:
     """Manages persistent application settings (e.g. alter order, wool gather order, wood gather order, etc.)."""
     DEFAULT_SETTINGS = {
         "alter_order": "high_tier",  # "high_tier" (상위 티어부터 / 오래 걸리는 가공 우선) or "low_tier" (하위 티어부터 / 기초 재료부터)
+        "goal_fulfillment_mode": True,  # 목표 완수 모드 (완제품까지 연속 실행)
+        "sound_alarm_enabled": False,   # 완료 효과음 알림 (기본값 OFF, 무음)
     }
 
     def __init__(self, filepath: str = SETTINGS_FILE):
@@ -3108,7 +3131,14 @@ class DeliveryManager:
             "alter_order": alter_order
         }
 
-    def execute_batch_deliveries(self, plan: Dict[str, Any], callback: Optional[LogCallback] = None, alter_order: Optional[str] = None) -> Dict[str, Any]:
+    def execute_batch_deliveries(
+        self,
+        plan: Dict[str, Any],
+        callback: Optional[LogCallback] = None,
+        alter_order: Optional[str] = None,
+        goal_fulfillment_mode: Optional[bool] = None,
+        status_reporter: Optional[Callable[[str], None]] = None
+    ) -> Dict[str, Any]:
         """
         Executes unified batch delivery pipeline with slot-aware, resilient scheduling:
         1. Checks character status and handles user abort.
@@ -3121,16 +3151,22 @@ class DeliveryManager:
            - Synchronizes alarms for queued background altering.
         5. Performs immediate crafting for any tasks whose materials are already 100% prepared!
            - Does NOT halt even if altering was queued; immediately crafts everything possible.
-        6. Summarizes completed crafts, running alters, and deferred tasks.
+        6. If goal_fulfillment_mode is True, continues in an autonomous marathon loop (PC sleep prevented)
+           collecting finished alters, queuing next tiers, and crafting target items until 100% fulfilled!
+        7. Summarizes completed crafts, running alters, and deferred tasks.
         """
         if alter_order is None:
             alter_order = plan.get("alter_order") or settings_store.get("alter_order", "high_tier")
         if alter_order not in ("high_tier", "low_tier"):
             alter_order = "high_tier"
 
+        if goal_fulfillment_mode is None:
+            goal_fulfillment_mode = bool(plan.get("goal_fulfillment_mode", settings_store.get("goal_fulfillment_mode", True)))
+
         order_label = "상위 티어 우선 (오래 걸리는 가공부터)" if alter_order != "low_tier" else "하위 티어 우선 (기초 재료부터)"
+        mode_label = " [🎯 목표 완수 모드]" if goal_fulfillment_mode else ""
         self.reset_abort()
-        self.log(f"🚀 [통합 일괄 납품 파이프라인 가동] ({order_label}) 전체 주간 납품 목표 최적화 제작을 시작합니다.", "action", callback)
+        self.log(f"🚀 [통합 일괄 납품 파이프라인 가동{mode_label}] ({order_label}) 전체 목표 최적화 제작을 시작합니다.", "action", callback)
 
         start_time = time.time()
         initial_wings = self._safe_get_wings()
@@ -3585,11 +3621,218 @@ class DeliveryManager:
                 if len(waiting_tasks) > 5:
                     self.log(f"   • 외 {len(waiting_tasks) - 5}건 대기 중", "info", callback)
 
+        # Helper to check if all tasks are fulfilled
+        def _are_all_tasks_fulfilled() -> bool:
+            for t in tasks:
+                t_name = t["item_name"]
+                t_goal = int(t.get("goal", 1))
+                is_custom_t = bool(t.get("quest_title") == "개별 지정 제작")
+                has_ovr = (t.get("override_current") is not None)
+                cur_o = self.get_effective_owned(t_name, include_storage=is_custom_t)
+                needed_cnt = int(t.get("needed", 0)) if (is_custom_t or has_ovr) else max(0, t_goal - cur_o)
+                if needed_cnt > 0 and cur_o < t_goal:
+                    return False
+            return True
+
+        # Goal Fulfillment Mode Loop (목표 완수 모드: 전 단계 수령 ➔ 다음 가공 ➔ 완제품까지 자율 완주)
+        if goal_fulfillment_mode and not _are_all_tasks_fulfilled() and not self.abort_requested:
+            enable_prevent_sleep()
+            self.log("🎯 [목표 완수 모드 가동] PC 절전 방지 활성화. 가공 완료 수령 ➔ 다음 티어 가공 ➔ 완제품 제작까지 연속 진행합니다.", "action", callback)
+            cycle = 1
+            try:
+                while not self.abort_requested:
+                    if _are_all_tasks_fulfilled():
+                        self.log("🎉 [목표 완수 성공!] 모든 목표 아이템 수량이 100% 달성되었습니다!", "success", callback)
+                        break
+
+                    # 1. Safety check: game process running
+                    if not self.cli.check_game_running():
+                        self.log("⚠️ 게임 클라이언트가 일시적으로 감지되지 않습니다. 10초 후 재확인합니다...", "warn", callback)
+                        time.sleep(10)
+                        if not self.cli.check_game_running():
+                            self.log("🛑 게임 연결이 끊겨 목표 완수 모드를 안전하게 종료합니다.", "warn", callback)
+                            break
+
+                    # 2. Safety check: bag weight
+                    try:
+                        inv = self.cli.get_inventory()
+                        cur_w = float(inv.get("CurrentInventoryWeightAsDecimal", 0) or 0)
+                        max_w = float(inv.get("MaxInventoryWeightAsDecimal", 100) or 100)
+                        if max_w > 0 and (cur_w / max_w) >= 0.98:
+                            self.log(f"⚠️ [가방 과적 경고] 가방 무게({cur_w:.1f}/{max_w:.1f})가 98%에 도달하여 안전을 위해 가공 수령을 멈춥니다.", "warn", callback)
+                            break
+                    except Exception:
+                        pass
+
+                    # 3. Safety check: wings
+                    curr_wings = self._safe_get_wings(100)
+                    if curr_wings < 5:
+                        self.log(f"⚠️ [정령의 날개 부족] 남은 날개({curr_wings}개)가 부족하여 작업을 안전하게 마무리합니다.", "warn", callback)
+                        break
+
+                    # 4. Check altering works in progress / completed
+                    try:
+                        works_info = self.cli.get_altering_works()
+                    except Exception as ex:
+                        self.log(f"⚠️ 가공 대기열 확인 중 일시 오류: {ex}. 5초 후 재시도합니다.", "warn", callback)
+                        time.sleep(5)
+                        continue
+
+                    completed_count = int(works_info.get("completedCount", 0) or 0)
+                    if completed_count > 0:
+                        self.log(f"🎁 [완료 가공품 감지] 총 {completed_count}건의 완료 가공품을 일괄 수령합니다.", "action", callback)
+                        new_colls = self.collect_completed_altering_works(callback=callback)
+                        if new_colls:
+                            collected_facilities_all.extend(new_colls)
+                            self.cli.invalidate_cache()
+
+                            # Try crafting any newly ready tasks with fresh materials
+                            self.log("🔨 [완제품 추가 제작 확인] 새로 수령한 재료로 완제품 제작 가능 여부를 확인합니다.", "action", callback)
+                            for t in tasks:
+                                if self.abort_requested:
+                                    break
+                                item_name = t["item_name"]
+                                goal = int(t.get("goal", 1))
+                                is_custom_t = bool(t.get("quest_title") == "개별 지정 제작")
+                                has_ovr = (t.get("override_current") is not None)
+                                cur_o = self.get_effective_owned(item_name, include_storage=is_custom_t)
+                                needed_cnt = int(t.get("needed", 0)) if (is_custom_t or has_ovr) else max(0, goal - cur_o)
+                                if needed_cnt <= 0 or cur_o >= goal:
+                                    continue
+
+                                recipe = self.get_recipe_ingredients(item_name)
+                                if not recipe:
+                                    continue
+                                prod_pc = max(1, self.get_produced_per_craft(item_name))
+                                crafts_needed = math.ceil(needed_cnt / prod_pc)
+                                can_craft = True
+                                for ing_n, per_c in recipe.items():
+                                    tot_req = per_c * crafts_needed
+                                    if self.get_effective_owned(ing_n, include_storage=True) < tot_req:
+                                        can_craft = False
+                                        break
+                                if can_craft:
+                                    try:
+                                        c_cnt = self.auto_craft(item_name, needed_cnt, callback=callback)
+                                        craft_results.append({"item_name": item_name, "crafted": c_cnt, "status": "success"})
+                                        self.log(f"✅ '{item_name}' {c_cnt}개 추가 제작 완료!", "success", callback)
+                                    except Exception as ce:
+                                        self.log(f"❌ '{item_name}' 추가 제작 중 오류: {ce}", "error", callback)
+
+                            if _are_all_tasks_fulfilled():
+                                self.log("🎉 [목표 완수 성공!] 모든 목표가 달성되었습니다!", "success", callback)
+                                break
+
+                    # 5. Try queuing next-tier alters into free slots
+                    plan_fresh = self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
+                    fresh_inter = plan_fresh.get("intermediate_requirements", [])
+                    works_info = self.cli.get_altering_works()
+                    current_q_works = works_info.get("works", [])
+                    fac_used = defaultdict(int)
+                    for w in current_q_works:
+                        if not w.get("IsCompleted"):
+                            fac = w.get("FacilityName") or get_facility_for_material(w.get("DisplayName", ""))
+                            fac_used[fac] += 1
+
+                    registered_any_new = False
+                    for req in fresh_inter:
+                        if self.abort_requested:
+                            break
+                        mat_name = req["item_name"]
+                        rec_name = req.get("recipe_name", mat_name)
+                        w_needed = req["works_needed"]
+                        if w_needed <= 0:
+                            continue
+                        fac = req.get("facility") or get_facility_for_material(mat_name)
+                        avail_slots = max(0, MAX_SLOTS - fac_used[fac])
+                        if avail_slots <= 0:
+                            continue
+
+                        sub_ings = req.get("ingredients", {})
+                        max_possible = w_needed
+                        if sub_ings:
+                            for s_n, s_r in sub_ings.items():
+                                if s_r > 0:
+                                    s_own = self.get_effective_owned(s_n, include_storage=True)
+                                    possible_here = s_own // s_r
+                                    if possible_here < max_possible:
+                                        max_possible = possible_here
+
+                        to_reg = min(w_needed, avail_slots, max_possible)
+                        if to_reg > 0:
+                            self.log(f"⚙️ [연계 가공 등록] [{fac}] '{rec_name}' {to_reg}회 추가 가공 등록합니다.", "action", callback)
+                            try:
+                                alt_res = self.auto_alter(rec_name, to_reg, callback=callback, is_delivery=True)
+                                reg_cnt = alt_res.get("registered", to_reg) if isinstance(alt_res, dict) else to_reg
+                                fac_used[fac] += reg_cnt
+                                if reg_cnt > 0:
+                                    registered_any_new = True
+                                    altered_list.append({
+                                        "item": mat_name,
+                                        "recipe": rec_name,
+                                        "facility": fac,
+                                        "registered": reg_cnt,
+                                        "yield_est": reg_cnt * 3
+                                    })
+                            except Exception as al_err:
+                                self.log(f"⚠️ [{fac}] '{rec_name}' 가공 등록 실패: {al_err}", "warn", callback)
+
+                    # 6. Check active pending works
+                    works_info = self.cli.get_altering_works()
+                    all_works = works_info.get("works", [])
+                    pending_works = [w for w in all_works if not w.get("IsCompleted") and w.get("State") in ("InProgress", "NotStarted")]
+
+                    if not pending_works:
+                        if not registered_any_new:
+                            self.log("ℹ️ [목표 완수 종료] 더 이상 진행 가능한 가공 작업이 없습니다 (원자재 소진 또는 대기열 없음).", "info", callback)
+                            break
+                        else:
+                            time.sleep(3)
+                            continue
+
+                    # 7. Group remaining works by facility to find the FIRST completing facility
+                    fac_remaining_sums = defaultdict(int)
+                    for w in pending_works:
+                        fac = w.get("FacilityName") or get_facility_for_material(w.get("DisplayName", ""))
+                        fac_remaining_sums[fac] += int(w.get("RemainingSeconds", 0) or 0)
+
+                    min_fac_remaining = min(fac_remaining_sums.values()) if fac_remaining_sums else 30
+                    wait_seconds = max(10, min_fac_remaining + 2)
+                    wait_minutes = math.ceil(wait_seconds / 60)
+
+                    target_fac = [f for f, r in fac_remaining_sums.items() if r == min_fac_remaining]
+                    fac_label = target_fac[0] if target_fac else "가공 시설"
+
+                    self.log(
+                        f"⏳ [목표 완수 스마트 대기 {cycle}회차] '{fac_label}' 완료까지 약 {wait_minutes}분({wait_seconds}초) 대기합니다. (PC 절전 방지 유지 중)",
+                        "info", callback
+                    )
+
+                    wake_time = time.time() + wait_seconds
+                    while time.time() < wake_time:
+                        if self.abort_requested:
+                            break
+                        rem_sec = int(wake_time - time.time())
+                        if status_reporter and rem_sec > 0:
+                            rem_m = rem_sec // 60
+                            rem_s = rem_sec % 60
+                            status_reporter(f"🎯 [목표 완수 모드 {cycle}회차] '{fac_label}' 가공 중 (다음 수령까지 약 {rem_m}분 {rem_s}초 남음)")
+                        time.sleep(min(2.0, max(0.5, rem_sec if rem_sec > 0 else 1)))
+
+                    cycle += 1
+            finally:
+                disable_prevent_sleep()
+
         duration = time.time() - start_time
         final_wings = self._safe_get_wings(initial_wings)
-        status_str = "waiting_in_background" if queued_any_long else "completed"
-
-        title_str = "주간 납품 작업 완료"
+        
+        if goal_fulfillment_mode:
+            all_done = _are_all_tasks_fulfilled()
+            status_str = "aborted" if self.abort_requested else ("completed" if all_done else "waiting_in_background")
+            title_str = "목표 완수 모드 작업 리포트"
+        else:
+            status_str = "waiting_in_background" if queued_any_long else "completed"
+            title_str = "주간 납품 작업 완료"
 
         summary = self.format_and_log_summary(
             summary_title=title_str,
@@ -3606,7 +3849,7 @@ class DeliveryManager:
             callback=callback
         )
 
-        if queued_any_long:
+        if not goal_fulfillment_mode and queued_any_long:
             self.log("☕ [가공 백그라운드 진행 안내] 대기열 가공이 진행 중입니다. 알람이 울리면 웹 대시보드에서 '일괄 제작'을 다시 실행하세요!", "success", callback)
             return {
                 "status": "waiting_in_background",

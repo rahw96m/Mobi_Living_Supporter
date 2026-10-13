@@ -618,6 +618,10 @@ class MabinogiCLI:
                 error_msg = f"[{kind}] {error_msg}"
             raise MabinogiCLIError(str(error_msg), exit_code=exit_code, raw_output=stdout_str, response_data=parsed, error_code="GAME_ERROR")
 
+        # Invalidate read cache on successful mutation completion
+        if exit_code == 0 and command in ACTION_COMMANDS:
+            self.invalidate_cache()
+
         # Cache successful read-only response
         if exit_code == 0 and command in READ_CACHE_TTL:
             with self._cache_lock:

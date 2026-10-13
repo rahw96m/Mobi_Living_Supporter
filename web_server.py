@@ -345,6 +345,16 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "alive"})
             return
 
+        if path == "/api/network_info":
+            local_ip = get_local_ip()
+            self._send_json({
+                "local_ip": local_ip,
+                "port": active_server_port,
+                "mobile_url": f"http://{local_ip}:{active_server_port}",
+                "is_lan": local_ip not in ("127.0.0.1", "localhost")
+            })
+            return
+
         if path == "/favicon.ico":
             icon_data = get_icon_bytes("ico") or get_icon_bytes("png")
             if icon_data:
@@ -439,6 +449,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                         if os.path.isfile(fp):
                             files.append({"name": f, "size": os.path.getsize(fp)})
                 self._send_json({"data_dir": data_dir, "files": files})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/network_info":
+            try:
+                ip = get_local_ip()
+                port = active_server_port
+                mobile_url = f"http://{ip}:{port}"
+                self._send_json({
+                    "local_ip": ip,
+                    "port": port,
+                    "mobile_url": mobile_url
+                })
             except Exception as e:
                 self._send_error(e)
             return
@@ -778,17 +802,29 @@ class RequestHandler(BaseHTTPRequestHandler):
             body_bytes = self.rfile.read(length) if length > 0 else b"{}"
             req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
             alter_order = req_json.get("alter_order")
+            goal_fulfillment_mode = req_json.get("goal_fulfillment_mode")
+            if goal_fulfillment_mode is None:
+                goal_fulfillment_mode = settings_store.get("goal_fulfillment_mode", True)
 
             manager_instance.reset_abort()
             is_busy = True
             order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
-            current_task_info = f"⚡ 전체 주간 납품 일괄 최적화 제작 진행 중 ({order_name})..."
+            mode_tag = " [목표 완수 모드]" if goal_fulfillment_mode else ""
+            current_task_info = f"⚡ 전체 주간 납품 일괄 최적화 제작 진행 중 ({order_name}){mode_tag}..."
 
             def batch_worker():
                 global is_busy, current_task_info, last_execution_summary, last_summary_id
                 try:
+                    def update_task_status(msg):
+                        global current_task_info
+                        current_task_info = msg
+
                     plan = manager_instance.analyze_batch_plan(alter_order=alter_order)
-                    res = manager_instance.execute_batch_deliveries(plan, callback=add_log, alter_order=alter_order)
+                    res = manager_instance.execute_batch_deliveries(
+                        plan, callback=add_log, alter_order=alter_order,
+                        goal_fulfillment_mode=goal_fulfillment_mode,
+                        status_reporter=update_task_status
+                    )
                     if isinstance(res, dict) and "summary" in res:
                         with status_lock:
                             last_execution_summary = res["summary"]
@@ -826,19 +862,31 @@ class RequestHandler(BaseHTTPRequestHandler):
             body_bytes = self.rfile.read(length) if length > 0 else b"{}"
             req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
             alter_order = req_json.get("alter_order")
+            goal_fulfillment_mode = req_json.get("goal_fulfillment_mode")
+            if goal_fulfillment_mode is None:
+                goal_fulfillment_mode = settings_store.get("goal_fulfillment_mode", True)
 
             manager_instance.reset_abort()
             is_busy = True
             order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
-            current_task_info = f"🔨 개별 지정 아이템 일괄 최적화 제작 진행 중 ({order_name})..."
+            mode_tag = " [목표 완수 모드]" if goal_fulfillment_mode else ""
+            current_task_info = f"🔨 개별 지정 아이템 일괄 최적화 제작 진행 중 ({order_name}){mode_tag}..."
 
             def custom_batch_worker():
                 global is_busy, current_task_info, last_execution_summary, last_summary_id, cached_custom_targets
                 try:
+                    def update_task_status(msg):
+                        global current_task_info
+                        current_task_info = msg
+
                     plan = manager_instance.analyze_custom_plan(alter_order=alter_order)
-                    res = manager_instance.execute_batch_deliveries(plan, callback=add_log, alter_order=alter_order)
+                    res = manager_instance.execute_batch_deliveries(
+                        plan, callback=add_log, alter_order=alter_order,
+                        goal_fulfillment_mode=goal_fulfillment_mode,
+                        status_reporter=update_task_status
+                    )
                     if isinstance(res, dict) and "summary" in res:
-                        res["summary"]["title"] = "개별 지정 아이템 제작 완료 리포트"
+                        res["summary"]["title"] = "개별 지정 아이템 제작 완료 리포트" if not goal_fulfillment_mode else "개별 지정 목표 완수 리포트"
                         with status_lock:
                             last_execution_summary = res["summary"]
                             last_summary_id += 1
@@ -1359,8 +1407,23 @@ def launch_app_window(url: str):
     except Exception:
         pass
 
+import socket
+
+active_server_port = 8080
+
+def get_local_ip() -> str:
+    """Returns local LAN IP (e.g. 192.168.0.x) for mobile device connection."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
 def start_server(port=8080):
-    global server_instance, server_start_time
+    global server_instance, server_start_time, active_server_port
     server_start_time = time.time()
     ThreadingHTTPServer.allow_reuse_address = True
 
@@ -1374,25 +1437,39 @@ def start_server(port=8080):
     except Exception:
         pass
 
-    # 2. Try to bind starting from port up to port+10
+    # 2. Try to bind starting from port up to port+10 (prefer 0.0.0.0 for local Wi-Fi LAN, fallback to 127.0.0.1)
     server = None
     active_port = port
+    active_server_port = port
     for p in range(port, port + 10):
         try:
-            server = ThreadingHTTPServer(("127.0.0.1", p), RequestHandler)
+            server = ThreadingHTTPServer(("0.0.0.0", p), RequestHandler)
             active_port = p
+            active_server_port = p
             break
         except OSError:
-            continue
+            try:
+                server = ThreadingHTTPServer(("127.0.0.1", p), RequestHandler)
+                active_port = p
+                active_server_port = p
+                break
+            except OSError:
+                continue
 
     if server is None:
         time.sleep(1.0)
         try:
-            server = ThreadingHTTPServer(("127.0.0.1", port), RequestHandler)
+            server = ThreadingHTTPServer(("0.0.0.0", port), RequestHandler)
             active_port = port
+            active_server_port = port
         except OSError:
-            launch_app_window(f"http://127.0.0.1:{port}")
-            return
+            try:
+                server = ThreadingHTTPServer(("127.0.0.1", port), RequestHandler)
+                active_port = port
+                active_server_port = port
+            except OSError:
+                launch_app_window(f"http://127.0.0.1:{port}")
+                return
 
     server_instance = server
 
@@ -2104,7 +2181,194 @@ HTML_PAGE = """<!DOCTYPE html>
       font-size: 12.5px;
     }
     .summary-item-row:last-child {
-      border-bottom: none;
+    /* Master Command Bar (Sticky Header Control Panel) */
+    .master-command-bar {
+      position: sticky;
+      top: 10px;
+      z-index: 850;
+      margin-bottom: 22px;
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.92) 0%, rgba(15, 23, 42, 0.96) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      border-radius: 16px;
+      padding: 14px 20px;
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.15);
+      backdrop-filter: blur(14px);
+      transition: all 0.25s ease;
+    }
+    .master-command-bar.running {
+      border-color: rgba(239, 68, 68, 0.5);
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 25px rgba(239, 68, 68, 0.25);
+    }
+    .mcb-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .mcb-left {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+      min-width: 280px;
+    }
+    .mcb-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .mcb-briefing {
+      font-size: 14px;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .mcb-options-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .mcb-option-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #c7d2fe;
+      user-select: none;
+      transition: all 0.2s;
+    }
+    .mcb-option-toggle:hover {
+      background: rgba(99, 102, 241, 0.22);
+      border-color: rgba(99, 102, 241, 0.5);
+    }
+    .mcb-option-toggle input[type="checkbox"] {
+      accent-color: #6366f1;
+      cursor: pointer;
+      width: 15px;
+      height: 15px;
+    }
+    .mcb-pill-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-muted);
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .mcb-pill-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+    .mcb-pill-btn.active {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+    .mcb-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .btn-mcb-start {
+      background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+      color: white;
+      font-size: 15px;
+      font-weight: 800;
+      padding: 12px 28px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .btn-mcb-start:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 22px rgba(168, 85, 247, 0.55);
+      filter: brightness(1.1);
+    }
+    .btn-danger-abort {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+      font-size: 14.5px;
+      font-weight: 800;
+      padding: 11px 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+      border: none;
+      cursor: pointer;
+      animation: abortPulse 2s infinite ease-in-out;
+    }
+    @keyframes abortPulse {
+      0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+      50% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.7); }
+    }
+    .mcb-running-spinner {
+      width: 22px;
+      height: 22px;
+      border: 3px solid rgba(239, 68, 68, 0.25);
+      border-top-color: #f87171;
+      border-radius: 50%;
+      animation: mcbSpin 0.9s linear infinite;
+    }
+    @keyframes mcbSpin {
+      to { transform: rotate(360deg); }
+    }
+    .mcb-running-info {
+      text-align: right;
+    }
+    .mcb-running-title {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #fca5a5;
+    }
+    .mcb-running-desc {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      max-width: 280px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    @media (max-width: 768px) {
+      .master-command-bar {
+        padding: 12px 14px;
+        top: 6px;
+      }
+      .mcb-inner {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+      }
+      .mcb-right {
+        justify-content: stretch;
+      }
+      .btn-mcb-start, .btn-danger-abort {
+        width: 100%;
+        justify-content: center;
+        padding: 12px 16px;
+      }
+      .mcb-running-info {
+        text-align: left;
+        flex: 1;
+      }
     }
   </style>
 </head>
@@ -2125,6 +2389,9 @@ HTML_PAGE = """<!DOCTYPE html>
         <div class="header-actions">
           <button class="header-action-btn" onclick="openUserDataFolder()" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #6ee7b7;" title="레시피, 프리셋, 설정이 저장되는 내 문서 폴더 열기 (버전 업데이트 시 자동 유지)">
             <span class="btn-icon">📂</span><span class="btn-label">데이터 폴더</span>
+          </button>
+          <button class="header-action-btn" onclick="openMobileConnectModal()" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #7dd3fc;" title="스마트폰 브라우저로 침대에서 실시간 모니터링 (QR 코드 접속)">
+            <span class="btn-icon">📱</span><span class="btn-label">스마트폰 접속</span>
           </button>
           <button class="header-action-btn btn-settings" onclick="openCliModal()" title="게임 CLI 설치 경로 및 연결 설정">
             <span class="btn-icon">⚙️</span><span class="btn-label">연결 설정</span>
@@ -2259,6 +2526,54 @@ HTML_PAGE = """<!DOCTYPE html>
             <div class="tab-sub-desc">원하는 아이템 직접 입력 · 자재 소요 일괄 분석(BOM) · 부족 원자재 채집/가공/제작 원스톱 완료</div>
           </div>
         </button>
+      </div>
+    </div>
+
+    <!-- Global Master Command Bar (상단 고정 마스터 컨트롤 바: 브리핑 & 즉시 실행/중지) -->
+    <div id="master-command-bar" class="master-command-bar">
+      <div class="mcb-inner">
+        <!-- Left: Current mode briefing & options -->
+        <div class="mcb-left">
+          <div class="mcb-title-row">
+            <span id="mcb-mode-badge" class="badge delivery" style="font-size: 13px; font-weight: 800; padding: 4px 10px;">🎯 주간 납품</span>
+            <span id="mcb-briefing-text" class="mcb-briefing">목표 분석 대기 중...</span>
+            <span id="mcb-eta-badge" class="badge" style="display: none; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 12px; font-weight: 700;">⏱️ 예상 소요: -</span>
+          </div>
+          <div class="mcb-options-row">
+            <label class="mcb-option-toggle" title="가공 수령 ➔ 다음 티어 가공 ➔ 완제품 제작까지 멈추지 않고 100% 완수할 때까지 연속 자동 실행">
+              <input type="checkbox" id="mcb-goal-toggle" onchange="onGoalFulfillmentToggleChanged(this.checked)">
+              <span class="mcb-toggle-label">🎯 목표 완수 모드</span>
+            </label>
+            <button class="mcb-pill-btn" id="mcb-btn-sound" onclick="toggleSoundAlarmSetting()" title="목표 완수/작업 완료 시 효과음 알림 (기본값: 무음)">
+              <span id="mcb-sound-icon">🔕</span> <span id="mcb-sound-text">알림음 꺼짐</span>
+            </button>
+            <button class="mcb-pill-btn" id="mcb-btn-order" onclick="toggleAlterOrderSetting()" title="가공 순서 우선순위 (상위 티어 / 하위 티어 우선)">
+              <span id="mcb-order-text">⚙️ 상위티어 우선</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: Master Start / Stop Controls -->
+        <div class="mcb-right">
+          <!-- Idle State: Big Start Button -->
+          <div id="mcb-box-idle" style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn btn-lg btn-mcb-start" id="mcb-btn-start" onclick="triggerMasterStartAction()">
+              <span class="btn-icon" id="mcb-start-icon">🎯</span>
+              <span class="btn-label" id="mcb-start-label">목표 완수 시작</span>
+            </button>
+          </div>
+          <!-- Running State: Live Countdown & Abort Button -->
+          <div id="mcb-box-running" style="display: none; gap: 12px; align-items: center;">
+            <div class="mcb-running-spinner"></div>
+            <div class="mcb-running-info">
+              <div class="mcb-running-title" id="mcb-running-title">⚡ 작업 진행 중...</div>
+              <div class="mcb-running-desc" id="mcb-running-desc">실시간 상태 동기화 중</div>
+            </div>
+            <button class="btn btn-lg btn-danger-abort" onclick="abortMasterPipeline()" title="현재 진행 중인 작업을 즉시 안전하게 멈춥니다">
+              <span>🛑 즉시 중지</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2824,6 +3139,45 @@ HTML_PAGE = """<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Mobile Connection Modal (스마트폰 접속 안내 & QR 코드) -->
+  <div class="modal-overlay" id="mobile-connect-modal" onclick="handleMobileConnectModalOverlayClick(event)">
+    <div class="modal-dialog" style="max-width: 480px; text-align: center;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 22px;">📱</span>
+          <div>
+            <h3 style="font-size: 16px; font-weight: 800; color: #7dd3fc; margin: 0;">스마트폰 브라우저 접속 안내</h3>
+            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">동일 Wi-Fi 환경에서 모바일 실시간 모니터링</div>
+          </div>
+        </div>
+        <button class="btn btn-sm" onclick="closeMobileConnectModal()" style="padding: 4px 10px; background: rgba(255,255,255,0.08); border-radius: 8px;">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 20px 24px;">
+        <div style="padding: 12px 16px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 12px; text-align: left; font-size: 12.5px; color: #e2e8f0; line-height: 1.6;">
+          💡 <strong>이용 방법</strong><br>
+          1. PC와 스마트폰이 <strong>동일한 Wi-Fi(공유기)</strong>에 연결되어 있어야 합니다.<br>
+          2. 스마트폰 기본 카메라로 아래 <strong>QR 코드</strong>를 비추면 즉시 대시보드가 열립니다.
+        </div>
+
+        <!-- QR Code Container -->
+        <div style="margin: 20px auto 14px; width: 190px; height: 190px; padding: 10px; background: #ffffff; border-radius: 14px; box-shadow: 0 8px 25px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
+          <img id="mobile-qr-img" src="" alt="스마트폰 접속 QR 코드" style="width: 170px; height: 170px; display: block;" onerror="this.style.display='none'; document.getElementById('mobile-qr-fallback').style.display='block';">
+          <div id="mobile-qr-fallback" style="display: none; color: #000; font-size: 12px; font-weight: 600;">QR 생성 중...</div>
+        </div>
+
+        <!-- URL Copy Box -->
+        <div style="display: flex; gap: 8px; align-items: center; justify-content: center; margin-bottom: 8px;">
+          <input type="text" id="mobile-connect-url-input" readonly style="padding: 9px 12px; background: rgba(0,0,0,0.5); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; color: #38bdf8; font-weight: 700; font-size: 13.5px; width: 230px; text-align: center;">
+          <button class="btn btn-emerald" onclick="copyMobileUrl()" style="padding: 9px 14px; font-weight: 700;">📋 복사</button>
+        </div>
+        <div id="mobile-connect-copy-msg" style="font-size: 11px; color: #34d399; height: 16px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-sm btn-secondary" onclick="closeMobileConnectModal()" style="width: 100%; padding: 8px;">닫기</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Recipe Manager & Edit Modal -->
   <div class="modal-overlay" id="recipe-modal-overlay" onclick="handleRecipeModalOverlayClick(event)">
     <div class="modal-dialog" style="max-width: 560px;">
@@ -3165,6 +3519,67 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    // Mobile Connection Modal & QR Code Handlers
+    async function openMobileConnectModal() {
+      const modal = document.getElementById('mobile-connect-modal');
+      if (!modal) return;
+      modal.classList.add('active');
+      const input = document.getElementById('mobile-connect-url-input');
+      const qrImg = document.getElementById('mobile-qr-img');
+      const fallback = document.getElementById('mobile-qr-fallback');
+      const copyMsg = document.getElementById('mobile-connect-copy-msg');
+      if (copyMsg) copyMsg.innerText = '';
+      if (fallback) fallback.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/network_info');
+        const data = await res.json();
+        const mobileUrl = data.mobile_url || window.location.href;
+        if (input) input.value = mobileUrl;
+        if (qrImg) {
+          qrImg.style.display = 'block';
+          qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(mobileUrl);
+        }
+      } catch (e) {
+        if (input) input.value = window.location.href;
+      }
+    }
+
+    function closeMobileConnectModal() {
+      const modal = document.getElementById('mobile-connect-modal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function handleMobileConnectModalOverlayClick(e) {
+      if (e.target && e.target.id === 'mobile-connect-modal') {
+        closeMobileConnectModal();
+      }
+    }
+
+    function copyMobileUrl() {
+      const input = document.getElementById('mobile-connect-url-input');
+      const msg = document.getElementById('mobile-connect-copy-msg');
+      if (!input) return;
+      input.select();
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(input.value).then(() => {
+            if (msg) msg.innerText = '✅ 접속 URL이 클립보드에 복사되었습니다!';
+            setTimeout(() => { if (msg) msg.innerText = ''; }, 3000);
+          }).catch(() => {
+            document.execCommand('copy');
+            if (msg) msg.innerText = '✅ 접속 URL이 복사되었습니다!';
+          });
+        } else {
+          document.execCommand('copy');
+          if (msg) msg.innerText = '✅ 접속 URL이 복사되었습니다!';
+        }
+      } catch (e) {
+        document.execCommand('copy');
+        if (msg) msg.innerText = '✅ 접속 URL이 복사되었습니다!';
+      }
+    }
+
     async function fetchUserDataInfo() {
       try {
         const res = await fetch('/api/user_data_info');
@@ -3303,9 +3718,13 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     let currentAlterOrder = safeGetStorage('mabi_alter_order', 'high_tier');
+    let currentGoalFulfillmentMode = (safeGetStorage('mabi_goal_fulfillment_mode', 'true') === 'true');
+    let currentSoundAlarmEnabled = (safeGetStorage('mabi_sound_alarm_enabled', 'false') === 'true');
+    let cachedBatchPlan = null;
 
     async function loadSettings() {
       applyAlterOrderUI();
+      updateMasterCommandBar();
       try {
         const res = await fetch('/api/settings');
         const d = await res.json();
@@ -3315,6 +3734,15 @@ HTML_PAGE = """<!DOCTYPE html>
             safeSetStorage('mabi_alter_order', currentAlterOrder);
             applyAlterOrderUI();
           }
+          if (d.goal_fulfillment_mode !== undefined) {
+            currentGoalFulfillmentMode = !!d.goal_fulfillment_mode;
+            safeSetStorage('mabi_goal_fulfillment_mode', String(currentGoalFulfillmentMode));
+          }
+          if (d.sound_alarm_enabled !== undefined) {
+            currentSoundAlarmEnabled = !!d.sound_alarm_enabled;
+            safeSetStorage('mabi_sound_alarm_enabled', String(currentSoundAlarmEnabled));
+          }
+          updateMasterCommandBar();
         }
       } catch (e) {}
     }
@@ -3357,6 +3785,7 @@ HTML_PAGE = """<!DOCTYPE html>
       currentAlterOrder = order;
       safeSetStorage('mabi_alter_order', order);
       applyAlterOrderUI();
+      updateMasterCommandBar();
       try {
         await fetch('/api/settings', {
           method: 'POST',
@@ -3368,6 +3797,173 @@ HTML_PAGE = """<!DOCTYPE html>
       if (typeof loadBatchPlan === 'function') loadBatchPlan();
       if (typeof loadQuickAlterPlan === 'function') loadQuickAlterPlan();
       if (typeof loadCustomPlan === 'function') loadCustomPlan();
+    }
+
+    // ==========================================
+    // Global Master Command Bar Controls
+    // ==========================================
+    function updateMasterCommandBar() {
+      const badgeMode = document.getElementById('mcb-mode-badge');
+      const briefing = document.getElementById('mcb-briefing-text');
+      const goalToggle = document.getElementById('mcb-goal-toggle');
+      const soundIcon = document.getElementById('mcb-sound-icon');
+      const soundText = document.getElementById('mcb-sound-text');
+      const orderText = document.getElementById('mcb-order-text');
+      const startIcon = document.getElementById('mcb-start-icon');
+      const startLabel = document.getElementById('mcb-start-label');
+      const btnStart = document.getElementById('mcb-btn-start');
+
+      if (goalToggle) goalToggle.checked = currentGoalFulfillmentMode;
+      if (soundIcon) soundIcon.innerText = currentSoundAlarmEnabled ? '🔔' : '🔕';
+      if (soundText) soundText.innerText = currentSoundAlarmEnabled ? '알림음 켜짐' : '알림음 꺼짐';
+      if (orderText) orderText.innerText = currentAlterOrder === 'low_tier' ? '⚙️ 하위티어 우선' : '⚙️ 상위티어 우선';
+
+      if (currentMainMode === 'delivery') {
+        if (badgeMode) {
+          badgeMode.className = 'badge delivery';
+          badgeMode.innerText = '🎯 주간 납품';
+          badgeMode.style.background = 'rgba(99, 102, 241, 0.2)';
+          badgeMode.style.color = '#a5b4fc';
+        }
+        if (startIcon) startIcon.innerText = currentGoalFulfillmentMode ? '🎯' : '⚡';
+        if (startLabel) startLabel.innerText = currentGoalFulfillmentMode ? '주간 납품 완주 시작' : '주간 납품 일괄 실행';
+
+        if (briefing) {
+          if (cachedBatchPlan) {
+            if (cachedBatchPlan.all_completed) {
+              briefing.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 주간 납품 목표 100% 달성 완료! 🎉</span>';
+              if (btnStart) btnStart.disabled = true;
+            } else {
+              const taskCount = (cachedBatchPlan.tasks || []).length;
+              const alterCount = cachedBatchPlan.total_works_to_queue || 0;
+              const neededRaw = (cachedBatchPlan.raw_materials || []).filter(r => r.deficit > 0 && r.is_gatherable);
+              const craftableCount = cachedBatchPlan.craftable_tasks_count || 0;
+              let parts = [];
+              if (taskCount > 0) parts.push(`납품 목표 ${taskCount}건`);
+              if (craftableCount > 0) parts.push(`<strong style="color:#34d399;">즉시 제작 가능 ${craftableCount}건</strong>`);
+              if (alterCount > 0) parts.push(`가공 등록 ${alterCount}슬롯`);
+              if (neededRaw.length > 0) parts.push(`채집 필요 ${neededRaw.length}종`);
+              briefing.innerHTML = parts.join(' · ') || '주간 납품 계획 준비 완료';
+              if (btnStart) btnStart.disabled = isCurrentlyBusy || (taskCount === 0);
+            }
+          } else {
+            briefing.innerText = '주간 납품 목표 계획 분석 대기 중...';
+          }
+        }
+      } else if (currentMainMode === 'custom_craft') {
+        if (badgeMode) {
+          badgeMode.className = 'badge delivery';
+          badgeMode.innerText = '🔨 개별 제작';
+          badgeMode.style.background = 'rgba(16, 185, 129, 0.2)';
+          badgeMode.style.color = '#34d399';
+        }
+        if (startIcon) startIcon.innerText = currentGoalFulfillmentMode ? '🎯' : '🔨';
+        if (startLabel) startLabel.innerText = currentGoalFulfillmentMode ? '개별 목표 완주 시작' : '개별 제작 일괄 실행';
+
+        if (briefing) {
+          if (cachedCustomPlan) {
+            if (cachedCustomPlan.all_completed) {
+              briefing.innerHTML = '<span style="color:#34d399; font-weight:700;">등록된 모든 개별 제작 목표 달성 완료! 🎉</span>';
+              if (btnStart) btnStart.disabled = true;
+            } else {
+              const targetCount = (cachedCustomPlan.targets || []).length;
+              const alterCount = cachedCustomPlan.total_works_to_queue || 0;
+              const neededRaw = (cachedCustomPlan.raw_materials || []).filter(r => r.deficit > 0 && r.is_gatherable);
+              const craftableCount = cachedCustomPlan.craftable_tasks_count || 0;
+              let parts = [];
+              if (targetCount > 0) parts.push(`등록 목표 ${targetCount}개`);
+              if (craftableCount > 0) parts.push(`<strong style="color:#34d399;">즉시 제작 가능 ${craftableCount}건</strong>`);
+              if (alterCount > 0) parts.push(`가공 등록 ${alterCount}슬롯`);
+              if (neededRaw.length > 0) parts.push(`채집 필요 ${neededRaw.length}종`);
+              briefing.innerHTML = parts.join(' · ') || '개별 제작 계획 준비 완료';
+              if (btnStart) btnStart.disabled = isCurrentlyBusy || (targetCount === 0);
+            }
+          } else {
+            briefing.innerText = '개별 제작 목표 계획 분석 대기 중...';
+          }
+        }
+      } else if (currentMainMode === 'quick_alter') {
+        if (badgeMode) {
+          badgeMode.className = 'badge manual';
+          badgeMode.innerText = '⚡ 빠른 가공';
+          badgeMode.style.background = 'rgba(2, 132, 199, 0.2)';
+          badgeMode.style.color = '#38bdf8';
+        }
+        if (startIcon) startIcon.innerText = '⚡';
+        if (startLabel) startLabel.innerText = '7슬롯 빠른 가공 실행';
+
+        if (briefing) {
+          const catName = currentQuickCategory === 'all' ? '전체 가공대' : `'${currentQuickCategory}'`;
+          if (cachedQuickPlan) {
+            briefing.innerText = `7슬롯 최고 레벨 가공 루틴 (${catName}) - 수령 ➔ 원자재 채집 ➔ 가공 순차 등록`;
+            if (btnStart) btnStart.disabled = isCurrentlyBusy || !cachedQuickPlan.can_start;
+          } else {
+            briefing.innerText = `7슬롯 최고 레벨 가공 루틴 (${catName}) 분석 중...`;
+          }
+        }
+      }
+    }
+
+    async function onGoalFulfillmentToggleChanged(checked) {
+      currentGoalFulfillmentMode = !!checked;
+      safeSetStorage('mabi_goal_fulfillment_mode', String(currentGoalFulfillmentMode));
+      updateMasterCommandBar();
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ goal_fulfillment_mode: currentGoalFulfillmentMode })
+        });
+      } catch (e) {}
+    }
+
+    async function toggleSoundAlarmSetting() {
+      currentSoundAlarmEnabled = !currentSoundAlarmEnabled;
+      safeSetStorage('mabi_sound_alarm_enabled', String(currentSoundAlarmEnabled));
+      updateMasterCommandBar();
+      if (currentSoundAlarmEnabled) {
+        playChime(true);
+      }
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sound_alarm_enabled: currentSoundAlarmEnabled })
+        });
+      } catch (e) {}
+    }
+
+    function toggleAlterOrderSetting() {
+      const next = currentAlterOrder === 'low_tier' ? 'high_tier' : 'low_tier';
+      setAlterOrder(next);
+      updateMasterCommandBar();
+    }
+
+    function triggerMasterStartAction() {
+      if (currentMainMode === 'delivery') {
+        executeBatchPipeline();
+      } else if (currentMainMode === 'custom_craft') {
+        executeCustomPipeline();
+      } else if (currentMainMode === 'quick_alter') {
+        executeQuickAlter();
+      }
+    }
+
+    async function abortMasterPipeline() {
+      if (!confirm('현재 진행 중인 작업(채집/가공/제작/목표 완수 루틴)을 즉시 안전하게 중지하시겠습니까?')) {
+        return;
+      }
+      const titleEl = document.getElementById('mcb-running-title');
+      const descEl = document.getElementById('mcb-running-desc');
+      if (titleEl) titleEl.innerText = '🛑 중지 요청 전송 중...';
+      if (descEl) descEl.innerText = '진행 중인 동작을 안전하게 정리하고 중지합니다';
+      try {
+        await fetch('/api/abort_pipeline', { method: 'POST' });
+        pollLogs();
+        updateStatus();
+      } catch (e) {
+        alert('중지 요청 실패: ' + e);
+      }
     }
 
     let isCurrentlyBusy = false;
@@ -3507,6 +4103,7 @@ HTML_PAGE = """<!DOCTYPE html>
           loadDeliveryTargets();
         }
       }
+      updateMasterCommandBar();
     }
 
     function applyMainModeView() {
@@ -3599,7 +4196,8 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     // Melodic 2-tone Chime via Web Audio API
-    function playChime() {
+    function playChime(force = false) {
+      if (!force && !currentSoundAlarmEnabled) return;
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (!AudioCtx) return;
@@ -3633,7 +4231,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function testAlarmSound() {
-      playChime();
+      playChime(true);
       alert('🔔 주간 납품 알람음 테스트가 정상 작동합니다!');
     }
 
@@ -4046,6 +4644,7 @@ HTML_PAGE = """<!DOCTYPE html>
           const canStartTag = data.can_start ? '<span style="color:#34d399; font-weight:600;">실행 가능</span>' : '<span style="color:#94a3b8;">가공 예정 없음</span>';
           quickSummaryEl.innerHTML = `⚡ <strong>7슬롯 가공 빠른 실행:</strong> 가공 예정 <span style="color: #38bdf8; font-weight:600;">${totalPlanned}건</span> | 완료 수령 대기 <span style="color: #34d399; font-weight:600;">${totalCompleted}건</span> | 상태: ${canStartTag}`;
         }
+        updateMasterCommandBar();
       } catch (e) {
         console.error('loadQuickAlterPlan error:', e);
         if (container) container.innerHTML = `<p style="color: #f43f5e; font-size: 13px;">계획 불러오기 실패: ${e}</p>`;
@@ -4498,6 +5097,7 @@ HTML_PAGE = """<!DOCTYPE html>
       try {
         const res = await fetch(`/api/batch_plan?alter_order=${encodeURIComponent(currentAlterOrder)}`);
         const plan = await res.json();
+        cachedBatchPlan = plan;
 
         const tasksContainer = document.getElementById('batch-tasks-container');
         const tasks = plan.tasks || [];
@@ -4734,21 +5334,26 @@ HTML_PAGE = """<!DOCTYPE html>
             warnBanner.style.display = 'none';
           }
         }
+        updateMasterCommandBar();
       } catch (e) {
         console.error('Error loading batch plan:', e);
       }
     }
 
     async function executeBatchPipeline() {
+      const modeTitle = currentGoalFulfillmentMode ? '🎯 목표 완수 모드' : '⚡ 주간 납품 일괄 제작';
+      const modeExpl = currentGoalFulfillmentMode 
+        ? '가공품 완료 시 즉시 수령 ➔ 다음 티어 가공 ➔ 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
+        : '부족한 가공품이 해당 시설에 일괄 등록되며 주간 납품 전용 알람이 설정됩니다.';
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
-      if (confirm(`전체 주간 납품 퀘스트를 위한 일괄 재료 수급 및 제작 파이프라인을 가동할까요?\\n[가공 우선순위: ${orderDesc}]\\n\\n(부족한 가공품이 해당 시설에 일괄 등록되며 주간 납품 전용 알람이 설정됩니다)`)) {
+      if (confirm(`[${modeTitle}]\n${modeExpl}\n\n• 가공 우선순위: ${orderDesc}\n\n실행하시겠습니까?`)) {
         isCurrentlyBusy = true;
-        if (typeof applyBusyUI === 'function') applyBusyUI(true, '⚡ 전체 주간 납품 일괄 최적화 제작 준비 중...');
+        if (typeof applyBusyUI === 'function') applyBusyUI(true, `⚡ 전체 주간 납품 일괄 최적화 제작 준비 중... [${currentGoalFulfillmentMode ? '목표 완수 모드' : '1회차 실행'}]`);
         try {
           const res = await fetch('/api/execute_batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ alter_order: currentAlterOrder })
+            body: JSON.stringify({ alter_order: currentAlterOrder, goal_fulfillment_mode: currentGoalFulfillmentMode })
           });
           const d = await res.json();
           if (d.error) {
@@ -5436,21 +6041,26 @@ HTML_PAGE = """<!DOCTYPE html>
             warnBanner.style.display = 'none';
           }
         }
+        updateMasterCommandBar();
       } catch (e) {
         console.error('loadCustomPlan error:', e);
       }
     }
 
     async function executeCustomPipeline() {
+      const modeTitle = currentGoalFulfillmentMode ? '🎯 목표 완수 모드' : '🔨 개별 아이템 일괄 제작';
+      const modeExpl = currentGoalFulfillmentMode
+        ? '가공품 완료 시 즉시 수령 ➔ 다음 티어 가공 ➔ 목표 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
+        : '원자재 자동 채집 ➔ 시설 가공 일괄 등록 ➔ 최종 아이템 제작 1회 파이프라인을 수행합니다.';
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
-      if (confirm(`등록된 개별 아이템 목표들을 위한 일괄 재료 수급 및 제작 파이프라인을 가동할까요?\\n[가공 우선순위: ${orderDesc}]\\n\\n(원자재 자동 채집 ➔ 시설 가공 일괄 등록 ➔ 최종 아이템 제작 원스톱 수행)`)) {
+      if (confirm(`[${modeTitle}]\n${modeExpl}\n\n• 가공 우선순위: ${orderDesc}\n\n실행하시겠습니까?`)) {
         isCurrentlyBusy = true;
-        if (typeof applyBusyUI === 'function') applyBusyUI(true, '🔨 개별 지정 아이템 일괄 최적화 제작 준비 중...');
+        if (typeof applyBusyUI === 'function') applyBusyUI(true, `🔨 개별 지정 아이템 일괄 최적화 제작 준비 중... [${currentGoalFulfillmentMode ? '목표 완수 모드' : '1회차 실행'}]`);
         try {
           const res = await fetch('/api/execute_custom', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ alter_order: currentAlterOrder })
+            body: JSON.stringify({ alter_order: currentAlterOrder, goal_fulfillment_mode: currentGoalFulfillmentMode })
           });
           const d = await res.json();
           if (d.error) {
@@ -5483,6 +6093,12 @@ HTML_PAGE = """<!DOCTYPE html>
       const abortBtn = document.getElementById('btn-quick-alter-abort');
       const customAbortBtn = document.getElementById('btn-custom-abort');
 
+      const mcbIdle = document.getElementById('mcb-box-idle');
+      const mcbRunning = document.getElementById('mcb-box-running');
+      const mcbRunningTitle = document.getElementById('mcb-running-title');
+      const mcbRunningDesc = document.getElementById('mcb-running-desc');
+      const mcbBtnStart = document.getElementById('mcb-btn-start');
+
       if (busy) {
         if (busyBox) busyBox.style.display = 'inline-flex';
         if (busyText && taskDesc) busyText.innerText = taskDesc;
@@ -5492,6 +6108,12 @@ HTML_PAGE = """<!DOCTYPE html>
         if (customExecuteBtn) customExecuteBtn.disabled = true;
         if (abortBtn) abortBtn.style.display = 'inline-flex';
         if (customAbortBtn) customAbortBtn.style.display = 'inline-flex';
+
+        if (mcbIdle) mcbIdle.style.display = 'none';
+        if (mcbRunning) mcbRunning.style.display = 'flex';
+        if (mcbRunningTitle) mcbRunningTitle.innerText = currentGoalFulfillmentMode ? '🎯 목표 완수 모드 진행 중...' : '⚡ 작업 진행 중...';
+        if (mcbRunningDesc && taskDesc) mcbRunningDesc.innerText = taskDesc;
+        if (mcbBtnStart) mcbBtnStart.disabled = true;
       } else {
         if (busyBox) busyBox.style.display = 'none';
         if (produceBtn) produceBtn.disabled = false;
@@ -5500,6 +6122,11 @@ HTML_PAGE = """<!DOCTYPE html>
         if (customExecuteBtn && cachedCustomPlan) customExecuteBtn.disabled = cachedCustomPlan.all_completed;
         if (abortBtn) abortBtn.style.display = 'none';
         if (customAbortBtn) customAbortBtn.style.display = 'none';
+
+        if (mcbIdle) mcbIdle.style.display = 'flex';
+        if (mcbRunning) mcbRunning.style.display = 'none';
+        if (mcbBtnStart) mcbBtnStart.disabled = false;
+        updateMasterCommandBar();
       }
     }
 
@@ -5521,7 +6148,11 @@ HTML_PAGE = """<!DOCTYPE html>
 
         const currentlyBusy = !!data.is_busy;
         if (!currentlyBusy && wasBusy) {
-          // Task just finished! Stagger refreshes to avoid CLI process queue contention
+          // Task just finished! Play sound if enabled
+          if (currentSoundAlarmEnabled) {
+            playChime(true);
+          }
+          // Stagger refreshes to avoid CLI process queue contention
           try { loadAlteringQueue(); } catch(e) {}
           setTimeout(() => {
             try {
@@ -5534,6 +6165,7 @@ HTML_PAGE = """<!DOCTYPE html>
               } else {
                 loadQuickAlterPlan();
               }
+              updateMasterCommandBar();
             } catch(e) {}
           }, 300);
         }
@@ -5606,6 +6238,10 @@ HTML_PAGE = """<!DOCTYPE html>
         
         isCurrentlyBusy = !!data.is_busy;
         applyBusyUI(isCurrentlyBusy, data.current_task || '작업 진행 중...');
+        if (isCurrentlyBusy) {
+          const mcbDesc = document.getElementById('mcb-running-desc');
+          if (mcbDesc && data.current_task) mcbDesc.innerText = data.current_task;
+        }
 
         // Execution Summary Modal Hook
         if (data.last_summary) {
@@ -5817,6 +6453,7 @@ HTML_PAGE = """<!DOCTYPE html>
       try { applyDeliveryTargetsView(); } catch(e) { console.error('applyDeliveryTargetsView error:', e); }
       try { applyMainModeView(); } catch(e) { console.error('applyMainModeView error:', e); }
       try { loadSettings(); } catch(e) { console.error('loadSettings error:', e); }
+      try { updateMasterCommandBar(); } catch(e) { console.error('updateMasterCommandBar error:', e); }
       try { loadPresets(); } catch(e) { console.error('loadPresets error:', e); }
       try { fetchUserDataInfo(); } catch(e) { console.error('fetchUserDataInfo error:', e); }
       try { pollLogs(); } catch(e) { console.error('pollLogs error:', e); }
