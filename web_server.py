@@ -2150,6 +2150,28 @@ HTML_PAGE = """<!DOCTYPE html>
       font-weight: 700;
       color: #f1f5f9;
     }
+    .mcb-eta-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(56, 189, 248, 0.16);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      color: #38bdf8;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 11px;
+      border-radius: 20px;
+      white-space: nowrap;
+      letter-spacing: -0.2px;
+      box-shadow: 0 2px 10px rgba(56, 189, 248, 0.15);
+      transition: all 0.2s ease;
+      cursor: default;
+    }
+    .mcb-eta-badge:hover {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: rgba(56, 189, 248, 0.65);
+      color: #e0f2fe;
+    }
     .mcb-options-row {
       display: flex;
       align-items: center;
@@ -2446,7 +2468,7 @@ HTML_PAGE = """<!DOCTYPE html>
           <div class="mcb-title-row">
             <span id="mcb-mode-badge" style="display: none;"></span>
             <span id="mcb-briefing-text" class="mcb-briefing">목표 분석 대기 중...</span>
-            <span id="mcb-eta-badge" class="badge" style="display: none; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 12px; font-weight: 700;">⏱️ 예상 소요: -</span>
+            <span id="mcb-eta-badge" class="mcb-eta-badge" style="display: none;">⏱️ 예상 소요: -</span>
           </div>
           <div class="mcb-options-row">
             <label class="mcb-option-toggle" title="가공 수령 ➔ 다음 티어 가공 ➔ 완제품 제작까지 멈추지 않고 100% 완수할 때까지 연속 자동 실행">
@@ -3708,6 +3730,124 @@ HTML_PAGE = """<!DOCTYPE html>
       if (typeof loadCustomPlan === 'function') loadCustomPlan();
     }
 
+    // ------------------------------------------
+    // ETA (예상 완수 시각) 실시간 산출 함수
+    // ------------------------------------------
+    function getPipelineEtaInfo(mode) {
+      try {
+        let plan = null;
+        if (mode === 'delivery') plan = cachedBatchPlan;
+        else if (mode === 'custom_craft') plan = cachedCustomPlan;
+        else if (mode === 'quick_alter') plan = cachedQuickPlan;
+
+        if (!plan || plan.error) return null;
+        if (plan.all_completed) return null;
+
+        const isGoalMode = !!currentGoalFulfillmentMode;
+        let totalSec = 0;
+
+        if (mode === 'quick_alter') {
+          const totalSlots = plan.total_planned_slots || 7;
+          const cats = plan.categories || {};
+          let maxCatSec = 0;
+          Object.values(cats).forEach(c => {
+            const tiers = c.planned_tiers || [];
+            const sec = tiers.reduce((s, t) => {
+              const tierNum = Number(t.tier) || 1;
+              const dur = [0, 300, 600, 900, 1200, 1800, 2700, 3600][tierNum] || 600;
+              return s + dur;
+            }, 0);
+            if (sec > maxCatSec) maxCatSec = sec;
+          });
+          if (maxCatSec === 0) maxCatSec = totalSlots * 600;
+
+          const neededRaw = (plan.raw_materials || []).filter(r => (r.deficit || 0) > 0);
+          const gatherSec = neededRaw.length * 45;
+
+          if (isGoalMode) {
+            totalSec = gatherSec + maxCatSec + 30;
+          } else {
+            totalSec = gatherSec + (maxCatSec > 0 ? maxCatSec : 600);
+          }
+        } else {
+          // Delivery or Custom Craft
+          const tasks = plan.tasks || plan.targets || plan.custom_tasks || [];
+          if (tasks.length === 0) return null;
+
+          const neededRaw = (plan.raw_materials || []).filter(r => (r.deficit || 0) > 0 && r.is_gatherable);
+          const gatherSec = neededRaw.length * 45;
+
+          const TIER_SECS = [0, 300, 600, 900, 1200, 1800, 2700, 3600];
+          const facSums = {};
+          if (typeof ALL_FACILITIES !== 'undefined' && Array.isArray(ALL_FACILITIES)) {
+            ALL_FACILITIES.forEach(f => { facSums[f.name] = 0; });
+          }
+
+          if (window.cachedAlteringWorks && Array.isArray(window.cachedAlteringWorks)) {
+            window.cachedAlteringWorks.forEach(w => {
+              if (!w.IsCompleted && w.FacilityName && facSums[w.FacilityName] !== undefined) {
+                facSums[w.FacilityName] += Number(w.RemainingSeconds) || 0;
+              }
+            });
+          }
+
+          const materials = plan.intermediate_requirements || plan.materials || [];
+          materials.forEach(m => {
+            const fac = m.facility;
+            const tier = Number(m.tier) || 1;
+            const dur = TIER_SECS[tier] || 600;
+            const count = Math.max(0, (m.works_to_queue !== undefined ? m.works_to_queue : (m.works_needed || 0)) - (m.in_progress_count || 0));
+            if (fac && facSums[fac] !== undefined) {
+              facSums[fac] += count * dur;
+            }
+          });
+
+          const facVals = Object.values(facSums);
+          const maxFacSec = facVals.length > 0 ? Math.max(0, ...facVals) : 0;
+          const craftCount = plan.craftable_tasks_count || (plan.tasks || []).length || 0;
+          const craftSec = Math.min(craftCount * 12, 120);
+
+          if (isGoalMode) {
+            totalSec = gatherSec + maxFacSec + craftSec + (maxFacSec > 0 ? 30 : 10);
+          } else {
+            totalSec = gatherSec + (maxFacSec > 0 ? maxFacSec : craftSec + 15);
+          }
+        }
+
+        if (totalSec <= 0) return null;
+
+        const minTotal = Math.ceil(totalSec / 60);
+        let durStr = '';
+        if (minTotal < 60) {
+          durStr = `약 ${minTotal}분`;
+        } else {
+          const h = Math.floor(minTotal / 60);
+          const m = minTotal % 60;
+          durStr = m > 0 ? `약 ${h}시간 ${m}분` : `약 ${h}시간`;
+        }
+
+        const finishDate = new Date(Date.now() + totalSec * 1000);
+        let hours = finishDate.getHours();
+        const mins = finishDate.getMinutes();
+        const ampm = hours < 12 ? '오전' : '오후';
+        const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+        const timeStr = `${ampm} ${displayHours}:${String(mins).padStart(2, '0')}`;
+
+        return {
+          totalSec,
+          durStr,
+          timeStr,
+          isGoalMode,
+          badgeText: isGoalMode
+            ? `⏱️ 예상 소요: ${durStr} (${timeStr}경 완수 예정)`
+            : `⏱️ 예상 완수: ${durStr} (${timeStr}경 완료 예정)`
+        };
+      } catch (err) {
+        console.warn('getPipelineEtaInfo error:', err);
+        return null;
+      }
+    }
+
     // ==========================================
     // Global Master Command Bar Controls
     // ==========================================
@@ -3809,6 +3949,25 @@ HTML_PAGE = """<!DOCTYPE html>
           } else {
             briefing.innerText = `7슬롯 최고 레벨 가공 루틴 (${catName}) 분석 중...`;
           }
+        }
+      }
+
+      // Live ETA Badge Update
+      const etaBadge = document.getElementById('mcb-eta-badge');
+      if (etaBadge) {
+        if (!isCurrentlyBusy) {
+          const etaInfo = getPipelineEtaInfo(currentMainMode);
+          if (etaInfo) {
+            etaBadge.style.display = 'inline-flex';
+            etaBadge.innerText = etaInfo.badgeText;
+            etaBadge.title = etaInfo.isGoalMode 
+              ? `목표 100% 달성까지 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr} 완수 예정)` 
+              : `가공 및 제작 완료 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr} 완료 예정)`;
+          } else {
+            etaBadge.style.display = 'none';
+          }
+        } else {
+          etaBadge.style.display = 'none';
         }
       }
     }
@@ -4171,6 +4330,7 @@ HTML_PAGE = """<!DOCTYPE html>
         const res = await fetch('/api/altering');
         const data = await res.json();
         const works = data.works || [];
+        window.cachedAlteringWorks = works;
         const completedTotal = data.completedCount || 0;
 
         const grouped = {};
@@ -4268,6 +4428,7 @@ HTML_PAGE = """<!DOCTYPE html>
         });
         gridEl.innerHTML = gridHtml;
         loadDeliveryAlarms();
+        updateMasterCommandBar();
       } catch (err) {
         console.error('Error loading altering queue:', err);
       }
@@ -4563,7 +4724,9 @@ HTML_PAGE = """<!DOCTYPE html>
     async function executeQuickAlter() {
       const catText = currentQuickCategory === 'all' ? '전체 가공대' : `'${currentQuickCategory}' 가공대`;
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어(T1~T7)부터 순차 가공 등록' : '최고 티어(T7~T1)부터 순차 가공 등록 (오래 걸리는 가공 우선)';
-      if (!confirm(`${catText} 7슬롯 빠른 가공 루틴을 실행할까요?\\n\\n1. 완료 가공품 일괄 수령 (슬롯 확보)\\n2. 부족한 원자재 사전 일괄 채집\\n3. ${orderDesc}`)) {
+      const etaInfo = getPipelineEtaInfo('quick_alter');
+      const etaLine = etaInfo ? `\\n• 예상 완수 시각: ${etaInfo.durStr} (${etaInfo.timeStr}경 완료 예정)` : '';
+      if (!confirm(`[7슬롯 빠른 가공]\\n${catText} 7슬롯 빠른 가공 루틴을 실행할까요?${etaLine}\\n\\n1. 완료 가공품 일괄 수령 (슬롯 확보)\\n2. 부족한 원자재 사전 일괄 채집\\n3. ${orderDesc}`)) {
         return;
       }
 
@@ -5255,7 +5418,9 @@ HTML_PAGE = """<!DOCTYPE html>
         ? '가공품 완료 시 즉시 수령 ➔ 다음 티어 가공 ➔ 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
         : '부족한 가공품이 해당 시설에 일괄 등록되며 주간 납품 전용 알람이 설정됩니다.';
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
-      if (confirm(`[${modeTitle}]\n${modeExpl}\n\n• 가공 우선순위: ${orderDesc}\n\n실행하시겠습니까?`)) {
+      const etaInfo = getPipelineEtaInfo('delivery');
+      const etaLine = etaInfo ? `\n• 예상 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr}경 ${currentGoalFulfillmentMode ? '완수' : '완료'} 예정)` : '';
+      if (confirm(`[${modeTitle}]\n${modeExpl}${etaLine}\n\n• 가공 우선순위: ${orderDesc}\n\n실행하시겠습니까?`)) {
         isCurrentlyBusy = true;
         if (typeof applyBusyUI === 'function') applyBusyUI(true, `⚡ 전체 주간 납품 일괄 최적화 제작 준비 중... [${currentGoalFulfillmentMode ? '목표 완수 모드' : '1회차 실행'}]`);
         try {
@@ -5962,7 +6127,9 @@ HTML_PAGE = """<!DOCTYPE html>
         ? '가공품 완료 시 즉시 수령 ➔ 다음 티어 가공 ➔ 목표 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
         : '원자재 자동 채집 ➔ 시설 가공 일괄 등록 ➔ 최종 아이템 제작 1회 파이프라인을 수행합니다.';
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
-      if (confirm(`[${modeTitle}]\n${modeExpl}\n\n• 가공 우선순위: ${orderDesc}\n\n실행하시겠습니까?`)) {
+      const etaInfo = getPipelineEtaInfo('custom_craft');
+      const etaLine = etaInfo ? `\n• 예상 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr}경 ${currentGoalFulfillmentMode ? '완수' : '완료'} 예정)` : '';
+      if (confirm(`[${modeTitle}]\n${modeExpl}${etaLine}\n\n• 가공 우선순위: ${orderDesc}\n\n실행하시겠습니까?`)) {
         isCurrentlyBusy = true;
         if (typeof applyBusyUI === 'function') applyBusyUI(true, `🔨 개별 지정 아이템 일괄 최적화 제작 준비 중... [${currentGoalFulfillmentMode ? '목표 완수 모드' : '1회차 실행'}]`);
         try {
