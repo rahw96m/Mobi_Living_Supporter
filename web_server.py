@@ -2181,17 +2181,20 @@ HTML_PAGE = """<!DOCTYPE html>
       font-size: 12.5px;
     }
     .summary-item-row:last-child {
+      border-bottom: none;
+    }
+
     /* Master Command Bar (Sticky Header Control Panel) */
     .master-command-bar {
       position: sticky;
       top: 10px;
       z-index: 850;
       margin-bottom: 22px;
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.92) 0%, rgba(15, 23, 42, 0.96) 100%);
-      border: 1px solid rgba(99, 102, 241, 0.35);
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.45);
       border-radius: 16px;
-      padding: 14px 20px;
-      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.15);
+      padding: 14px 22px;
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.2);
       backdrop-filter: blur(14px);
       transition: all 0.25s ease;
     }
@@ -2203,15 +2206,14 @@ HTML_PAGE = """<!DOCTYPE html>
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
+      gap: 18px;
     }
     .mcb-left {
       display: flex;
       flex-direction: column;
       gap: 8px;
       flex: 1;
-      min-width: 280px;
+      min-width: 0;
     }
     .mcb-title-row {
       display: flex;
@@ -2235,8 +2237,8 @@ HTML_PAGE = """<!DOCTYPE html>
       align-items: center;
       gap: 8px;
       cursor: pointer;
-      background: rgba(99, 102, 241, 0.12);
-      border: 1px solid rgba(99, 102, 241, 0.35);
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.4);
       padding: 5px 12px;
       border-radius: 20px;
       font-size: 12.5px;
@@ -2246,19 +2248,20 @@ HTML_PAGE = """<!DOCTYPE html>
       transition: all 0.2s;
     }
     .mcb-option-toggle:hover {
-      background: rgba(99, 102, 241, 0.22);
-      border-color: rgba(99, 102, 241, 0.5);
+      background: rgba(99, 102, 241, 0.25);
+      border-color: rgba(99, 102, 241, 0.6);
     }
     .mcb-option-toggle input[type="checkbox"] {
       accent-color: #6366f1;
       cursor: pointer;
       width: 15px;
       height: 15px;
+      margin: 0;
     }
     .mcb-pill-btn {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #e2e8f0;
       font-size: 12px;
       padding: 5px 12px;
       border-radius: 20px;
@@ -2268,14 +2271,16 @@ HTML_PAGE = """<!DOCTYPE html>
       gap: 6px;
       font-weight: 600;
       transition: all 0.2s;
+      outline: none;
     }
     .mcb-pill-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
       color: #fff;
     }
     .mcb-pill-btn.active {
-      background: rgba(16, 185, 129, 0.15);
-      border-color: rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.2);
+      border-color: rgba(16, 185, 129, 0.45);
       color: #6ee7b7;
     }
     .mcb-right {
@@ -2286,17 +2291,18 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     .btn-mcb-start {
       background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-      color: white;
-      font-size: 15px;
+      color: #ffffff;
+      font-size: 14.5px;
       font-weight: 800;
-      padding: 12px 28px;
+      padding: 12px 24px;
       border-radius: 12px;
       box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
-      border: none;
+      border: 1px solid rgba(255, 255, 255, 0.15);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      white-space: nowrap;
       transition: all 0.2s ease;
     }
     .btn-mcb-start:hover {
@@ -2304,16 +2310,23 @@ HTML_PAGE = """<!DOCTYPE html>
       box-shadow: 0 6px 22px rgba(168, 85, 247, 0.55);
       filter: brightness(1.1);
     }
+    .btn-mcb-start:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
     .btn-danger-abort {
       background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
       color: white;
-      font-size: 14.5px;
+      font-size: 14px;
       font-weight: 800;
-      padding: 11px 24px;
+      padding: 11px 22px;
       border-radius: 12px;
       box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
       border: none;
       cursor: pointer;
+      white-space: nowrap;
       animation: abortPulse 2s infinite ease-in-out;
     }
     @keyframes abortPulse {
@@ -2347,7 +2360,7 @@ HTML_PAGE = """<!DOCTYPE html>
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    @media (max-width: 768px) {
+    @media (max-width: 820px) {
       .master-command-bar {
         padding: 12px 14px;
         top: 6px;
