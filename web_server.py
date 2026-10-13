@@ -1865,153 +1865,77 @@ HTML_PAGE = """<!DOCTYPE html>
       padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04);
     }
 
-    /* Main Execution Mode Switcher Tabs */
-    .main-mode-switcher-container {
-      background: rgba(15, 23, 42, 0.75);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      border-radius: 16px;
-      padding: 6px;
-      margin-bottom: 22px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-      box-sizing: border-box;
-      width: 100%;
-      overflow: hidden;
-    }
-    .main-mode-tabs {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    @media(max-width: 960px) {
-      .main-mode-tabs {
-        grid-template-columns: 1fr;
-      }
-      .main-mode-tab {
-        padding: 10px 14px;
-      }
-    }
-    .main-mode-tab {
-      background: transparent;
-      border: 1px solid transparent;
-      border-radius: 12px;
-      padding: 12px 18px;
+    /* Master Command Bar Mode Switcher Tabs */
+    .mcb-mode-tabs {
       display: flex;
       align-items: center;
-      gap: 14px;
-      cursor: pointer;
-      text-align: left;
-      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-      color: #94a3b8;
-      position: relative;
-      user-select: none;
-      min-width: 0;
-      width: 100%;
-      box-sizing: border-box;
-      overflow: hidden;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      flex-wrap: wrap;
     }
-    .main-mode-tab:hover {
+    .mcb-mode-tab {
       background: rgba(255, 255, 255, 0.04);
-      color: #cbd5e1;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 6px 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      color: #94a3b8;
+      font-size: 13.5px;
+      font-weight: 600;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      user-select: none;
+      outline: none;
+    }
+    .mcb-mode-tab:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.22);
+      color: #f1f5f9;
       transform: translateY(-1px);
     }
-    .main-mode-tab .tab-icon-wrap {
-      width: 44px;
-      height: 44px;
-      border-radius: 11px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 22px;
-      flex-shrink: 0;
-      transition: transform 0.25s ease;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    }
-    .main-mode-tab:hover .tab-icon-wrap {
-      transform: scale(1.05);
-    }
-    .main-mode-tab .tab-text-group {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      min-width: 0;
-      flex: 1;
-      overflow: hidden;
-    }
-    .main-mode-tab .tab-main-title {
-      font-size: 15px;
+    .mcb-mode-tab .mcb-tab-pill {
+      font-size: 11px;
       font-weight: 700;
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
       color: #cbd5e1;
-      transition: color 0.2s ease;
-      min-width: 0;
+      transition: all 0.2s ease;
     }
-    .main-mode-tab .tab-sub-desc {
-      font-size: 11.5px;
-      color: #64748b;
-      line-height: 1.4;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      transition: color 0.2s ease;
-      min-width: 0;
-    }
-
-    /* Active Tab: Delivery Mode */
-    .main-mode-tab.active#btn-mode-delivery {
-      background: linear-gradient(135deg, rgba(168, 85, 247, 0.18) 0%, rgba(99, 102, 241, 0.14) 100%);
-      border: 1px solid rgba(168, 85, 247, 0.45);
-      color: #fff;
-      box-shadow: 0 4px 20px rgba(168, 85, 247, 0.22);
-    }
-    .main-mode-tab.active#btn-mode-delivery .tab-main-title {
+    /* Active Tabs */
+    .mcb-mode-tab.active#btn-mode-delivery {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(99, 102, 241, 0.2) 100%);
+      border-color: rgba(168, 85, 247, 0.6);
       color: #f3e8ff;
+      box-shadow: 0 2px 10px rgba(168, 85, 247, 0.25);
     }
-    .main-mode-tab.active#btn-mode-delivery .tab-sub-desc {
-      color: #c4b5fd;
+    .mcb-mode-tab.active#btn-mode-delivery .mcb-tab-pill {
+      background: rgba(168, 85, 247, 0.35);
+      color: #f5d0fe;
     }
-    .main-mode-tab.active#btn-mode-delivery .tab-icon-wrap {
-      box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4);
-    }
-
-    /* Active Tab: Quick Alter Mode */
-    .main-mode-tab.active#btn-mode-quick-alter {
-      background: linear-gradient(135deg, rgba(2, 132, 199, 0.2) 0%, rgba(37, 99, 235, 0.14) 100%);
-      border: 1px solid rgba(56, 189, 248, 0.45);
-      color: #fff;
-      box-shadow: 0 4px 20px rgba(2, 132, 199, 0.22);
-    }
-    .main-mode-tab.active#btn-mode-quick-alter .tab-main-title {
+    .mcb-mode-tab.active#btn-mode-quick-alter {
+      background: linear-gradient(135deg, rgba(2, 132, 199, 0.25) 0%, rgba(37, 99, 235, 0.2) 100%);
+      border-color: rgba(56, 189, 248, 0.6);
       color: #e0f2fe;
+      box-shadow: 0 2px 10px rgba(2, 132, 199, 0.25);
     }
-    .main-mode-tab.active#btn-mode-quick-alter .tab-sub-desc {
-      color: #7dd3fc;
+    .mcb-mode-tab.active#btn-mode-quick-alter .mcb-tab-pill {
+      background: rgba(56, 189, 248, 0.35);
+      color: #bae6fd;
     }
-    .main-mode-tab.active#btn-mode-quick-alter .tab-icon-wrap {
-      box-shadow: 0 4px 16px rgba(2, 132, 199, 0.4);
-    }
-
-    /* Active Tab: Custom Craft Mode */
-    .main-mode-tab.active#btn-mode-custom-craft {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.14) 100%);
-      border: 1px solid rgba(16, 185, 129, 0.45);
-      color: #fff;
-      box-shadow: 0 4px 20px rgba(16, 185, 129, 0.22);
-    }
-    .main-mode-tab.active#btn-mode-custom-craft .tab-main-title {
+    .mcb-mode-tab.active#btn-mode-custom-craft {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.2) 100%);
+      border-color: rgba(16, 185, 129, 0.6);
       color: #a7f3d0;
+      box-shadow: 0 2px 10px rgba(16, 185, 129, 0.25);
     }
-    .main-mode-tab.active#btn-mode-custom-craft .tab-sub-desc {
+    .mcb-mode-tab.active#btn-mode-custom-craft .mcb-tab-pill {
+      background: rgba(16, 185, 129, 0.35);
       color: #6ee7b7;
-    }
-    .main-mode-tab.active#btn-mode-custom-craft .tab-icon-wrap {
-      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
     }
 
     /* Alteration Order Segmented Control */
@@ -2498,57 +2422,29 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- Main Execution Mode Selector Tab Bar -->
-    <div class="main-mode-switcher-container">
-      <div class="main-mode-tabs" role="tablist">
-        <button class="main-mode-tab active" id="btn-mode-delivery" role="tab" aria-selected="true" onclick="switchMainMode('delivery')">
-          <div class="tab-icon-wrap" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.35), rgba(99, 102, 241, 0.35));">
-            🎯
-          </div>
-          <div class="tab-text-group">
-            <div class="tab-main-title">
-              <span>주간 납품 관리 & 일괄 실행</span>
-              <span id="tab-delivery-pill" class="badge delivery" style="font-size: 11px; padding: 2px 8px;">0개 등록</span>
-            </div>
-            <div class="tab-sub-desc">주간 퀘스트 목표 누적 등록 · 자재 소요 분석(BOM) · 부족 재료 일괄 제작</div>
-          </div>
+    <!-- Global Master Command Bar (가공 시설 현황 바로 밑에 위치: 3개 모드 탭 + 브리핑 & 즉시 실행/중지) -->
+    <div id="master-command-bar" class="master-command-bar">
+      <!-- 3-Mode Compact Segmented Tab Buttons -->
+      <div class="mcb-mode-tabs" role="tablist">
+        <button class="mcb-mode-tab active" id="btn-mode-delivery" role="tab" aria-selected="true" onclick="switchMainMode('delivery')">
+          <span>🎯 주간 납품</span>
+          <span id="tab-delivery-pill" class="mcb-tab-pill delivery">0개 등록</span>
         </button>
-
-        <button class="main-mode-tab" id="btn-mode-quick-alter" role="tab" aria-selected="false" onclick="switchMainMode('quick_alter')">
-          <div class="tab-icon-wrap" style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.35), rgba(37, 99, 235, 0.35));">
-            ⚡
-          </div>
-          <div class="tab-text-group">
-            <div class="tab-main-title">
-              <span>7슬롯 가공대 빠른 실행</span>
-              <span id="tab-quick-alter-pill" class="badge" style="font-size: 11px; padding: 2px 8px; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">7슬롯 최적화</span>
-            </div>
-            <div class="tab-sub-desc">완료 가공품 일괄 수령 · 부족 원자재 자동 사전 채집 · 최고 티어 1슬롯씩 대기열 가공</div>
-          </div>
+        <button class="mcb-mode-tab" id="btn-mode-quick-alter" role="tab" aria-selected="false" onclick="switchMainMode('quick_alter')">
+          <span>⚡ 빠른 실행</span>
+          <span id="tab-quick-alter-pill" class="mcb-tab-pill quick">7슬롯</span>
         </button>
-
-        <button class="main-mode-tab" id="btn-mode-custom-craft" role="tab" aria-selected="false" onclick="switchMainMode('custom_craft')">
-          <div class="tab-icon-wrap" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.35));">
-            🔨
-          </div>
-          <div class="tab-text-group">
-            <div class="tab-main-title">
-              <span>개별 아이템 지정 제작</span>
-              <span id="tab-custom-craft-pill" class="badge" style="font-size: 11px; padding: 2px 8px; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">0개 등록</span>
-            </div>
-            <div class="tab-sub-desc">원하는 아이템 직접 입력 · 자재 소요 일괄 분석(BOM) · 부족 원자재 채집/가공/제작 원스톱 완료</div>
-          </div>
+        <button class="mcb-mode-tab" id="btn-mode-custom-craft" role="tab" aria-selected="false" onclick="switchMainMode('custom_craft')">
+          <span>🔨 지정 제작</span>
+          <span id="tab-custom-craft-pill" class="mcb-tab-pill custom">0개 등록</span>
         </button>
       </div>
-    </div>
 
-    <!-- Global Master Command Bar (상단 고정 마스터 컨트롤 바: 브리핑 & 즉시 실행/중지) -->
-    <div id="master-command-bar" class="master-command-bar">
       <div class="mcb-inner">
         <!-- Left: Current mode briefing & options -->
         <div class="mcb-left">
           <div class="mcb-title-row">
-            <span id="mcb-mode-badge" class="badge delivery" style="font-size: 13px; font-weight: 800; padding: 4px 10px;">🎯 주간 납품</span>
+            <span id="mcb-mode-badge" style="display: none;"></span>
             <span id="mcb-briefing-text" class="mcb-briefing">목표 분석 대기 중...</span>
             <span id="mcb-eta-badge" class="badge" style="display: none; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 12px; font-weight: 700;">⏱️ 예상 소요: -</span>
           </div>
@@ -3879,7 +3775,7 @@ HTML_PAGE = """<!DOCTYPE html>
               briefing.innerHTML = '<span style="color:#34d399; font-weight:700;">등록된 모든 개별 제작 목표 달성 완료! 🎉</span>';
               if (btnStart) btnStart.disabled = true;
             } else {
-              const targetCount = (cachedCustomPlan.targets || []).length;
+              const targetCount = (cachedCustomPlan.tasks || cachedCustomPlan.targets || cachedCustomPlan.custom_tasks || []).length;
               const alterCount = cachedCustomPlan.total_works_to_queue || 0;
               const neededRaw = (cachedCustomPlan.raw_materials || []).filter(r => r.deficit > 0 && r.is_gatherable);
               const craftableCount = cachedCustomPlan.craftable_tasks_count || 0;
@@ -5994,7 +5890,7 @@ HTML_PAGE = """<!DOCTYPE html>
           const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0);
           const rawText = neededRawGather.length > 0 ? `필드 채집 <strong>${neededRawGather.length}종</strong>` : '채집 불필요';
           const alterText = plan.total_works_to_queue > 0 ? `가공 <strong>${plan.total_works_to_queue}회</strong>` : '가공 불필요';
-          summaryText.innerHTML = `✨ <span>총 분석 결과: ${rawText} · ${alterText} · 제작 <strong>${(plan.custom_tasks || []).length}건</strong></span>`;
+          summaryText.innerHTML = `✨ <span>총 분석 결과: ${rawText} · ${alterText} · 제작 <strong>${(plan.custom_tasks || plan.tasks || plan.targets || []).length}건</strong></span>`;
         }
 
         // Facility Slots

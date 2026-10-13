@@ -3117,6 +3117,8 @@ class DeliveryManager:
 
         return {
             "tasks": tasks_to_plan,
+            "targets": tasks_to_plan,
+            "custom_tasks": tasks_to_plan,
             "recipes": recipe_details,
             "intermediate_requirements": intermediate_analysis,
             "raw_materials": raw_materials_analysis,
