@@ -1067,7 +1067,21 @@ class DeliveryManager:
         self.cli = cli or MabinogiCLI()
         self.recipes: Dict[str, Dict[str, int]] = dict(DEFAULT_RECIPES)
         self.abort_requested: bool = False
+        self.on_altering_updated: Optional[Callable[[Dict[str, Any]], None]] = None
         self.load_recipe_cache()
+
+    def notify_altering_updated(self, works_info: Optional[Dict[str, Any]] = None):
+        """Notifies registered callback (e.g. web server) of fresh altering queue status without overhead."""
+        if works_info is None:
+            try:
+                works_info = self.cli.get_altering_works()
+            except Exception:
+                return
+        if callable(self.on_altering_updated):
+            try:
+                self.on_altering_updated(works_info)
+            except Exception:
+                pass
 
     def request_abort(self):
         """Signals any running operation (gathering, altering, etc.) to abort immediately."""
@@ -2348,6 +2362,8 @@ class DeliveryManager:
                 time.sleep(1)
             except Exception as ex:
                 self.log(f"     ⚠️ '{fac}' 수령 중 알림/오류: {ex}", "warn", callback)
+        if collected_facilities:
+            self.notify_altering_updated()
 
         return collected_facilities
 
@@ -3518,6 +3534,9 @@ class DeliveryManager:
             alarm_store.sync_facility_alarms(self.cli, default_source="주간 납품")
             self.log("🔔 [가공 알람 동기화] 등록된 가공 작업들의 완료 시각에 맞춰 알람이 동기화되었습니다.", "info", callback)
 
+        if altered_list:
+            self.notify_altering_updated()
+
         # Stage 3.5: Collect any newly finished altering works before crafting
         new_collected = self.collect_completed_altering_works(callback=callback)
         if new_collected:
@@ -3680,6 +3699,7 @@ class DeliveryManager:
                     # 4. Check altering works in progress / completed
                     try:
                         works_info = self.cli.get_altering_works()
+                        self.notify_altering_updated(works_info)
                     except Exception as ex:
                         self.log(f"⚠️ 가공 대기열 확인 중 일시 오류: {ex}. 5초 후 재시도합니다.", "warn", callback)
                         time.sleep(5)
@@ -3786,6 +3806,7 @@ class DeliveryManager:
 
                     # 6. Check active pending works
                     works_info = self.cli.get_altering_works()
+                    self.notify_altering_updated(works_info)
                     all_works = works_info.get("works", [])
                     pending_works = [w for w in all_works if not w.get("IsCompleted") and w.get("State") in ("InProgress", "NotStarted")]
 
@@ -4567,6 +4588,9 @@ class DeliveryManager:
                     self.log(f"     등록 실패: {ex}", "error", callback)
                     queued_results.append({"category": c_name, "tier": tier_num, "recipe": r_name, "status": "failed", "error": str(ex)})
                 time.sleep(1)
+
+        if altered_list:
+            self.notify_altering_updated()
 
         # -------------------------------------------------------------
         # STEP 5: Register facility-wide alarms for last work completion

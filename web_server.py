@@ -179,6 +179,13 @@ cached_delivery_targets = None
 cached_custom_targets = None
 cached_quests = None
 status_lock = threading.Lock()
+
+def _on_altering_works_updated_handler(works_info: Dict[str, Any]):
+    global cached_altering_works
+    with status_lock:
+        cached_altering_works = works_info
+
+manager_instance.on_altering_updated = _on_altering_works_updated_handler
 last_execution_summary: Optional[Dict[str, Any]] = None
 last_summary_id: int = 0
 
@@ -4359,113 +4366,144 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     // 1. Load Altering Facility Grid
+    let isAlteringQueueLoading = false;
     async function loadAlteringQueue() {
+      if (isAlteringQueueLoading) return;
+      isAlteringQueueLoading = true;
       try {
         const res = await fetch('/api/altering');
         const data = await res.json();
         const works = data.works || [];
-        window.cachedAlteringWorks = works;
-        const completedTotal = data.completedCount || 0;
+        const now = Date.now();
 
-        const grouped = {};
-        ALL_FACILITIES.forEach(f => { grouped[f.name] = []; });
+        // Assign local targetTimestamp for accurate live countdown
         works.forEach(w => {
-          const fn = w.FacilityName || '';
-          if (!grouped[fn]) grouped[fn] = [];
-          grouped[fn].push(w);
-        });
-
-        // Summary Pill & Quick Bar
-        const inProgressTotal = works.filter(w => !w.IsCompleted).length;
-        const sumPill = document.getElementById('altering-summary-pill');
-        if (sumPill) sumPill.innerText = `진행 ${inProgressTotal}건 | 완료 ${completedTotal}건`;
-        
-        let quickSummaryParts = [];
-        ALL_FACILITIES.forEach(f => {
-          const list = grouped[f.name] || [];
-          if (list.length > 0) {
-            const incomplete = list.filter(w => !w.IsCompleted && (Number(w.RemainingSeconds) || 0) > 0);
-            const totalSec = incomplete.reduce((sum, w) => sum + (Number(w.RemainingSeconds) || 0), 0);
-            const hasComp = list.some(w => w.IsCompleted);
-            const facShort = f.name.replace(' 가공 시설', '');
-
-            if (totalSec > 0) {
-              const compTag = hasComp ? ' <span style="color:#34d399;font-size:11px;">(일부완료)</span>' : '';
-              quickSummaryParts.push(`${f.icon} ${facShort}: <span style="color:#fbbf24;font-weight:600;">${formatRemaining(totalSec)}</span>${compTag}`);
-            } else if (hasComp) {
-              quickSummaryParts.push(`${f.icon} ${facShort}: <span style="color:#34d399;font-weight:700;">완료!</span>`);
-            }
+          const sec = Number(w.RemainingSeconds) || 0;
+          if (sec > 0 && !w.IsCompleted) {
+            w.targetTimestamp = now + (sec * 1000);
           }
         });
-        const quickSummaryEl = document.getElementById('altering-quick-summary');
-        if (quickSummaryEl) {
-          quickSummaryEl.innerHTML = quickSummaryParts.length > 0 
-            ? quickSummaryParts.join(' &nbsp;|&nbsp; ') 
-            : '현재 대기 중인 가공 작업이 없습니다.';
-        }
 
-        // Render 3x2 Grid
-        const gridEl = document.getElementById('facility-grid-container');
-        if (!gridEl) return;
-        let gridHtml = '';
-        ALL_FACILITIES.forEach(fac => {
-          const itemsAtFac = grouped[fac.name] || [];
-          const completedAtFac = itemsAtFac.filter(x => x.IsCompleted);
-          const hasCompleted = completedAtFac.length > 0;
-          const firstCompletedName = hasCompleted ? completedAtFac[0].DisplayName : '';
-
-          const collectBtn = hasCompleted
-            ? `<button class="btn btn-sm btn-emerald" style="padding: 3px 8px; font-size: 11.5px;" onclick="collectAltering('${firstCompletedName}')">🎁 수령(${completedAtFac.length})</button>`
-            : `<button class="btn btn-sm" disabled style="opacity: 0.25; padding: 3px 8px; font-size: 11.5px;">수령</button>`;
-
-          let itemsHtml = '';
-          if (itemsAtFac.length === 0) {
-            itemsHtml = '<div style="color: #64748b; font-size: 12px; padding: 8px 0; text-align: center;">작업 없음</div>';
-          } else {
-            itemsAtFac.forEach(w => {
-              let timeStr = '';
-              if (w.IsCompleted) {
-                timeStr = '<span style="color: #34d399; font-weight: 700;">완료</span>';
-              } else if (w.State === 'InProgress') {
-                timeStr = `<span style="color: #fbbf24; font-weight: 600;">⏳ ${formatRemaining(w.RemainingSeconds)}</span>`;
-              } else {
-                timeStr = `<span style="color: #94a3b8; font-size: 11px;">대기 (${formatRemaining(w.RemainingSeconds)})</span>`;
-              }
-
-              const bellBtn = (!w.IsCompleted && w.RemainingSeconds > 0)
-                ? `<button class="btn-manual-bell" title="이 작업에 알람 추가" onclick="addManualAlarm('${fac.name}', '${w.DisplayName}', ${w.RemainingSeconds})">+🔔</button>`
-                : '';
-
-              itemsHtml += `
-                <div class="facility-item-row">
-                  <div style="display:flex; align-items:center;">
-                    <span class="item-name-text" title="${w.DisplayName}">${w.DisplayName}</span>
-                    ${bellBtn}
-                  </div>
-                  <span>${timeStr}</span>
-                </div>
-              `;
-            });
-          }
-
-          gridHtml += `
-            <div class="facility-card">
-              <div class="facility-header">
-                <span class="facility-title">${fac.icon} ${formatFacilityShort(fac.name)}</span>
-                ${collectBtn}
-              </div>
-              <div class="facility-items">
-                ${itemsHtml}
-              </div>
-            </div>
-          `;
-        });
-        gridEl.innerHTML = gridHtml;
+        window.cachedAlteringWorks = works;
+        window.cachedAlteringCompletedTotal = Number(data.completedCount) || 0;
+        renderAlteringQueue();
         loadDeliveryAlarms();
         updateMasterCommandBar();
       } catch (err) {
         console.error('Error loading altering queue:', err);
+      } finally {
+        isAlteringQueueLoading = false;
       }
+    }
+
+    function getWorkRemainingSeconds(w) {
+      if (w.IsCompleted) return 0;
+      if (w.targetTimestamp) {
+        const diffMs = w.targetTimestamp - Date.now();
+        return Math.max(0, Math.ceil(diffMs / 1000));
+      }
+      return Math.max(0, Number(w.RemainingSeconds) || 0);
+    }
+
+    function renderAlteringQueue() {
+      const works = window.cachedAlteringWorks || [];
+      const completedTotal = window.cachedAlteringCompletedTotal || 0;
+
+      const grouped = {};
+      ALL_FACILITIES.forEach(f => { grouped[f.name] = []; });
+      works.forEach(w => {
+        const fn = w.FacilityName || '';
+        if (!grouped[fn]) grouped[fn] = [];
+        grouped[fn].push(w);
+      });
+
+      // Summary Pill & Quick Bar
+      const inProgressTotal = works.filter(w => !w.IsCompleted && getWorkRemainingSeconds(w) > 0).length;
+      const sumPill = document.getElementById('altering-summary-pill');
+      if (sumPill) sumPill.innerText = `진행 ${inProgressTotal}건 | 완료 ${completedTotal}건`;
+      
+      let quickSummaryParts = [];
+      ALL_FACILITIES.forEach(f => {
+        const list = grouped[f.name] || [];
+        if (list.length > 0) {
+          const incomplete = list.filter(w => !w.IsCompleted && getWorkRemainingSeconds(w) > 0);
+          const totalSec = incomplete.reduce((sum, w) => sum + getWorkRemainingSeconds(w), 0);
+          const hasComp = list.some(w => w.IsCompleted || (getWorkRemainingSeconds(w) === 0 && !w.IsCompleted));
+          const facShort = f.name.replace(' 가공 시설', '');
+
+          if (totalSec > 0) {
+            const compTag = hasComp ? ' <span style="color:#34d399;font-size:11px;">(일부완료)</span>' : '';
+            quickSummaryParts.push(`${f.icon} ${facShort}: <span style="color:#fbbf24;font-weight:600;">${formatRemaining(totalSec)}</span>${compTag}`);
+          } else if (hasComp) {
+            quickSummaryParts.push(`${f.icon} ${facShort}: <span style="color:#34d399;font-weight:700;">완료!</span>`);
+          }
+        }
+      });
+      const quickSummaryEl = document.getElementById('altering-quick-summary');
+      if (quickSummaryEl) {
+        quickSummaryEl.innerHTML = quickSummaryParts.length > 0 
+          ? quickSummaryParts.join(' &nbsp;|&nbsp; ') 
+          : '현재 대기 중인 가공 작업이 없습니다.';
+      }
+
+      // Render 3x2 Grid
+      const gridEl = document.getElementById('facility-grid-container');
+      if (!gridEl) return;
+      let gridHtml = '';
+      ALL_FACILITIES.forEach(fac => {
+        const itemsAtFac = grouped[fac.name] || [];
+        const completedAtFac = itemsAtFac.filter(x => x.IsCompleted || getWorkRemainingSeconds(x) === 0);
+        const hasCompleted = completedAtFac.length > 0;
+        const firstCompletedName = hasCompleted ? completedAtFac[0].DisplayName : '';
+
+        const collectBtn = hasCompleted
+          ? `<button class="btn btn-sm btn-emerald" style="padding: 3px 8px; font-size: 11.5px;" onclick="collectAltering('${firstCompletedName}')">🎁 수령(${completedAtFac.length})</button>`
+          : `<button class="btn btn-sm" disabled style="opacity: 0.25; padding: 3px 8px; font-size: 11.5px;">수령</button>`;
+
+        let itemsHtml = '';
+        if (itemsAtFac.length === 0) {
+          itemsHtml = '<div style="color: #64748b; font-size: 12px; padding: 8px 0; text-align: center;">작업 없음</div>';
+        } else {
+          itemsAtFac.forEach(w => {
+            const remSec = getWorkRemainingSeconds(w);
+            let timeStr = '';
+            if (w.IsCompleted || remSec === 0) {
+              timeStr = '<span style="color: #34d399; font-weight: 700;">완료</span>';
+            } else if (w.State === 'InProgress' || remSec > 0) {
+              timeStr = `<span style="color: #fbbf24; font-weight: 600;">⏳ ${formatRemaining(remSec)}</span>`;
+            } else {
+              timeStr = `<span style="color: #94a3b8; font-size: 11px;">대기 (${formatRemaining(remSec)})</span>`;
+            }
+
+            const bellBtn = (!w.IsCompleted && remSec > 0)
+              ? `<button class="btn-manual-bell" title="이 작업에 알람 추가" onclick="addManualAlarm('${fac.name}', '${w.DisplayName}', ${remSec})">+🔔</button>`
+              : '';
+
+            itemsHtml += `
+              <div class="facility-item-row">
+                <div style="display:flex; align-items:center;">
+                  <span class="item-name-text" title="${w.DisplayName}">${w.DisplayName}</span>
+                  ${bellBtn}
+                </div>
+                <span>${timeStr}</span>
+              </div>
+            `;
+          });
+        }
+
+        gridHtml += `
+          <div class="facility-card">
+            <div class="facility-header">
+              <span class="facility-title">${fac.icon} ${formatFacilityShort(fac.name)}</span>
+              ${collectBtn}
+            </div>
+            <div class="facility-items">
+              ${itemsHtml}
+            </div>
+          </div>
+        `;
+      });
+      gridEl.innerHTML = gridHtml;
     }
 
     // 2. Load & Render Delivery-Exclusive Alarms
@@ -4590,6 +4628,9 @@ HTML_PAGE = """<!DOCTYPE html>
         }
       });
       if (changed) renderAlarms();
+      if (window.cachedAlteringWorks && window.cachedAlteringWorks.length > 0) {
+        renderAlteringQueue();
+      }
     };
 
     // 2.5. 7-Slot Max Level Alteration Quick Routine
@@ -6605,7 +6646,7 @@ HTML_PAGE = """<!DOCTYPE html>
           }
         } catch(e) {}
       }, 12000);
-      setInterval(() => { if (document.hidden || isCurrentlyBusy) return; try { loadAlteringQueue(); } catch(e) {} }, 8000);
+      setInterval(() => { if (document.hidden) return; try { loadAlteringQueue(); } catch(e) {} }, 4000);
       setInterval(() => { if (document.hidden) return; try { pollLogs(); } catch(e) {} }, 2500);
     }
 
