@@ -2993,7 +2993,11 @@ class DeliveryManager:
                 "queued_yield": queued_y,
                 "completed_yield": comp_y,
                 "net_needed": net_needed,
+                "deficit": net_needed,
                 "works_needed": w_needed,
+                "works_to_queue": w_needed,
+                "in_progress_count": queued_cnt,
+                "is_ready": (status == "satisfied"),
                 "status": status
             })
 

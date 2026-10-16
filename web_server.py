@@ -2131,13 +2131,14 @@ HTML_PAGE = """<!DOCTYPE html>
       justify-content: space-between;
       align-items: center;
       gap: 18px;
+      flex-wrap: wrap;
     }
     .mcb-left {
       display: flex;
       flex-direction: column;
       gap: 8px;
       flex: 1;
-      min-width: 0;
+      min-width: 260px;
     }
     .mcb-title-row {
       display: flex;
@@ -2234,6 +2235,8 @@ HTML_PAGE = """<!DOCTYPE html>
       align-items: center;
       gap: 12px;
       flex-shrink: 0;
+      min-width: 0;
+      max-width: 100%;
     }
     .btn-mcb-start {
       background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
@@ -2250,6 +2253,7 @@ HTML_PAGE = """<!DOCTYPE html>
       gap: 8px;
       white-space: nowrap;
       transition: all 0.2s ease;
+      box-sizing: border-box;
     }
     .btn-mcb-start:hover {
       transform: translateY(-2px);
@@ -2274,6 +2278,8 @@ HTML_PAGE = """<!DOCTYPE html>
       cursor: pointer;
       white-space: nowrap;
       animation: abortPulse 2s infinite ease-in-out;
+      flex-shrink: 0;
+      box-sizing: border-box;
     }
     @keyframes abortPulse {
       0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
@@ -2286,17 +2292,23 @@ HTML_PAGE = """<!DOCTYPE html>
       border-top-color: #f87171;
       border-radius: 50%;
       animation: mcbSpin 0.9s linear infinite;
+      flex-shrink: 0;
     }
     @keyframes mcbSpin {
       to { transform: rotate(360deg); }
     }
     .mcb-running-info {
       text-align: right;
+      min-width: 0;
+      flex: 1;
     }
     .mcb-running-title {
       font-size: 13.5px;
       font-weight: 800;
       color: #fca5a5;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .mcb-running-desc {
       font-size: 11.5px;
@@ -2316,17 +2328,39 @@ HTML_PAGE = """<!DOCTYPE html>
         align-items: stretch;
         gap: 12px;
       }
+      .mcb-left {
+        min-width: 0;
+      }
       .mcb-right {
+        width: 100%;
         justify-content: stretch;
       }
-      .btn-mcb-start, .btn-danger-abort {
+      #mcb-box-idle {
+        width: 100%;
+      }
+      #mcb-box-running {
+        width: 100%;
+        justify-content: space-between;
+        box-sizing: border-box;
+      }
+      .btn-mcb-start {
         width: 100%;
         justify-content: center;
         padding: 12px 16px;
       }
+      .btn-danger-abort {
+        width: auto;
+        flex-shrink: 0;
+        padding: 11px 20px;
+        justify-content: center;
+      }
       .mcb-running-info {
         text-align: left;
         flex: 1;
+        min-width: 0;
+      }
+      .mcb-running-desc {
+        max-width: 100%;
       }
     }
   </style>
@@ -5931,32 +5965,43 @@ HTML_PAGE = """<!DOCTYPE html>
 
         let rowsHtml = '';
         materials.forEach(m => {
+          const shortFac = formatFacilityShort(m.facility);
+          const worksNeeded = (m.works_to_queue !== undefined) ? m.works_to_queue : (m.works_needed || 0);
+          const deficit = (m.deficit !== undefined) ? m.deficit : (m.net_needed || 0);
+          const queuedCnt = m.queued_works_count || m.in_progress_count || 0;
+          const compCnt = m.completed_works_count || 0;
+
+          const queuedBadge = queuedCnt > 0 ? `<span style="color:#818cf8; font-size:11px; margin-left:4px;">(대기 ${queuedCnt}회)</span>` : '';
+          const compBadge = compCnt > 0 ? `<span style="color:#38bdf8; font-size:11px; margin-left:4px;">(수령가능 ${compCnt}회)</span>` : '';
+
           let statusBadge = '';
-          if (m.is_ready) {
-            statusBadge = '<span style="color:#34d399; font-weight:700;">● 재료 준비 완료</span>';
-          } else if (m.in_progress_count > 0 && m.in_progress_count >= m.works_needed) {
-            statusBadge = `<span style="color:#38bdf8; font-weight:700;">⏳ 가공 진행 중 (${m.in_progress_count}/${m.works_needed}회)</span>`;
+          if (m.status === 'satisfied' || (deficit === 0 && worksNeeded === 0)) {
+            statusBadge = '<span style="color:#34d399; font-weight:700;">● 재료 준비 완료</span>' + compBadge;
+          } else if (m.status === 'ready_to_collect' || (compCnt > 0 && worksNeeded === 0)) {
+            statusBadge = `<span style="color:#38bdf8; font-weight:700;">🎁 수령 가능 (${compCnt}회)</span>`;
+          } else if (m.status === 'in_queue' || (queuedCnt > 0 && worksNeeded === 0)) {
+            statusBadge = `<span style="color:#fbbf24; font-weight:700;">⏳ 대기열 (${queuedCnt}회)</span>` + compBadge;
+          } else if (worksNeeded > 0) {
+            statusBadge = `<span style="color:#fbbf24; font-weight:700;">⚙️ ${shortFac} ${worksNeeded}회 등록 필요</span>` + queuedBadge + compBadge;
           } else {
-            const shortFac = formatFacilityShort(m.facility);
-            statusBadge = `<span style="color:#fbbf24; font-weight:700;">⚙️ ${shortFac} ${m.works_to_queue}회 등록 필요</span>`;
+            statusBadge = '<span style="color:#34d399; font-weight:700;">● 준비 완료</span>';
           }
 
           const invCnt = m.inventory_count || 0;
           const storeCnt = m.storage_count || 0;
           const bagStorageText = `${invCnt}개<span style="color:${storeCnt > 0 ? '#38bdf8' : '#64748b'};">(${storeCnt}개)</span>`;
-          const shortFac = formatFacilityShort(m.facility);
 
           rowsHtml += `
-            <tr style="${m.deficit > 0 ? 'background: rgba(245, 158, 11, 0.05);' : ''}">
+            <tr style="${deficit > 0 ? 'background: rgba(245, 158, 11, 0.05);' : ''}">
               <td style="font-weight:700; color:#f1f5f9; white-space:nowrap;">${m.item_name}</td>
               <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(99,102,241,0.15); color:#a5b4fc; padding:2px 7px; font-size:11px;">${shortFac}</span></td>
               <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${m.total_needed}개</td>
               <td style="text-align:center; white-space:nowrap;">${bagStorageText}</td>
-              <td style="font-weight:700; color:${m.deficit > 0 ? '#f43f5e' : '#34d399'}; text-align:right; white-space:nowrap;">
-                ${m.deficit > 0 ? `-${m.deficit}개` : '0개'}
+              <td style="font-weight:700; color:${deficit > 0 ? '#f43f5e' : '#34d399'}; text-align:right; white-space:nowrap;">
+                ${deficit > 0 ? `-${deficit}개` : '0개'}
               </td>
-              <td style="text-align:center; font-weight:700; color:${m.works_to_queue > 0 ? '#fbbf24' : '#64748b'}; white-space:nowrap;">
-                ${m.works_to_queue > 0 ? `+${m.works_to_queue}회` : '-'}
+              <td style="text-align:center; font-weight:700; color:${worksNeeded > 0 ? '#fbbf24' : '#64748b'}; white-space:nowrap;">
+                ${worksNeeded > 0 ? `+${worksNeeded}회` : '-'}
               </td>
               <td style="white-space:nowrap;">${statusBadge}</td>
             </tr>
