@@ -147,15 +147,17 @@ with open(os.path.join(OUTPUT_DIR, "사용방법.txt"), "w", encoding="utf-8") a
 print("\n🗜️ 배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
-# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v0.6.0.zip)
-VERSION = "v0.6.0"
+# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v0.6.1.zip / v6.1.0)
+VERSION = "v0.6.1"
 github_zip_path = os.path.join(BASE_DIR, f"Mobi_Living_Supporter_{VERSION}.zip")
 shutil.copy2(zip_path, github_zip_path)
+github_zip_v610 = os.path.join(BASE_DIR, "Mobi_Living_Supporter_v6.1.0.zip")
+shutil.copy2(zip_path, github_zip_v610)
 
 print("\n" + "=" * 65)
 print("🎉 [성공] 모비노기 생활 지원도구 배포 패키지 구성 및 압축 완료!")
 print(f"📁 배포 폴더: {OUTPUT_DIR}")
 print(f"📦 압축 파일: {zip_path}")
-print(f"📦 깃허브 릴리즈용: {github_zip_path}")
+print(f"📦 깃허브 릴리즈용: {github_zip_path} / {github_zip_v610}")
 print(f"💡 안내: 위 ZIP 파일 중 하나를 그대로 공유하거나 깃허브 릴리즈에 첨부하시면 됩니다!")
 print("=" * 65 + "\n")
