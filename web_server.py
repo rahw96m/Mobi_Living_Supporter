@@ -1508,12 +1508,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Fira+Code:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #121212;
+      --bg: #101010;
       --bg-panel: #161616;
-      --bg-elevated: #181818;
-      --line: #2A2A2A;
+      --bg-sub-panel: #1B1B1B;
+      --bg-elevated: #1F1F1F;
+      --bg-table-header: #202020;
+      --line: #282828;
       --line-subtle: #222222;
-      --border-line: #2A2A2A;
+      --border-line: #262626;
       --border-focus: #DFDFDF;
       --text: #E5E5E5;
       --text-main: #E5E5E5;
@@ -1616,19 +1618,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     .title {
       display: flex;
-      align-items: baseline;
-      gap: 10px;
+      align-items: center;
+      gap: 12px;
       flex-wrap: wrap;
     }
     .title h1 {
-      font-size: var(--fs-lg);
+      font-size: 24px;
       font-weight: 700;
       color: var(--text-bright);
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
+      letter-spacing: -0.3px;
     }
-    .title p { font-size: var(--fs-sm); color: var(--text-muted); }
 
     /* Header Action Buttons (Tier 3: Hover Bracket Style) */
     .header-actions {
@@ -1684,7 +1686,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: var(--line);
     }
 
-    /* 하단 상태 바: :: 메이븐 (Lv.100) :: 날개 7,647 :: 무게 1108/1870 [■■■□□] :: */
+    /* 하단 상태 바: 메이븐 (Lv.100) | 날개 7,647 | 무게 1108/1870 */
     .header-status-bar {
       display: flex;
       align-items: center;
@@ -1694,7 +1696,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--text);
       font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
-      padding: 2px 0;
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 7px 14px;
     }
     .status-pills { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .status-delim {
@@ -1727,18 +1732,37 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     }
 
-    /* Layout & Line-Centric Sections (No Nested Box Cards) */
+    /* Layout & Surface Cards */
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     @media (max-width: 1024px) { .grid { grid-template-columns: 1fr; } }
 
     .card {
-      background: transparent;
-      border: none;
-      border-top: 1px solid var(--line);
-      border-radius: 0;
-      padding: 18px 0 8px 0;
-      margin-bottom: 20px;
-      box-shadow: none;
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 16px 18px 14px 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    }
+    .card-sub-box {
+      background: var(--bg-sub-panel);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      padding: 12px 14px;
+    }
+    .target-card {
+      background: var(--bg-sub-panel);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 6px;
+      transition: border-color 0.15s ease;
+    }
+    .target-card:hover {
+      border-color: #3A3A3A;
     }
     .card-title {
       font-size: var(--fs-lg);
@@ -1838,26 +1862,26 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-size: var(--fs-md);
     }
 
-    /* Tier 1: Top-level Core Solid Buttons (주간 납품 일괄 실행, 완료 가공품 수령 등 핵심 액션) */
+    /* Tier 1: Top-level Core Action Buttons (핵심 버튼 색상 적용) */
     .btn-solid-core,
     .btn-mcb-start,
-    #btn-collect-all-altering,
     #btn-batch-execute,
     #btn-quick-alter-execute,
     #btn-custom-execute {
-      background: var(--invert-bg) !important;
-      color: var(--invert-text) !important;
+      background: #2563EB !important;
+      color: #FFFFFF !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
-      padding: 8px 16px !important;
-      border-radius: 2px !important;
-      border: 1px solid var(--invert-bg) !important;
-      box-shadow: none !important;
+      padding: 8px 18px !important;
+      border-radius: 4px !important;
+      border: 1px solid #3B82F6 !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
       text-shadow: none !important;
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
     .btn-solid-core::before, .btn-solid-core::after,
     .btn-mcb-start::before, .btn-mcb-start::after,
-    #btn-collect-all-altering::before, #btn-collect-all-altering::after,
     #btn-batch-execute::before, #btn-batch-execute::after,
     #btn-quick-alter-execute::before, #btn-quick-alter-execute::after,
     #btn-custom-execute::before, #btn-custom-execute::after {
@@ -1866,14 +1890,38 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     .btn-solid-core:hover:not(:disabled),
     .btn-mcb-start:hover:not(:disabled),
-    #btn-collect-all-altering:hover:not(:disabled),
     #btn-batch-execute:hover:not(:disabled),
     #btn-quick-alter-execute:hover:not(:disabled),
     #btn-custom-execute:hover:not(:disabled) {
-      background: #FFFFFF !important;
-      color: #000000 !important;
-      border-color: #FFFFFF !important;
-      transform: none !important;
+      background: #1D4ED8 !important;
+      color: #FFFFFF !important;
+      border-color: #60A5FA !important;
+      transform: translateY(-1px) !important;
+    }
+
+    /* 완료 가공품 수령 (Emerald Accent) */
+    #btn-collect-all-altering {
+      background: #059669 !important;
+      color: #FFFFFF !important;
+      font-size: var(--fs-md) !important;
+      font-weight: 700 !important;
+      padding: 6px 14px !important;
+      border-radius: 4px !important;
+      border: 1px solid #10B981 !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+      text-shadow: none !important;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    #btn-collect-all-altering::before, #btn-collect-all-altering::after {
+      content: none !important;
+      display: none !important;
+    }
+    #btn-collect-all-altering:hover:not(:disabled) {
+      background: #047857 !important;
+      color: #FFFFFF !important;
+      border-color: #34D399 !important;
+      transform: translateY(-1px) !important;
     }
 
     /*Inputs */
@@ -1936,11 +1984,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
     @media(max-width: 600px) { .facility-grid { grid-template-columns: 1fr; } }
 
     .facility-card {
-      background: transparent;
-      border: none;
-      border-top: 1px solid var(--line);
-      border-radius: 0;
-      padding: 10px 4px;
+      background: var(--bg-sub-panel);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
@@ -1999,32 +2046,45 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .btn-manual-bell:hover { color: var(--text-bright); font-weight: 700; }
 
     /* BOM Table & Group Separators */
+    .bom-table-container {
+      background: #131313;
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      overflow-x: auto;
+      margin-top: 8px;
+    }
     .bom-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: var(--fs-md);
-      margin-top: 8px;
+      font-size: 12px;
+      margin-top: 0;
     }
     .bom-table th {
-      background: transparent;
+      background: var(--bg-table-header);
       color: var(--text-muted);
       text-align: left;
-      padding: 8px 10px;
-      font-size: var(--fs-sm);
+      padding: 7px 10px;
+      font-size: 11px;
       font-weight: 700;
-      border-top: 1px solid var(--line);
+      border-top: none;
       border-bottom: 1px solid var(--line);
       white-space: nowrap;
+      letter-spacing: 0.3px;
     }
     .bom-table td {
-      padding: 8px 10px;
+      padding: 6px 10px;
       border-bottom: 1px solid var(--line-subtle);
       color: var(--text);
-      font-size: var(--fs-md);
+      font-size: 12px;
       white-space: nowrap;
-      background: transparent !important;
+      background: transparent;
     }
-    .bom-table tr:hover td { background: #1A1A1A !important; }
+    .bom-table tbody tr:nth-child(even) td {
+      background: rgba(255, 255, 255, 0.015);
+    }
+    .bom-table tbody tr:hover td {
+      background: #202020 !important;
+    }
     .bom-table tr.row-alter td:first-child {
       border-left: 3px solid var(--bar-alter);
       padding-left: 10px;
@@ -2037,14 +2097,29 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-left: 3px solid var(--bar-special);
       padding-left: 10px;
     }
-    .bom-table tr.table-group-row td {
-      padding: 6px 10px;
-      font-family: var(--font-mono);
-      font-size: var(--fs-sm);
-      font-weight: 700;
-      color: var(--text-muted);
-      border-bottom: 1px solid var(--line);
-      letter-spacing: 0.5px;
+    .bom-table .badge-dim,
+    .bom-table .badge {
+      font-size: 11px;
+      padding: 1px 5px;
+    }
+
+    /* Collapsed Bar Visual Hierarchy */
+    #altering-collapsed-bar,
+    #delivery-targets-collapsed-bar,
+    #quick-alter-collapsed-bar {
+      background: var(--bg-sub-panel) !important;
+      border: 1px solid var(--line-subtle) !important;
+      border-radius: 4px !important;
+      padding: 9px 14px !important;
+      margin-top: 10px !important;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    #altering-collapsed-bar:hover,
+    #delivery-targets-collapsed-bar:hover,
+    #quick-alter-collapsed-bar:hover {
+      background: #222222 !important;
+      border-color: #383838 !important;
     }
 
     /* 7-Slot Quick Alter Styling */
@@ -2067,32 +2142,38 @@ HTML_PAGE = r"""<!DOCTYPE html>
       box-shadow: none;
     }
     .quick-cat-card {
-      background: transparent;
-      border: none;
-      border-top: 1px solid var(--line);
-      border-radius: 0;
-      padding: 12px 0;
+      background: var(--bg-sub-panel);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
     }
     .quick-tier-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: var(--fs-md);
+      font-size: 12px;
       margin-top: 8px;
+      background: #131313;
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
     }
     .quick-tier-table th {
-      background: transparent;
+      background: var(--bg-table-header);
       color: var(--text-muted);
       text-align: left;
       padding: 6px 8px;
-      font-size: var(--fs-sm);
+      font-size: 11px;
       font-weight: 700;
-      border-top: 1px solid var(--line);
+      border-top: none;
       border-bottom: 1px solid var(--line);
     }
     .quick-tier-table td {
-      padding: 6px 8px;
+      padding: 5px 8px;
       border-bottom: 1px solid var(--line-subtle);
-      font-size: var(--fs-md);
+      font-size: 12px;
+    }
+    .quick-tier-table tr:hover td {
+      background: #202020;
     }
 
     /* Master Command Bar Mode Switcher Tabs (Tier 2: Tight Invert Box when Active) */
@@ -2313,15 +2394,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       position: sticky;
       top: 72px;
       z-index: 850;
-      margin-bottom: 20px;
-      background: var(--bg-panel);
-      border-top: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
-      border-radius: 0;
-      padding: 12px 14px;
+      margin-bottom: 18px;
+      background: #181818;
+      border: 1px solid #2C2C2C;
+      border-radius: 6px;
+      padding: 12px 16px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
     }
     .master-command-bar.running {
       border-color: var(--invert-bg);
+      background: #1C1C1C;
     }
     .mcb-inner {
       display: flex;
@@ -2410,24 +2492,28 @@ HTML_PAGE = r"""<!DOCTYPE html>
       max-width: 100%;
     }
     .btn-danger-abort {
-      background: var(--invert-bg) !important;
-      color: var(--invert-text) !important;
+      background: #DC2626 !important;
+      color: #FFFFFF !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
       padding: 8px 16px !important;
-      border-radius: 2px !important;
-      border: 1px solid var(--invert-bg) !important;
+      border-radius: 4px !important;
+      border: 1px solid #EF4444 !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
+      transition: all 0.15s ease;
     }
     .btn-danger-abort::before, .btn-danger-abort::after {
       content: none !important;
       display: none !important;
     }
     .btn-danger-abort:hover {
-      background: #FFFFFF !important;
-      color: #000000 !important;
+      background: #B91C1C !important;
+      color: #FFFFFF !important;
+      border-color: #F87171 !important;
+      transform: translateY(-1px) !important;
     }
     .mcb-running-info {
       text-align: right;
@@ -2473,18 +2559,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <body>
   <div class="container">
     <header>
-      <!-- 1층: 좌측(타이틀) / 우측(보조 메뉴 - 호버 브래킷) -->
+      <!-- 1층: 좌측(타이틀) / 우측(보조 메뉴) -->
       <div class="header-top">
         <div class="logo-area">
-          <div class="logo-icon">&gt;_</div>
           <div class="title">
-<<<<<<< HEAD
-            <h1><span class="sym-prefix">//</span>모비노기 생활 지원도구 <span class="badge">v0.7.0</span></h1>
-            <p>&gt; 마비노기 모바일 AI 커넥터 터미널</p>
-=======
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.6.1</span></h1>
-            <p>마비노기 모바일 AI 커넥터 연동</p>
->>>>>>> b01b009a577b20474462047d7af6ee02c2f1003a
+            <h1>모비노기 생활 지원도구 <span class="badge">v0.7.0</span></h1>
           </div>
         </div>
         <div class="header-actions">
@@ -2509,15 +2588,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <!-- 구분 선 -->
       <div class="header-divider"></div>
 
-      <!-- 2층: :: 메이븐 (Lv.100) :: 날개 7,647 :: 무게 1108/1870 [■■■□□] :: -->
+      <!-- 2층: 캐릭터 상태 바 (세로선 | 구분 & 무게 게이지 제거) -->
       <div class="header-status-bar status-pills" id="status-pills">
-        <span class="status-delim">::</span>
         <div class="pill online" id="pill-status" onclick="openCliModal()" style="cursor: pointer;" title="클릭하여 연결 상태 및 설정 확인">커넥터 연결 확인 중</div>
-        <span class="status-delim">::</span>
+        <span class="status-delim">|</span>
         <div class="pill wings" id="pill-wings">날개 -</div>
-        <span class="status-delim">::</span>
-        <div class="pill weight" id="pill-weight">무게 -/- [□□□□□]</div>
-        <span class="status-delim">::</span>
+        <span class="status-delim">|</span>
+        <div class="pill weight" id="pill-weight">무게 -/-</div>
       </div>
     </header>
 
@@ -2558,9 +2635,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
 
       <!-- Collapsed Compact Bar (shown when collapsed) -->
-      <div id="altering-collapsed-bar" style="display: none; margin-top: 10px; padding: 8px 0; border-top: 1px solid var(--line-subtle); font-size: var(--fs-md); color: var(--text-muted); cursor: pointer; justify-content: space-between; align-items: center;" onclick="toggleAlteringView()">
+      <div id="altering-collapsed-bar" style="display: none; margin-top: 10px; padding: 8px 0; border-top: 1px solid var(--line-subtle); font-size: var(--fs-md); color: var(--text-muted); cursor: pointer;" onclick="toggleAlteringView()">
         <span><span class="sym-prefix">&gt;</span><span id="altering-quick-summary">가공 시설 상태 요약 정보...</span></span>
-        <span class="mono-num" style="color: var(--text-bright); font-size: var(--fs-sm);">[ 펼치기 v ]</span>
       </div>
 
       <!-- Expanded Content (shown by default) -->
@@ -2571,7 +2647,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Delivery-Exclusive Alarm Section -->
-        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);">
+        <div class="card-sub-box" style="margin-top: 14px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-bright);"><span class="sym-prefix">&gt;</span>주간 납품 전용 가공 알람 목록</span>
@@ -2583,7 +2659,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <button class="btn btn-sm" onclick="clearAllAlarms()">알람 비우기</button>
             </div>
           </div>
-          <div id="alarm-list-container" style="max-height: 120px; overflow-y: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px;">
+          <div id="alarm-list-container" style="max-height: 120px; overflow-y: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px; background: #131313; border: 1px solid var(--line-subtle); border-radius: 3px; padding: 6px 10px;">
             <p style="color: var(--text-muted); font-size: var(--fs-sm);">&gt; 현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>
           </div>
         </div>
@@ -2622,11 +2698,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="mcb-options-row">
             <label class="mcb-option-toggle" id="mcb-goal-toggle-label" title="가공 수령 -> 다음 티어 가공 -> 완제품 제작까지 멈추지 않고 100% 완수할 때까지 연속 자동 실행">
               <input type="checkbox" id="mcb-goal-toggle" onchange="onGoalFulfillmentToggleChanged(this.checked)">
-              <span class="cli-check-box" id="mcb-goal-check-sym">[x]</span>
+              <span class="cli-check-box" id="mcb-goal-check-sym">□</span>
               <span class="mcb-toggle-label">목표 완수 모드</span>
             </label>
             <button class="mcb-pill-btn" id="mcb-btn-sound" onclick="toggleSoundAlarmSetting()" title="목표 완수/작업 완료 시 효과음 알림 (기본값: 무음)">
-              <span class="cli-check-box" id="mcb-sound-icon">[ ]</span>
+              <span class="cli-check-box" id="mcb-sound-icon">□</span>
               <span id="mcb-sound-text">알림음 꺼짐</span>
             </button>
             <button class="mcb-pill-btn btn" id="mcb-btn-order" onclick="toggleAlterOrderSetting()" title="가공 순서 우선순위 (상위 티어 / 하위 티어 우선)">
@@ -2678,15 +2754,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Collapsed Compact Bar (shown when collapsed) -->
-        <div id="delivery-targets-collapsed-bar" style="display: none; margin-top: 10px; padding: 8px 0; border-top: 1px solid var(--line-subtle); font-size: var(--fs-md); color: var(--text-muted); cursor: pointer; align-items: center; justify-content: space-between; gap: 12px;" onclick="toggleDeliveryTargetsView()">
+        <div id="delivery-targets-collapsed-bar" style="display: none; margin-top: 10px; padding: 8px 0; border-top: 1px solid var(--line-subtle); font-size: var(--fs-md); color: var(--text-muted); cursor: pointer;" onclick="toggleDeliveryTargetsView()">
           <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span class="sym-prefix">&gt;</span><span id="delivery-targets-quick-summary">등록된 주간 납품 목표 요약 정보...</span></span>
-          <span class="mono-num" style="color: var(--text-bright); font-size: var(--fs-sm); flex-shrink: 0;">[ 펼치기 v ]</span>
         </div>
 
         <!-- Expanded Content (shown by default) -->
         <div id="delivery-targets-expanded-content" style="margin-top: 14px;">
           <!-- Quick Manual Add Input Form -->
-          <div style="padding: 12px 0; margin-bottom: 12px; border-top: 1px solid var(--line-subtle); border-bottom: 1px solid var(--line-subtle); display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+          <div class="card-sub-box" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 12px;">
             <div style="flex: 2; min-width: 170px;">
               <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
               <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
@@ -2708,7 +2783,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
 
           <!-- Preset Save/Load Section -->
-          <div style="padding: 10px 0; margin-bottom: 14px; border-bottom: 1px solid var(--line-subtle);">
+          <div class="card-sub-box" style="margin-bottom: 14px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
               <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-bright);"><span class="sym-prefix">&gt;</span>주간 납품 프리셋 (퀘스트 조합 저장)</span>
@@ -2755,7 +2830,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Full-Width Aggregated Materials Table Container -->
-        <div style="overflow-x: auto;">
+        <div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <h4 style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">&gt;</span>전체 통합 필요 1차 가공품 &amp; 채집 분석표</h4>
@@ -2763,20 +2838,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
             </div>
             <div id="batch-tasks-container" style="display: none;"></div>
           </div>
-          <table class="bom-table">
-            <thead>
-              <tr>
-                <th style="min-width: 140px;">재료명</th>
-                <th style="min-width: 70px; text-align: center;">구분/시설</th>
-                <th style="min-width: 80px; text-align: right;">총 소요</th>
-                <th style="min-width: 110px; text-align: center;">가방(창고)</th>
-                <th style="min-width: 140px;">상태</th>
-              </tr>
-            </thead>
-            <tbody id="bom-table-body">
-              <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 14px;">분석 데이터를 불러오는 중...</td></tr>
-            </tbody>
-          </table>
+          <div class="bom-table-container">
+            <table class="bom-table">
+              <thead>
+                <tr>
+                  <th style="min-width: 140px;">재료명</th>
+                  <th style="min-width: 70px; text-align: center;">구분/시설</th>
+                  <th style="min-width: 80px; text-align: right;">총 소요</th>
+                  <th style="min-width: 110px; text-align: center;">가방(창고)</th>
+                  <th style="min-width: 140px;">상태</th>
+                </tr>
+              </thead>
+              <tbody id="bom-table-body">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 14px;">분석 데이터를 불러오는 중...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Facility Slot Status & Warning -->
@@ -2828,9 +2905,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Collapsed Compact Bar (shown when collapsed) -->
-        <div id="quick-alter-collapsed-bar" style="display: none; margin-top: 10px; padding: 8px 0; border-top: 1px solid var(--line-subtle); font-size: var(--fs-md); color: var(--text-muted); cursor: pointer; justify-content: space-between; align-items: center;" onclick="toggleQuickAlterView()">
+        <div id="quick-alter-collapsed-bar" style="display: none; margin-top: 10px; padding: 8px 0; border-top: 1px solid var(--line-subtle); font-size: var(--fs-md); color: var(--text-muted); cursor: pointer;" onclick="toggleQuickAlterView()">
           <span><span class="sym-prefix">&gt;</span><span id="quick-alter-quick-summary">7슬롯 가공대 빠른 실행 계획 요약...</span></span>
-          <span class="mono-num" style="color: var(--text-bright); font-size: var(--fs-sm);">[ 펼치기 v ]</span>
         </div>
 
         <!-- Expanded Content -->
@@ -2891,7 +2967,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         <div style="margin-top: 14px;">
           <!-- Quick Manual Add Input Form -->
-          <div style="padding: 12px 0; border-top: 1px solid var(--line-subtle); border-bottom: 1px solid var(--line-subtle); margin-bottom: 14px;">
+          <div class="card-sub-box" style="margin-bottom: 14px;">
             <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 8px;">
               <span><span class="sym-prefix">&gt;</span>제작할 아이템 직접 등록 (원하는 품목과 수량을 등록하면 아래 플래너가 모든 하위 재료를 일괄 계산합니다)</span>
             </div>
@@ -2944,31 +3020,33 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Full-Width Aggregated Materials Table Container -->
-        <div style="overflow-x: auto;">
+        <div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <h4 style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">&gt;</span>개별 제작 통합 필요 1차 가공품 &amp; 채집 분석표</h4>
               <span id="custom-batch-status-text" style="font-size: var(--fs-sm); color: var(--text-muted);">계산 중...</span>
             </div>
           </div>
-          <table class="bom-table">
-            <thead>
-              <tr>
-                <th style="min-width: 130px;">재료명</th>
-                <th style="min-width: 70px; text-align: center;">구분/시설</th>
-                <th style="min-width: 75px; text-align: right;">총 소요</th>
-                <th style="min-width: 105px; text-align: center;">가방(창고)</th>
-                <th style="min-width: 80px; text-align: right;">부족 수량</th>
-                <th style="min-width: 90px; text-align: center;">가공 필요</th>
-                <th style="min-width: 130px;">가공 상태</th>
-              </tr>
-            </thead>
-            <tbody id="custom-batch-materials-tbody">
-              <tr>
-                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">개별 제작 목표를 등록하면 전체 소요 자재가 분석됩니다.</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="bom-table-container">
+            <table class="bom-table">
+              <thead>
+                <tr>
+                  <th style="min-width: 130px;">재료명</th>
+                  <th style="min-width: 70px; text-align: center;">구분/시설</th>
+                  <th style="min-width: 75px; text-align: right;">총 소요</th>
+                  <th style="min-width: 105px; text-align: center;">가방(창고)</th>
+                  <th style="min-width: 80px; text-align: right;">부족 수량</th>
+                  <th style="min-width: 90px; text-align: center;">가공 필요</th>
+                  <th style="min-width: 130px;">가공 상태</th>
+                </tr>
+              </thead>
+              <tbody id="custom-batch-materials-tbody">
+                <tr>
+                  <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">개별 제작 목표를 등록하면 전체 소요 자재가 분석됩니다.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Facility Slots Status & Overflow Warnings Section -->
@@ -3052,22 +3130,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <!-- 4 Metric Cards -->
         <div class="summary-stat-grid">
           <div class="summary-stat-card">
-            <div class="label">:: 날개 소모</div>
+            <div class="label">날개 소모</div>
             <div class="val" id="sum-card-wings">0개</div>
             <div id="sum-card-wings-sub" class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">(0 -&gt; 0)</div>
           </div>
           <div class="summary-stat-card">
-            <div class="label">:: 필드 채집</div>
+            <div class="label">필드 채집</div>
             <div class="val" id="sum-card-gather">0품목</div>
             <div id="sum-card-gather-sub" class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">총 0개 획득</div>
           </div>
           <div class="summary-stat-card">
-            <div class="label">:: 가공 대기열</div>
+            <div class="label">가공 대기열</div>
             <div class="val" id="sum-card-alter">0슬롯</div>
             <div id="sum-card-alter-sub" class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">0품목 등록</div>
           </div>
           <div class="summary-stat-card">
-            <div class="label">:: 최종 제작</div>
+            <div class="label">최종 제작</div>
             <div class="val" id="sum-card-craft">0개</div>
             <div id="sum-card-craft-sub" class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">0품목 완료</div>
           </div>
@@ -3367,7 +3445,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const durText = sum.duration_text || (sum.duration_seconds ? sum.duration_seconds + '초' : '0초');
       let statText = sum.status_text || '완료';
       statText = statText.replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)\s*⏳?/g, '').replace(/[✅🛑❌⏳]/g, '').trim() || '완료';
-      if (subtitleEl) subtitleEl.innerText = `> 소요 시간: ${durText} :: 상태: ${statText}`;
+      if (subtitleEl) subtitleEl.innerText = `> 소요 시간: ${durText} | 상태: ${statText}`;
 
       // 1. Wings
       const wings = sum.wings || {};
@@ -3414,7 +3492,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             const craftCount = it.count !== undefined ? it.count : (it.crafted || 0);
             return `
               <div class="summary-item-row">
-                <span style="font-weight: 700; color: var(--text-main);">:: ${itemName}</span>
+                <span style="font-weight: 700; color: var(--text-main);">${itemName}</span>
                 <span class="badge mono-num">${craftCount}개 제작</span>
               </div>
             `;
@@ -3438,7 +3516,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             return `
               <div class="summary-item-row">
                 <div>
-                  <span style="font-weight: 700; color: var(--text-main);">:: ${recipeName}</span>
+                  <span style="font-weight: 700; color: var(--text-main);">${recipeName}</span>
                   <span style="font-size: var(--fs-sm); color: var(--text-muted); margin-left: 6px;">(${facilityName})</span>
                 </div>
                 <span class="badge-dim mono-num">${slotsCount}슬롯 (산출: +${expectedYield}개)</span>
@@ -3463,7 +3541,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             const reqText = requiredCount > 0 ? ` (목표: ${requiredCount}개)` : '';
             return `
               <div class="summary-item-row">
-                <span style="font-weight: 700; color: var(--text-main);">:: ${itemName}</span>
+                <span style="font-weight: 700; color: var(--text-main);">${itemName}</span>
                 <span class="badge-dim mono-num">+${gainedCount}개 획득${reqText}</span>
               </div>
             `;
@@ -3985,8 +4063,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const btnStart = document.getElementById('mcb-btn-start');
 
       if (goalToggle) goalToggle.checked = currentGoalFulfillmentMode;
-      if (goalCheckSym) goalCheckSym.innerText = currentGoalFulfillmentMode ? '[x]' : '[ ]';
-      if (soundIcon) soundIcon.innerText = currentSoundAlarmEnabled ? '[x]' : '[ ]';
+      if (goalCheckSym) {
+        goalCheckSym.innerText = currentGoalFulfillmentMode ? '■' : '□';
+        goalCheckSym.style.color = currentGoalFulfillmentMode ? 'var(--text-bright)' : 'var(--text-dim)';
+      }
+      if (soundIcon) {
+        soundIcon.innerText = currentSoundAlarmEnabled ? '■' : '□';
+        soundIcon.style.color = currentSoundAlarmEnabled ? 'var(--text-bright)' : 'var(--text-dim)';
+      }
       if (soundText) soundText.innerText = currentSoundAlarmEnabled ? '알림음 켜짐' : '알림음 꺼짐';
       if (orderText) orderText.innerText = currentAlterOrder === 'low_tier' ? '가공: 하위티어 우선' : '가공: 상위티어 우선';
       if (startIcon) startIcon.innerText = '';
@@ -4013,7 +4097,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               if (craftableCount > 0) parts.push(`<strong style="color:var(--text-main);">즉시 제작 가능 <span class="mono-num">${craftableCount}</span>건</strong>`);
               if (alterCount > 0) parts.push(`가공 등록 <span class="mono-num">${alterCount}</span>슬롯`);
               if (neededRaw.length > 0) parts.push(`채집 필요 <span class="mono-num">${neededRaw.length}</span>종`);
-              briefing.innerHTML = parts.join(' :: ') || '주간 납품 계획 준비 완료';
+              briefing.innerHTML = parts.join(' | ') || '주간 납품 계획 준비 완료';
               if (btnStart) btnStart.disabled = isCurrentlyBusy || (taskCount === 0);
             }
           } else {
@@ -4042,7 +4126,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               if (craftableCount > 0) parts.push(`<strong style="color:var(--text-main);">즉시 제작 가능 <span class="mono-num">${craftableCount}</span>건</strong>`);
               if (alterCount > 0) parts.push(`가공 등록 <span class="mono-num">${alterCount}</span>슬롯`);
               if (neededRaw.length > 0) parts.push(`채집 필요 <span class="mono-num">${neededRaw.length}</span>종`);
-              briefing.innerHTML = parts.join(' :: ') || '지정 제작 계획 준비 완료';
+              briefing.innerHTML = parts.join(' | ') || '지정 제작 계획 준비 완료';
               if (btnStart) btnStart.disabled = isCurrentlyBusy || (targetCount === 0);
             }
           } else {
@@ -4059,7 +4143,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (briefing) {
           const catName = currentQuickCategory === 'all' ? '전체 가공대' : `'${currentQuickCategory}'`;
           if (cachedQuickPlan) {
-            briefing.innerText = `7슬롯 최고 레벨 가공 루틴 (${catName}) :: 수령 -> 원자재 채집 -> 가공 순차 등록`;
+            briefing.innerText = `7슬롯 최고 레벨 가공 루틴 (${catName}) | 수령 -> 원자재 채집 -> 가공 순차 등록`;
             if (btnStart) btnStart.disabled = isCurrentlyBusy || !cachedQuickPlan.can_start;
           } else {
             briefing.innerText = `7슬롯 최고 레벨 가공 루틴 (${catName}) 분석 중...`;
@@ -4497,11 +4581,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const inProgressTotal = works.filter(w => !w.IsCompleted && getWorkRemainingSeconds(w) > 0).length;
       const sumPill = document.getElementById('altering-summary-pill');
       if (sumPill) {
-        if (inProgressTotal > 0) {
-          sumPill.innerHTML = `진행 <span class="mono-num">${inProgressTotal}</span>건 <span class="cli-spinner">${getCurrentSpinnerText()}</span> | 완료 <span class="mono-num">${completedTotal}</span>건`;
-        } else {
-          sumPill.innerHTML = `진행 <span class="mono-num">0</span>건 | 완료 <span class="mono-num">${completedTotal}</span>건`;
-        }
+        sumPill.innerHTML = `진행 <span class="mono-num">${inProgressTotal}</span>건 | 완료 <span class="mono-num">${completedTotal}</span>건`;
       }
       
       let quickSummaryParts = [];
@@ -4515,7 +4595,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           if (totalSec > 0) {
             const compTag = hasComp ? ' <span style="color:var(--text-main);font-size:var(--fs-sm);">(일부완료)</span>' : '';
-            quickSummaryParts.push(`${facShort}: <span class="mono-num" style="color:var(--text-main);font-weight:700;">${formatRemaining(totalSec)}</span> <span class="cli-spinner">${getCurrentSpinnerText()}</span>${compTag}`);
+            quickSummaryParts.push(`${facShort}: <span class="mono-num" style="color:var(--text-main);font-weight:700;">${formatRemaining(totalSec)}</span>${compTag}`);
           } else if (hasComp) {
             quickSummaryParts.push(`${facShort}: <span style="color:var(--text-main);font-weight:700;">[완료]</span>`);
           }
@@ -4524,7 +4604,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const quickSummaryEl = document.getElementById('altering-quick-summary');
       if (quickSummaryEl) {
         quickSummaryEl.innerHTML = quickSummaryParts.length > 0 
-          ? quickSummaryParts.join(' &nbsp;::&nbsp; ') 
+          ? quickSummaryParts.join(' &nbsp;|&nbsp; ') 
           : '현재 대기 중인 가공 작업이 없습니다.';
       }
 
@@ -4552,7 +4632,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             if (w.IsCompleted || remSec === 0) {
               timeStr = '<span class="badge mono-num">완료</span>';
             } else if (w.State === 'InProgress' || remSec > 0) {
-              timeStr = `<span class="mono-num" style="color: var(--text-main); font-weight: 700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> ${formatRemaining(remSec)}</span>`;
+              timeStr = `<span class="mono-num" style="color: var(--text-main); font-weight: 700;">${formatRemaining(remSec)}</span>`;
             } else {
               timeStr = `<span class="mono-num" style="color: var(--text-muted); font-size: var(--fs-sm);">대기 (${formatRemaining(remSec)})</span>`;
             }
@@ -4576,7 +4656,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         gridHtml += `
           <div class="facility-card">
             <div class="facility-header">
-              <span class="facility-title">:: ${formatFacilityShort(fac.name)}</span>
+              <span class="facility-title">${formatFacilityShort(fac.name)}</span>
               ${collectBtn}
             </div>
             <div class="facility-items">
@@ -4965,7 +5045,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             const statusBadge = completedCount === targets.length
               ? '<span class="badge">[전체 달성]</span>'
               : `<span class="badge-dim mono-num">[${completedCount}/${targets.length} 완료]</span>`;
-            quickSummaryEl.innerHTML = `${statusBadge} ${itemTexts.join(' :: ')}${more}`;
+            quickSummaryEl.innerHTML = `${statusBadge} ${itemTexts.join(' | ')}${more}`;
           }
         }
 
@@ -4997,10 +5077,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
 
           html += `
-            <div style="border-bottom: 1px solid var(--border-line); padding: 10px 4px; display: flex; flex-direction: column; justify-content: space-between; gap: 6px;">
+            <div class="target-card">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                  <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">:: ${t.item_name}</div>
+                  <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">${t.item_name}</div>
                   <div style="font-size: var(--fs-sm); color: var(--text-muted);">> ${t.quest_title || '주간 납품'}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
@@ -5182,7 +5262,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const escapedName = (p.name || '').replace(/'/g, "\\'");
           html += `
             <div style="border: 1px solid var(--border-line); padding: 4px 10px; display: inline-flex; align-items: center; gap: 8px;">
-              <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-main);">:: ${p.name}</span>
+              <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-main);">${p.name}</span>
               <span class="badge-dim mono-num">${itemCount}개 항목</span>
               <button class="btn btn-sm" onclick="loadPreset('${escapedName}')" title="이 프리셋으로 목표 등록">불러오기</button>
               <button class="btn btn-sm" onclick="deletePreset('${escapedName}')" title="프리셋 삭제">삭제</button>
@@ -5351,10 +5431,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (tbody) {
           let rowsHtml = '';
           if (reqs.length > 0) {
-            rowsHtml += `<tr class="table-group-row"><td colspan="5">--- :: 가공 목록 :: ---</td></tr>`;
             reqs.forEach(r => {
-              const queuedBadge = r.queued_works_count > 0 ? `<span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm); margin-left:4px;">(대기 ${r.queued_works_count}회)</span>` : '';
-              const completedBadge = r.completed_works_count > 0 ? `<span class="mono-num" style="color:var(--text-main); font-size:var(--fs-sm); margin-left:4px;">(수령가능 ${r.completed_works_count}회)</span>` : '';
+              const queuedBadge = r.queued_works_count > 0 ? `<span class="mono-num" style="color:var(--text-muted); font-size:11px; margin-left:4px;">(대기 ${r.queued_works_count}회)</span>` : '';
+              const completedBadge = r.completed_works_count > 0 ? `<span class="mono-num" style="color:var(--text-main); font-size:11px; margin-left:4px;">(수령가능 ${r.completed_works_count}회)</span>` : '';
 
               let statusBadge = '';
               if (r.status === 'satisfied') {
@@ -5362,14 +5441,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
               } else if (r.status === 'needs_alter') {
                 statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">> ${r.works_needed}회 가공 필요</span>` + queuedBadge + completedBadge;
               } else if (r.status === 'in_queue') {
-                statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> 대기열 (${r.queued_works_count}회)</span>` + completedBadge;
+                statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">대기열 (${r.queued_works_count}회)</span>` + completedBadge;
               } else if (r.status === 'ready_to_collect') {
                 statusBadge = `<span class="badge mono-num" style="white-space:nowrap;">수령 가능 (${r.completed_works_count}회)</span>`;
               }
 
               const invCnt = r.inventory_count || 0;
               const storeCnt = r.storage_count || 0;
-              const bagStorageText = `<span class="mono-num">${invCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm);">(${storeCnt}개)</span>`;
+              const bagStorageText = `<span class="mono-num">${invCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${storeCnt}개)</span>`;
               const facShort = formatFacilityShort(r.facility);
 
               rowsHtml += `
@@ -5382,16 +5461,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 </tr>
               `;
             });
-          } else if (tasks.length > 0 && !plan.all_completed) {
-            rowsHtml += `
-              <tr class="table-group-row">
-                <td colspan="5">--- :: 1차 가공품 준비 완료 (추가 가공 불필요) :: ---</td>
-              </tr>
-            `;
           }
 
           if (plan.raw_materials && plan.raw_materials.length > 0) {
-            rowsHtml += `<tr class="table-group-row"><td colspan="5">--- :: 채집 목록 :: ---</td></tr>`;
             plan.raw_materials.forEach(rm => {
               let statusBadge = '';
               const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
@@ -5407,10 +5479,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
               const rmInvCnt = rm.inventory_count || 0;
               const rmStoreCnt = rm.storage_count || 0;
-              const rmBagStorageText = `<span class="mono-num">${rmInvCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm);">(${rmStoreCnt}개)</span>`;
+              const rmBagStorageText = `<span class="mono-num">${rmInvCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${rmStoreCnt}개)</span>`;
 
               const typeBadge = isSpecial
-                ? '<span class="badge-dim">상점/드랍</span>'
+                ? '<span class="badge-dim">기타</span>'
                 : '<span class="badge-dim">채집</span>';
               const rowClass = isSpecial ? 'row-special' : 'row-gather';
 
@@ -5428,11 +5500,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           if (reqs.length === 0 && (!plan.raw_materials || plan.raw_materials.length === 0)) {
             if (plan.all_completed) {
-              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-main); padding: 16px; font-weight: 700;">:: 모든 주간 납품 목표가 달성 완료되었습니다 ::</td></tr>';
+              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-main); padding: 16px; font-weight: 700;">모든 주간 납품 목표가 달성 완료되었습니다</td></tr>';
             } else if (tasks.length === 0) {
               rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 16px;">> 등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</td></tr>';
             } else {
-              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-main); padding: 16px; font-weight: 700;">:: 모든 원자재 및 가공품 준비 완료! 아래 버튼을 눌러 즉시 완제품을 제작하세요 ::</td></tr>';
+              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-main); padding: 16px; font-weight: 700;">모든 원자재 및 가공품 준비 완료! 아래 버튼을 눌러 즉시 완제품을 제작하세요</td></tr>';
             }
           }
 
@@ -5477,7 +5549,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           } else {
             btnExec.innerText = '주간 납품 일괄 실행 (대기열 진행 중)';
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:var(--text-muted); font-weight:700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> 대기열 가공 완료 대기 중</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-muted); font-weight:700;">대기열 가공 완료 대기 중</span>`;
           }
         }
 
@@ -5505,9 +5577,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const compDetail = f.completed_detail ? ` (${f.completed_detail})` : '';
 
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--border-line)'}; padding: 8px 10px;">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 4px; padding: 8px 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">:: ${f.facility}</span>
+                    <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">${f.facility}</span>
                     <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
                       여유 ${avail}/${max}
                     </span>
@@ -5663,10 +5735,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
 
           html += `
-            <div style="border-bottom: 1px solid var(--border-line); padding: 10px 4px; display: flex; flex-direction: column; justify-content: space-between; gap: 6px;">
+            <div class="target-card">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                  <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">:: ${t.item_name}</div>
+                  <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">${t.item_name}</div>
                   <div class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted);">> 가방: ${t.inventory_count || 0}개 | 개인창고: ${t.char_storage_count || 0}개 | 공용창고: ${t.account_storage_count || 0}개 (총 ${t.current || 0}개)</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
@@ -6055,9 +6127,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
 
         let rowsHtml = '';
-        if (materials.length > 0) {
-          rowsHtml += `<tr class="table-group-row"><td colspan="7">--- :: 가공 목록 :: ---</td></tr>`;
-        }
         materials.forEach(m => {
           const shortFac = formatFacilityShort(m.facility);
           const worksNeeded = (m.works_to_queue !== undefined) ? m.works_to_queue : (m.works_needed || 0);
@@ -6065,8 +6134,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const queuedCnt = m.queued_works_count || m.in_progress_count || 0;
           const compCnt = m.completed_works_count || 0;
 
-          const queuedBadge = queuedCnt > 0 ? `<span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm); margin-left:4px;">(대기 ${queuedCnt}회)</span>` : '';
-          const compBadge = compCnt > 0 ? `<span class="mono-num" style="color:var(--text-main); font-size:var(--fs-sm); margin-left:4px;">(수령가능 ${compCnt}회)</span>` : '';
+          const queuedBadge = queuedCnt > 0 ? `<span class="mono-num" style="color:var(--text-muted); font-size:11px; margin-left:4px;">(대기 ${queuedCnt}회)</span>` : '';
+          const compBadge = compCnt > 0 ? `<span class="mono-num" style="color:var(--text-main); font-size:11px; margin-left:4px;">(수령가능 ${compCnt}회)</span>` : '';
 
           let statusBadge = '';
           if (m.status === 'satisfied' || (deficit === 0 && worksNeeded === 0)) {
@@ -6074,7 +6143,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           } else if (m.status === 'ready_to_collect' || (compCnt > 0 && worksNeeded === 0)) {
             statusBadge = `<span class="badge mono-num">수령 가능 (${compCnt}회)</span>`;
           } else if (m.status === 'in_queue' || (queuedCnt > 0 && worksNeeded === 0)) {
-            statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> 대기열 (${queuedCnt}회)</span>` + compBadge;
+            statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700;">대기열 (${queuedCnt}회)</span>` + compBadge;
           } else if (worksNeeded > 0) {
             statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700;">> ${shortFac} ${worksNeeded}회 등록 필요</span>` + queuedBadge + compBadge;
           } else {
@@ -6083,7 +6152,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           const invCnt = m.inventory_count || 0;
           const storeCnt = m.storage_count || 0;
-          const bagStorageText = `<span class="mono-num">${invCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm);">(${storeCnt}개)</span>`;
+          const bagStorageText = `<span class="mono-num">${invCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${storeCnt}개)</span>`;
 
           rowsHtml += `
             <tr class="row-alter">
@@ -6104,7 +6173,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         // Raw materials
         if (rawMaterials.length > 0) {
-          rowsHtml += `<tr class="table-group-row"><td colspan="7">--- :: 채집 목록 :: ---</td></tr>`;
           rawMaterials.forEach(rm => {
             let statusBadge = '';
             const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
@@ -6120,10 +6188,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
             const rmInvCnt = rm.inventory_count || 0;
             const rmStoreCnt = rm.storage_count || 0;
-            const rmBagStorageText = `<span class="mono-num">${rmInvCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm);">(${rmStoreCnt}개)</span>`;
+            const rmBagStorageText = `<span class="mono-num">${rmInvCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${rmStoreCnt}개)</span>`;
 
             const typeBadge = isSpecial
-              ? '<span class="badge-dim">상점/드랍</span>'
+              ? '<span class="badge-dim">기타</span>'
               : '<span class="badge-dim">채집</span>';
             const rowClass = isSpecial ? 'row-special' : 'row-gather';
 
@@ -6177,7 +6245,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           } else {
             btnExec.innerText = '지정 제작 일괄 실행 (대기열 진행 중)';
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:var(--text-muted); font-weight:700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> 대기열 가공 완료 대기 중</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-muted); font-weight:700;">대기열 가공 완료 대기 중</span>`;
           }
         }
 
@@ -6186,7 +6254,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0);
           const rawText = neededRawGather.length > 0 ? `필드 채집 <strong class="mono-num">${neededRawGather.length}종</strong>` : '채집 불필요';
           const alterText = plan.total_works_to_queue > 0 ? `가공 <strong class="mono-num">${plan.total_works_to_queue}회</strong>` : '가공 불필요';
-          summaryText.innerHTML = `> <span>총 분석 결과: ${rawText} :: ${alterText} :: 제작 <strong class="mono-num">${(plan.custom_tasks || plan.tasks || plan.targets || []).length}건</strong></span>`;
+          summaryText.innerHTML = `> <span>총 분석 결과: ${rawText} | ${alterText} | 제작 <strong class="mono-num">${(plan.custom_tasks || plan.tasks || plan.targets || []).length}건</strong></span>`;
         }
 
         // Facility Slots
@@ -6210,9 +6278,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const isOver = f.overflow > 0;
               
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--border-line)'}; padding: 8px 10px;">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 4px; padding: 8px 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">:: ${f.facility}</span>
+                    <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">${f.facility}</span>
                     <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
                       여유 ${avail}/${max}
                     </span>
@@ -6405,8 +6473,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const curWeight = inv.CurrentInventoryWeightAsDecimal || 0;
           const maxWeight = inv.MaxInventoryWeightAsDecimal || 0;
           if (weightPill) {
-            const weightGauge = makeTextGauge(curWeight, maxWeight, 5);
-            weightPill.innerHTML = `무게 <span class="mono-num">${curWeight}/${maxWeight}</span> <span class="cli-gauge">${weightGauge}</span>`;
+            weightPill.innerHTML = `무게 <span class="mono-num">${curWeight}/${maxWeight}</span>`;
           }
         } else {
           const errCode = data.error_code || '';
@@ -6580,8 +6647,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const res = await fetch(`/api/search_recipe?name=${encodeURIComponent(q)}`);
         const d = await res.json();
         let html = `<div style="padding: 6px; border: 1px solid var(--border-line); margin-bottom: 8px;">`;
-        html += `<strong>:: '${d.item_name}'</strong> - <span class="mono-num">가방: ${d.owned_bag}개 / 개인창고: ${d.owned_char_storage || 0}개 / 공용창고: ${d.owned_account_storage || 0}개 (총 ${d.owned_all || 0}개)</span><br>`;
-        html += `<span class="mono-num">> 제작: ${d.craft.length}건 :: 가공: ${d.alter.length}건 :: 채집: ${d.gather.length}건</span></div>`;
+        html += `<strong>'${d.item_name}'</strong> - <span class="mono-num">가방: ${d.owned_bag}개 | 개인창고: ${d.owned_char_storage || 0}개 | 공용창고: ${d.owned_account_storage || 0}개 (총 ${d.owned_all || 0}개)</span><br>`;
+        html += `<span class="mono-num">> 제작: ${d.craft.length}건 | 가공: ${d.alter.length}건 | 채집: ${d.gather.length}건</span></div>`;
         resEl.innerHTML = html;
       } catch (e) {
         resEl.innerHTML = `<span style="color:var(--text-main);">[오류] 검색 오류: ${e}</span>`;
