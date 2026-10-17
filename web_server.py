@@ -1819,12 +1819,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     /* Buttons Hierarchy */
-    /* Default .btn & .btn-sm: subtle light box for clear distinction when next to non-button text */
+    /* Default .btn: clean text button, borderless, transparent background */
     .btn {
-      padding: 3px 8px;
-      border-radius: 0;
-      border: 1px solid var(--line-subtle);
-      background: rgba(255, 255, 255, 0.04);
+      padding: 2px 4px;
+      border-radius: 2px;
+      border: none;
+      background: transparent;
       cursor: pointer;
       font-family: var(--font-sans);
       font-weight: 500;
@@ -1832,7 +1832,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: inline-flex;
       align-items: center;
       gap: 2px;
-      color: var(--text);
+      color: var(--text-muted);
       white-space: nowrap;
       flex-shrink: 0;
       user-select: none;
@@ -1853,8 +1853,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       transition: opacity 0.1s ease;
     }
     .btn:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.09);
-      border-color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.05);
+      border: none;
       color: var(--text-bright);
       transform: none;
     }
@@ -1867,9 +1867,31 @@ HTML_PAGE = r"""<!DOCTYPE html>
       cursor: not-allowed;
     }
     .btn-sm {
-      padding: 1px 6px;
+      padding: 1px 4px;
       font-size: var(--fs-sm);
       line-height: 1.35;
+    }
+
+    /* Buttons positioned alongside regular text: borderless subtle light box (연한 박스, 테두리 없음) */
+    .btn-boxed,
+    .target-card .btn,
+    .preset-item .btn,
+    .alarm-item .btn {
+      background: rgba(255, 255, 255, 0.07) !important;
+      border: none !important;
+      border-radius: 2px !important;
+      padding: 1px 6px !important;
+      color: var(--text-main) !important;
+      font-weight: 500 !important;
+      line-height: 1.35;
+    }
+    .btn-boxed:hover:not(:disabled),
+    .target-card .btn:hover:not(:disabled),
+    .preset-item .btn:hover:not(:disabled),
+    .alarm-item .btn:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.14) !important;
+      border: none !important;
+      color: var(--text-bright) !important;
     }
 
     /* Tier 1: Top-level Core Action Buttons (핵심 버튼 색상 적용) */
@@ -1934,15 +1956,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       transform: translateY(-1px) !important;
     }
 
-    /* Facility Header Collect Button (Tight Green Box) */
+    /* Facility Header Collect Button (Tight Green Box, Borderless) */
     .btn-facility-collect {
       background: #059669 !important;
       color: #FFFFFF !important;
       font-size: 11px !important;
       font-weight: 700 !important;
       padding: 2px 7px !important;
-      border-radius: 0 !important;
-      border: 1px solid #10B981 !important;
+      border-radius: 2px !important;
+      border: none !important;
       box-shadow: none !important;
       cursor: pointer;
       line-height: 1.3 !important;
@@ -1951,7 +1973,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     .btn-facility-collect:hover {
       background: #047857 !important;
-      border-color: #34D399 !important;
+      border: none !important;
     }
     .btn-facility-collect::before,
     .btn-facility-collect::after {
@@ -1964,8 +1986,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-size: 11px !important;
       font-weight: 500 !important;
       padding: 2px 6px !important;
-      border: 1px solid var(--line-subtle) !important;
-      border-radius: 0 !important;
+      border: none !important;
+      border-radius: 2px !important;
       cursor: default;
       line-height: 1.3 !important;
       white-space: nowrap !important;
@@ -2089,21 +2111,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
       white-space: nowrap;
     }
     .btn-manual-bell {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--line-subtle);
-      border-radius: 0;
-      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.07);
+      border: none;
+      border-radius: 2px;
+      color: var(--text-main);
       cursor: pointer;
       font-family: var(--font-mono);
       font-size: 11px;
       margin-left: 6px;
-      padding: 1px 5px;
+      padding: 1px 6px;
       line-height: 1.2;
       transition: all 0.12s ease;
     }
     .btn-manual-bell:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.14);
+      border: none;
       color: var(--text-bright);
     }
 
@@ -3395,12 +3417,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
           <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); white-space: nowrap;">대상 아이템:</span>
           <input type="text" id="recipe-modal-item-name" class="input-text" style="flex: 1;" placeholder="예: 삶은 달걀">
-          <button type="button" class="btn btn-sm" onclick="loadRecipeForCurrentInput()">조회</button>
+          <button type="button" class="btn btn-sm btn-boxed" onclick="loadRecipeForCurrentInput()">조회</button>
         </div>
 
         <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>필요 재료 목록 (1회 제작당)</span>
-          <button type="button" class="btn btn-sm" onclick="addRecipeModalRow('', 1)">+ 재료 추가</button>
+          <button type="button" class="btn btn-sm btn-boxed" onclick="addRecipeModalRow('', 1)">+ 재료 추가</button>
         </div>
 
         <div id="recipe-modal-rows-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; padding-right: 4px;">
@@ -4798,7 +4820,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const badgeClass = al.isDeliveryTarget ? 'badge' : 'badge-dim';
 
         html += `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:1px solid var(--border-line);">
+          <div class="alarm-item" style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:1px solid var(--border-line);">
             <div style="display:flex; align-items:center; gap:8px;">
               <span class="${badgeClass}">${formatFacilityShort(al.facility)}</span>
               <span style="font-weight:700; color:var(--text-main); font-size:var(--fs-md);">${al.item}</span>
@@ -5340,7 +5362,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const itemCount = (p.items || []).length;
           const escapedName = (p.name || '').replace(/'/g, "\\'");
           html += `
-            <div style="border: 1px solid var(--border-line); padding: 4px 10px; display: inline-flex; align-items: center; gap: 8px;">
+            <div class="preset-item" style="border: 1px solid var(--border-line); padding: 4px 10px; display: inline-flex; align-items: center; gap: 8px;">
               <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-main);">${p.name}</span>
               <span class="badge-dim mono-num">${itemCount}개 항목</span>
               <button class="btn btn-sm" onclick="loadPreset('${escapedName}')" title="이 프리셋으로 목표 등록">불러오기</button>
@@ -6115,7 +6137,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <input type="number" class="recipe-row-qty mono-num" value="${count || 1}" min="1" max="999" style="width: 65px; padding: 6px 8px; text-align: center;">
           <span style="font-size: var(--fs-sm); color: var(--text-muted);">개</span>
         </div>
-        <button type="button" class="btn btn-sm" onclick="this.closest('.recipe-modal-row').remove()" title="이 재료 삭제">삭제</button>
+        <button type="button" class="btn btn-sm btn-boxed" onclick="this.closest('.recipe-modal-row').remove()" title="이 재료 삭제">삭제</button>
       `;
       container.appendChild(row);
     }
