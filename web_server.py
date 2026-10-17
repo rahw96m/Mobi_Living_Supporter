@@ -1872,17 +1872,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
       line-height: 1.35;
     }
 
-    /* Buttons positioned alongside regular text: borderless subtle light box (연한 박스, 테두리 없음, 좌우 [, ] 없음) */
+    /* Buttons positioned alongside regular text: borderless hatched box (연한 빗금 패턴, 테두리 없음, 좌우 [, ] 없음) */
     .btn-boxed,
     .target-card .btn,
     .preset-item .btn,
     .alarm-item .btn,
     .btn-manual-bell {
-      background: rgba(255, 255, 255, 0.07) !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(255, 255, 255, 0.12),
+        rgba(255, 255, 255, 0.12) 1px,
+        rgba(255, 255, 255, 0.02) 1px,
+        rgba(255, 255, 255, 0.02) 4px
+      ) !important;
       border: none !important;
       border-radius: 2px !important;
       padding: 1px 6px !important;
-      color: var(--text-main) !important;
+      color: var(--text-bright) !important;
       font-weight: 500 !important;
       line-height: 1.35;
     }
@@ -1899,9 +1905,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .preset-item .btn:hover:not(:disabled),
     .alarm-item .btn:hover:not(:disabled),
     .btn-manual-bell:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.14) !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(255, 255, 255, 0.22),
+        rgba(255, 255, 255, 0.22) 1px,
+        rgba(255, 255, 255, 0.06) 1px,
+        rgba(255, 255, 255, 0.06) 4px
+      ) !important;
       border: none !important;
-      color: var(--text-bright) !important;
+      color: #FFFFFF !important;
     }
 
     /* Tier 1: Top-level Core Action Buttons (핵심 버튼 색상 적용) */
@@ -2121,10 +2133,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       white-space: nowrap;
     }
     .btn-manual-bell {
-      background: rgba(255, 255, 255, 0.07);
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(255, 255, 255, 0.12),
+        rgba(255, 255, 255, 0.12) 1px,
+        rgba(255, 255, 255, 0.02) 1px,
+        rgba(255, 255, 255, 0.02) 4px
+      );
       border: none;
       border-radius: 2px;
-      color: var(--text-main);
+      color: var(--text-bright);
       cursor: pointer;
       font-family: var(--font-mono);
       font-size: 11px;
@@ -2139,9 +2157,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: none !important;
     }
     .btn-manual-bell:hover {
-      background: rgba(255, 255, 255, 0.14);
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(255, 255, 255, 0.22),
+        rgba(255, 255, 255, 0.22) 1px,
+        rgba(255, 255, 255, 0.06) 1px,
+        rgba(255, 255, 255, 0.06) 4px
+      );
       border: none;
-      color: var(--text-bright);
+      color: #FFFFFF;
     }
 
     /* BOM Table & Group Separators */
