@@ -1762,14 +1762,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
       flex-direction: column;
       justify-content: space-between;
       gap: 6px;
-      transition: border-color 0.15s ease;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
     .target-card:hover {
       border-color: rgba(255, 255, 255, 0.85);
+      box-shadow: 0 0 16px rgba(255, 255, 255, 0.22);
     }
     .target-card.target-done {
       border-color: rgba(255, 255, 255, 0.18);
       opacity: 0.55;
+      box-shadow: none;
     }
     .card-title {
       font-size: var(--fs-lg);
@@ -1796,16 +1799,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: inline-flex;
       align-items: center;
       line-height: 1.4;
+      box-shadow: 0 0 6px rgba(223, 223, 223, 0.22);
     }
     .badge.delivery {
       background: var(--invert-bg);
       color: var(--invert-text);
       border: none;
+      box-shadow: 0 0 6px rgba(223, 223, 223, 0.22);
     }
     .badge.manual {
       background: #262626;
       color: var(--text);
       border: 1px solid var(--line);
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.08);
     }
     .badge-dim {
       font-size: var(--fs-sm);
@@ -1816,6 +1822,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--text-muted);
       border: 1px solid var(--line);
       font-family: var(--font-mono);
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.05);
     }
 
     /* Buttons Hierarchy */
@@ -1872,7 +1879,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       line-height: 1.35;
     }
 
-    /* Buttons positioned alongside regular text: borderless subtle light box (연한 박스, 테두리 없음, 좌우 [, ] 없음) */
+    /* Buttons positioned alongside regular text: borderless subtle light box (연한 박스, 테두리 없음, 좌우 [, ] 없음 + 은은한 화이트 광채) */
     .btn-boxed,
     .target-card .btn,
     .preset-item .btn,
@@ -1885,6 +1892,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--text-main) !important;
       font-weight: 500 !important;
       line-height: 1.35;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.12) !important;
+      transition: all 0.15s ease;
     }
     .btn-boxed::before, .btn-boxed::after,
     .target-card .btn::before, .target-card .btn::after,
@@ -1902,9 +1911,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: rgba(255, 255, 255, 0.18) !important;
       border: none !important;
       color: var(--text-bright) !important;
+      box-shadow: 0 0 14px rgba(255, 255, 255, 0.25) !important;
     }
 
-    /* Tier 1: 최상위 메인 실행 버튼 (강조 1단계: 솔리드 녹색 박스, #101010 어두운 텍스트, 무테두리, 직각 코너) */
+    /* Tier 1: 최상위 메인 실행 버튼 (강조 1단계: 솔리드 녹색 박스, #101010 어두운 텍스트, 무테두리, 직각 코너 + 은은한 에메랄드 광채) */
     .btn-solid-core,
     .btn-mcb-start,
     #btn-batch-execute,
@@ -1917,7 +1927,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       padding: 8px 18px !important;
       border-radius: 0 !important;
       border: none !important;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.45), 0 0 4px rgba(16, 185, 129, 0.25) !important;
       text-shadow: none !important;
       cursor: pointer;
       transition: all 0.15s ease;
@@ -1938,10 +1948,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: #34D399 !important;
       color: #101010 !important;
       border: none !important;
+      box-shadow: 0 0 20px rgba(52, 211, 153, 0.65), 0 0 6px rgba(52, 211, 153, 0.35) !important;
       transform: translateY(-1px) !important;
     }
 
-    /* Tier 2: 중간 위계 액션 버튼 (강조 2단계: 1단계와 동일한 에메랄드에 투명도를 많이 준 연한 배경 + 선명한 녹색 텍스트, 무테두리, 직각) */
+    /* Tier 2: 중간 위계 액션 버튼 (강조 2단계: 1단계와 동일한 에메랄드에 투명도를 많이 준 연한 배경 + 선명한 녹색 텍스트, 무테두리, 직각 + 은은한 광채) */
     #btn-collect-all-altering {
       background: rgba(16, 185, 129, 0.18) !important;
       color: #10B981 !important;
@@ -1950,7 +1961,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       padding: 6px 14px !important;
       border-radius: 0 !important;
       border: none !important;
-      box-shadow: none !important;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.28) !important;
       text-shadow: none !important;
       cursor: pointer;
       transition: all 0.15s ease;
@@ -1963,10 +1974,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: rgba(16, 185, 129, 0.30) !important;
       color: #34D399 !important;
       border: none !important;
+      box-shadow: 0 0 16px rgba(52, 211, 153, 0.5) !important;
       transform: translateY(-1px) !important;
     }
 
-    /* Facility Header Collect Button (강조 2단계: 1단계와 동일한 에메랄드 고투명도 배경 + 선명한 녹색 텍스트, 무테두리, 직각) */
+    /* Facility Header Collect Button (강조 2단계: 1단계와 동일한 에메랄드 고투명도 배경 + 선명한 녹색 텍스트, 무테두리, 직각 + 은은한 광채) */
     .btn-facility-collect {
       background: rgba(16, 185, 129, 0.18) !important;
       color: #10B981 !important;
@@ -1975,7 +1987,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       padding: 3px 8px !important;
       border-radius: 0 !important;
       border: none !important;
-      box-shadow: none !important;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.28) !important;
       cursor: pointer;
       line-height: 1.3 !important;
       white-space: nowrap !important;
@@ -1986,6 +1998,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: rgba(16, 185, 129, 0.30) !important;
       color: #34D399 !important;
       border: none !important;
+      box-shadow: 0 0 16px rgba(52, 211, 153, 0.5) !important;
     }
     .btn-facility-collect::before,
     .btn-facility-collect::after {
@@ -2271,7 +2284,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--invert-text) !important;
       border-color: var(--invert-bg) !important;
       font-weight: 700;
-      box-shadow: none;
+      box-shadow: 0 0 10px rgba(223, 223, 223, 0.3) !important;
     }
     .quick-cat-card {
       background: transparent;
@@ -2309,7 +2322,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: #202020;
     }
 
-    /* Master Command Bar Mode Switcher Tabs (Tier 2: Tight Invert Box when Active) */
+    /* Master Command Bar Mode Switcher Tabs (Tier 2: Tight Invert Box when Active + subtle glow) */
     .mcb-mode-tabs {
       display: flex;
       align-items: center;
@@ -2349,7 +2362,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: #222222;
       color: var(--text-muted);
     }
-    /* Active Mode Tab -> Tight Invert Box (#DFDFDF bg + #121212 text) */
+    /* Active Mode Tab -> Tight Invert Box (#DFDFDF bg + #121212 text + subtle ambient glow) */
     .mcb-mode-tab.active,
     .mcb-mode-tab.active#btn-mode-delivery,
     .mcb-mode-tab.active#btn-mode-quick-alter,
@@ -2358,7 +2371,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-color: var(--invert-bg) !important;
       color: var(--invert-text) !important;
       font-weight: 700;
-      box-shadow: none !important;
+      box-shadow: 0 0 10px rgba(223, 223, 223, 0.3) !important;
     }
     .mcb-mode-tab.active .mcb-tab-pill,
     .mcb-mode-tab.active#btn-mode-delivery .mcb-tab-pill,
@@ -2415,7 +2428,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: var(--invert-bg);
       color: var(--invert-text);
       font-weight: 700;
-      box-shadow: none;
+      box-shadow: 0 0 8px rgba(223, 223, 223, 0.3);
     }
 
     /* Tab Content */
@@ -2450,6 +2463,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      box-shadow: 0 0 24px rgba(255, 255, 255, 0.12);
     }
     .modal-header {
       display: flex;
@@ -2485,6 +2499,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-radius: 0;
       padding: 10px;
       text-align: left;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.05);
     }
     .summary-stat-card .label {
       font-size: var(--fs-sm);
@@ -2645,7 +2660,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       min-width: 0;
       max-width: 100%;
     }
-    /* Tier 1 Abort: 즉시 중지 버튼 (솔리드 레드 배경, #101010 어두운 텍스트, 무테두리, 직각 코너) */
+    /* Tier 1 Abort: 즉시 중지 버튼 (솔리드 레드 배경, #101010 어두운 텍스트, 무테두리, 직각 코너 + 은은한 레드 광채) */
     .btn-danger-abort {
       background: #EF4444 !important;
       color: #101010 !important;
@@ -2654,7 +2669,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       padding: 8px 16px !important;
       border-radius: 0 !important;
       border: none !important;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.55), 0 0 4px rgba(239, 68, 68, 0.35) !important;
       text-shadow: none !important;
       cursor: pointer;
       white-space: nowrap;
@@ -2669,6 +2684,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: #F87171 !important;
       color: #101010 !important;
       border: none !important;
+      box-shadow: 0 0 22px rgba(248, 113, 113, 0.75), 0 0 6px rgba(248, 113, 113, 0.45) !important;
       transform: translateY(-1px) !important;
     }
     .mcb-running-info {
@@ -5739,7 +5755,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const compDetail = f.completed_detail ? ` (${f.completed_detail})` : '';
 
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px;">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px; box-shadow: 0 0 8px rgba(255, 255, 255, 0.05);">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">${f.facility}</span>
                     <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
@@ -6442,7 +6458,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const isOver = f.overflow > 0;
               
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px;">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px; box-shadow: 0 0 8px rgba(255, 255, 255, 0.05);">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">${f.facility}</span>
                     <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
