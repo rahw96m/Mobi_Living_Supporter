@@ -1878,10 +1878,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .preset-item .btn,
     .alarm-item .btn,
     .btn-manual-bell {
-      background: rgba(255, 255, 255, 0.07) !important;
+      background: rgba(255, 255, 255, 0.08) !important;
       border: none !important;
-      border-radius: 2px !important;
-      padding: 1px 6px !important;
+      border-radius: 0 !important;
+      padding: 2px 7px !important;
       color: var(--text-main) !important;
       font-weight: 500 !important;
       line-height: 1.35;
@@ -1899,33 +1899,26 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .preset-item .btn:hover:not(:disabled),
     .alarm-item .btn:hover:not(:disabled),
     .btn-manual-bell:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.14) !important;
+      background: rgba(255, 255, 255, 0.18) !important;
       border: none !important;
       color: var(--text-bright) !important;
     }
 
-    /* Tier 1: Top-level Core Action Buttons (초록색 1px 빗금, 투명 배경, 직각 코너) */
+    /* Tier 1: 최상위 메인 실행 버튼 (강조 1단계: 솔리드 녹색 박스, #101010 어두운 텍스트, 무테두리, 직각 코너) */
     .btn-solid-core,
     .btn-mcb-start,
     #btn-batch-execute,
     #btn-quick-alter-execute,
     #btn-custom-execute {
-      background: repeating-linear-gradient(
-        -45deg,
-        #10B981,
-        #10B981 1px,
-        transparent 1px,
-        transparent 4px
-      ) !important;
-      background-color: transparent !important;
-      color: #FFFFFF !important;
+      background: #10B981 !important;
+      color: #101010 !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
       padding: 8px 18px !important;
       border-radius: 0 !important;
-      border: 1px solid #10B981 !important;
+      border: none !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
+      text-shadow: none !important;
       cursor: pointer;
       transition: all 0.15s ease;
     }
@@ -1942,37 +1935,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
     #btn-batch-execute:hover:not(:disabled),
     #btn-quick-alter-execute:hover:not(:disabled),
     #btn-custom-execute:hover:not(:disabled) {
-      background: repeating-linear-gradient(
-        -45deg,
-        #34D399,
-        #34D399 1px,
-        transparent 1px,
-        transparent 4px
-      ) !important;
-      background-color: rgba(16, 185, 129, 0.08) !important;
-      color: #FFFFFF !important;
-      border-color: #34D399 !important;
+      background: #34D399 !important;
+      color: #101010 !important;
+      border: none !important;
       transform: translateY(-1px) !important;
     }
 
-    /* 완료 가공품 수령 (Emerald Accent Hatched, 1px 빗금, 투명 배경, 직각 코너) */
+    /* Tier 2: 중간 위계 액션 버튼 (강조 2단계: 연한 녹색 배경, 짙은 녹색 텍스트, 무테두리, 직각 코너) */
     #btn-collect-all-altering {
-      background: repeating-linear-gradient(
-        -45deg,
-        #10B981,
-        #10B981 1px,
-        transparent 1px,
-        transparent 4px
-      ) !important;
-      background-color: transparent !important;
-      color: #FFFFFF !important;
+      background: #A7F3D0 !important;
+      color: #064E3B !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
       padding: 6px 14px !important;
       border-radius: 0 !important;
-      border: 1px solid #10B981 !important;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
+      border: none !important;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) !important;
+      text-shadow: none !important;
       cursor: pointer;
       transition: all 0.15s ease;
     }
@@ -1981,52 +1960,32 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: none !important;
     }
     #btn-collect-all-altering:hover:not(:disabled) {
-      background: repeating-linear-gradient(
-        -45deg,
-        #34D399,
-        #34D399 1px,
-        transparent 1px,
-        transparent 4px
-      ) !important;
-      background-color: rgba(16, 185, 129, 0.08) !important;
-      color: #FFFFFF !important;
-      border-color: #34D399 !important;
+      background: #6EE7B7 !important;
+      color: #064E3B !important;
+      border: none !important;
       transform: translateY(-1px) !important;
     }
 
-    /* Facility Header Collect Button (Tight Green Hatched, 1px 빗금, 투명 배경, 직각 코너) */
+    /* Facility Header Collect Button (강조 2단계: 연한 녹색 배경, 짙은 녹색 텍스트, 무테두리, 직각 코너) */
     .btn-facility-collect {
-      background: repeating-linear-gradient(
-        -45deg,
-        #10B981,
-        #10B981 1px,
-        transparent 1px,
-        transparent 3px
-      ) !important;
-      background-color: transparent !important;
-      color: #FFFFFF !important;
+      background: #A7F3D0 !important;
+      color: #064E3B !important;
       font-size: 11px !important;
       font-weight: 700 !important;
-      padding: 2px 7px !important;
+      padding: 3px 8px !important;
       border-radius: 0 !important;
-      border: 1px solid #10B981 !important;
+      border: none !important;
       box-shadow: none !important;
       cursor: pointer;
       line-height: 1.3 !important;
       white-space: nowrap !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
+      text-shadow: none !important;
       transition: all 0.12s ease;
     }
     .btn-facility-collect:hover {
-      background: repeating-linear-gradient(
-        -45deg,
-        #34D399,
-        #34D399 1px,
-        transparent 1px,
-        transparent 3px
-      ) !important;
-      background-color: rgba(16, 185, 129, 0.08) !important;
-      border-color: #34D399 !important;
+      background: #6EE7B7 !important;
+      color: #064E3B !important;
+      border: none !important;
     }
     .btn-facility-collect::before,
     .btn-facility-collect::after {
@@ -2686,23 +2645,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
       min-width: 0;
       max-width: 100%;
     }
+    /* Tier 1 Abort: 즉시 중지 버튼 (솔리드 레드 배경, #101010 어두운 텍스트, 무테두리, 직각 코너) */
     .btn-danger-abort {
-      background: repeating-linear-gradient(
-        -45deg,
-        #EF4444,
-        #EF4444 1px,
-        transparent 1px,
-        transparent 4px
-      ) !important;
-      background-color: transparent !important;
-      color: #FFFFFF !important;
+      background: #EF4444 !important;
+      color: #101010 !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
       padding: 8px 16px !important;
       border-radius: 0 !important;
-      border: 1px solid #EF4444 !important;
+      border: none !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
+      text-shadow: none !important;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
@@ -2713,16 +2666,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: none !important;
     }
     .btn-danger-abort:hover {
-      background: repeating-linear-gradient(
-        -45deg,
-        #F87171,
-        #F87171 1px,
-        transparent 1px,
-        transparent 4px
-      ) !important;
-      background-color: rgba(239, 68, 68, 0.08) !important;
-      color: #FFFFFF !important;
-      border-color: #F87171 !important;
+      background: #F87171 !important;
+      color: #101010 !important;
+      border: none !important;
       transform: translateY(-1px) !important;
     }
     .mcb-running-info {
