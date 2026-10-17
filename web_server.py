@@ -2478,8 +2478,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="logo-area">
           <div class="logo-icon">&gt;_</div>
           <div class="title">
+<<<<<<< HEAD
             <h1><span class="sym-prefix">//</span>모비노기 생활 지원도구 <span class="badge">v0.7.0</span></h1>
             <p>&gt; 마비노기 모바일 AI 커넥터 터미널</p>
+=======
+            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.6.1</span></h1>
+            <p>마비노기 모바일 AI 커넥터 연동</p>
+>>>>>>> b01b009a577b20474462047d7af6ee02c2f1003a
           </div>
         </div>
         <div class="header-actions">

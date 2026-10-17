@@ -1,8 +1,13 @@
 # UTF-8
 VSVersionInfo(
   ffi=FixedFileInfo(
+<<<<<<< HEAD
     filevers=(0, 7, 0, 0),
     prodvers=(0, 7, 0, 0),
+=======
+    filevers=(0, 6, 1, 0),
+    prodvers=(0, 6, 1, 0),
+>>>>>>> b01b009a577b20474462047d7af6ee02c2f1003a
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -18,12 +23,20 @@ VSVersionInfo(
           [
             StringStruct(u'CompanyName', u'Mabinogi Mobile Community'),
             StringStruct(u'FileDescription', u'모비노기 생활 지원도구'),
+<<<<<<< HEAD
             StringStruct(u'FileVersion', u'0.7.0.0'),
+=======
+            StringStruct(u'FileVersion', u'0.6.1.0'),
+>>>>>>> b01b009a577b20474462047d7af6ee02c2f1003a
             StringStruct(u'InternalName', u'Mobi_Living_Supporter'),
             StringStruct(u'LegalCopyright', u'Copyright (C) 2026'),
             StringStruct(u'OriginalFilename', u'Mobi_Living_Supporter.exe'),
             StringStruct(u'ProductName', u'모비노기 생활 지원도구'),
+<<<<<<< HEAD
             StringStruct(u'ProductVersion', u'0.7.0.0')
+=======
+            StringStruct(u'ProductVersion', u'0.6.1.0')
+>>>>>>> b01b009a577b20474462047d7af6ee02c2f1003a
           ]
         )
       ]
