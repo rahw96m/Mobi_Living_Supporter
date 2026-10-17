@@ -6290,6 +6290,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <td style="text-align:center; color:var(--text-dim); white-space:nowrap;">-</td>
                 <td style="white-space:nowrap;">${statusBadge}</td>
               </tr>
+            `;
           });
         }
 
