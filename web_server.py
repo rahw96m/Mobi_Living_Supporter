@@ -1755,10 +1755,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     .target-card {
       background: transparent;
-      border: none;
-      border-bottom: 1px solid var(--border-line);
+      border: 1px solid rgba(255, 255, 255, 0.4);
       border-radius: 0;
-      padding: 10px 0;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -1766,9 +1765,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       transition: border-color 0.15s ease;
     }
     .target-card:hover {
-      border-color: #3A3A3A;
+      border-color: rgba(255, 255, 255, 0.85);
     }
     .target-card.target-done {
+      border-color: rgba(255, 255, 255, 0.18);
       opacity: 0.55;
     }
     .card-title {
@@ -1904,7 +1904,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--text-bright) !important;
     }
 
-    /* Tier 1: Top-level Core Action Buttons (초록색 빗금 패턴) */
+    /* Tier 1: Top-level Core Action Buttons (초록색 1px 빗금, 투명 배경, 직각 코너) */
     .btn-solid-core,
     .btn-mcb-start,
     #btn-batch-execute,
@@ -1912,19 +1912,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
     #btn-custom-execute {
       background: repeating-linear-gradient(
         -45deg,
-        #059669,
-        #059669 5px,
-        #065F46 5px,
-        #065F46 10px
+        #10B981,
+        #10B981 1px,
+        transparent 1px,
+        transparent 4px
       ) !important;
+      background-color: transparent !important;
       color: #FFFFFF !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
       padding: 8px 18px !important;
-      border-radius: 4px !important;
+      border-radius: 0 !important;
       border: 1px solid #10B981 !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
       cursor: pointer;
       transition: all 0.15s ease;
     }
@@ -1943,33 +1944,35 @@ HTML_PAGE = r"""<!DOCTYPE html>
     #btn-custom-execute:hover:not(:disabled) {
       background: repeating-linear-gradient(
         -45deg,
-        #10B981,
-        #10B981 5px,
-        #047857 5px,
-        #047857 10px
+        #34D399,
+        #34D399 1px,
+        transparent 1px,
+        transparent 4px
       ) !important;
+      background-color: rgba(16, 185, 129, 0.08) !important;
       color: #FFFFFF !important;
       border-color: #34D399 !important;
       transform: translateY(-1px) !important;
     }
 
-    /* 완료 가공품 수령 (Emerald Accent Hatched) */
+    /* 완료 가공품 수령 (Emerald Accent Hatched, 1px 빗금, 투명 배경, 직각 코너) */
     #btn-collect-all-altering {
       background: repeating-linear-gradient(
         -45deg,
-        #059669,
-        #059669 5px,
-        #065F46 5px,
-        #065F46 10px
+        #10B981,
+        #10B981 1px,
+        transparent 1px,
+        transparent 4px
       ) !important;
+      background-color: transparent !important;
       color: #FFFFFF !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
       padding: 6px 14px !important;
-      border-radius: 4px !important;
+      border-radius: 0 !important;
       border: 1px solid #10B981 !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
       cursor: pointer;
       transition: all 0.15s ease;
     }
@@ -1980,46 +1983,49 @@ HTML_PAGE = r"""<!DOCTYPE html>
     #btn-collect-all-altering:hover:not(:disabled) {
       background: repeating-linear-gradient(
         -45deg,
-        #10B981,
-        #10B981 5px,
-        #047857 5px,
-        #047857 10px
+        #34D399,
+        #34D399 1px,
+        transparent 1px,
+        transparent 4px
       ) !important;
+      background-color: rgba(16, 185, 129, 0.08) !important;
       color: #FFFFFF !important;
       border-color: #34D399 !important;
       transform: translateY(-1px) !important;
     }
 
-    /* Facility Header Collect Button (Tight Green Hatched) */
+    /* Facility Header Collect Button (Tight Green Hatched, 1px 빗금, 투명 배경, 직각 코너) */
     .btn-facility-collect {
       background: repeating-linear-gradient(
         -45deg,
-        #059669,
-        #059669 4px,
-        #065F46 4px,
-        #065F46 8px
+        #10B981,
+        #10B981 1px,
+        transparent 1px,
+        transparent 3px
       ) !important;
+      background-color: transparent !important;
       color: #FFFFFF !important;
       font-size: 11px !important;
       font-weight: 700 !important;
       padding: 2px 7px !important;
-      border-radius: 2px !important;
+      border-radius: 0 !important;
       border: 1px solid #10B981 !important;
       box-shadow: none !important;
       cursor: pointer;
       line-height: 1.3 !important;
       white-space: nowrap !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
       transition: all 0.12s ease;
     }
     .btn-facility-collect:hover {
       background: repeating-linear-gradient(
         -45deg,
-        #10B981,
-        #10B981 4px,
-        #047857 4px,
-        #047857 8px
+        #34D399,
+        #34D399 1px,
+        transparent 1px,
+        transparent 3px
       ) !important;
+      background-color: rgba(16, 185, 129, 0.08) !important;
       border-color: #34D399 !important;
     }
     .btn-facility-collect::before,
@@ -2594,25 +2600,43 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 4px;
+      gap: 3px;
+    }
+    .mcb-briefing-row,
+    .mcb-eta-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      width: 100%;
+    }
+    .mcb-briefing-row .sym-prefix,
+    .mcb-eta-row .sym-prefix {
+      margin-right: 0 !important;
+      font-size: var(--fs-md);
+      font-family: var(--font-sans);
+      color: var(--text-muted);
+      font-weight: 700;
+      display: inline-block;
+      width: 10px;
+      flex-shrink: 0;
+      line-height: 1.4;
     }
     .mcb-briefing {
       font-size: var(--fs-md);
       font-weight: 600;
       color: var(--text-bright);
+      font-family: var(--font-sans);
+      line-height: 1.4;
     }
     .mcb-eta-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: transparent;
-      border: none;
+      display: inline-block;
       color: var(--text-muted);
-      font-family: var(--font-mono);
-      font-size: var(--fs-sm);
+      font-family: var(--font-sans);
+      font-size: var(--fs-md);
       font-weight: 600;
       padding: 0;
       white-space: nowrap;
+      line-height: 1.4;
     }
     .mcb-options-row {
       display: flex;
@@ -2665,19 +2689,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .btn-danger-abort {
       background: repeating-linear-gradient(
         -45deg,
-        #DC2626,
-        #DC2626 5px,
-        #991B1B 5px,
-        #991B1B 10px
+        #EF4444,
+        #EF4444 1px,
+        transparent 1px,
+        transparent 4px
       ) !important;
+      background-color: transparent !important;
       color: #FFFFFF !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
       padding: 8px 16px !important;
-      border-radius: 4px !important;
+      border-radius: 0 !important;
       border: 1px solid #EF4444 !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
@@ -2690,11 +2715,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .btn-danger-abort:hover {
       background: repeating-linear-gradient(
         -45deg,
-        #EF4444,
-        #EF4444 5px,
-        #B91C1C 5px,
-        #B91C1C 10px
+        #F87171,
+        #F87171 1px,
+        transparent 1px,
+        transparent 4px
       ) !important;
+      background-color: rgba(239, 68, 68, 0.08) !important;
       color: #FFFFFF !important;
       border-color: #F87171 !important;
       transform: translateY(-1px) !important;
@@ -2747,7 +2773,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-top">
         <div class="logo-area">
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span class="badge">v0.7.0</span></h1>
+            <h1>모비노기 생활 지원도구 <span class="badge">v0.7.2</span></h1>
           </div>
         </div>
         <div class="header-actions">
@@ -2873,11 +2899,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="mcb-left">
           <div class="mcb-title-row">
             <span id="mcb-mode-badge" style="display: none;"></span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <div class="mcb-briefing-row">
               <span class="sym-prefix">&gt;</span>
               <span id="mcb-briefing-text" class="mcb-briefing">목표 분석 대기 중...</span>
             </div>
-            <span id="mcb-eta-badge" class="mcb-eta-badge" style="display: none;">&gt; 예상 완수: -</span>
+            <div id="mcb-eta-row" class="mcb-eta-row" style="display: none;">
+              <span class="sym-prefix">&gt;</span>
+              <span id="mcb-eta-badge" class="mcb-eta-badge">예상 완수: -</span>
+            </div>
           </div>
           <div class="mcb-options-row">
             <label class="mcb-option-toggle" id="mcb-goal-toggle-label" title="가공 수령 -> 다음 티어 가공 -> 완제품 제작까지 멈추지 않고 100% 완수할 때까지 연속 자동 실행">
@@ -4223,7 +4252,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           durStr,
           timeStr,
           isGoalMode,
-          badgeText: `> 예상 완수: ${durStr} (${timeStr}경 완수 예정)`
+          badgeText: `예상 완수: ${durStr} (${timeStr}경 완수 예정)`
         };
       } catch (err) {
         console.warn('getPipelineEtaInfo error:', err);
@@ -4340,19 +4369,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
         goalToggleLabel.style.display = (currentMainMode === 'quick_alter') ? 'none' : 'inline-flex';
       }
 
+      const etaRow = document.getElementById('mcb-eta-row');
       const etaBadge = document.getElementById('mcb-eta-badge');
-      if (etaBadge) {
+      if (etaRow && etaBadge) {
         if (!isCurrentlyBusy && currentGoalFulfillmentMode && (currentMainMode === 'delivery' || currentMainMode === 'custom_craft')) {
           const etaInfo = getPipelineEtaInfo(currentMainMode);
           if (etaInfo) {
-            etaBadge.style.display = 'inline-flex';
+            etaRow.style.display = 'flex';
             etaBadge.innerText = etaInfo.badgeText;
-            etaBadge.title = `[목표 완수 모드] 100% 달성까지 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr} 완수 예정)`;
+            etaRow.title = `[목표 완수 모드] 100% 달성까지 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr} 완수 예정)`;
           } else {
-            etaBadge.style.display = 'none';
+            etaRow.style.display = 'none';
           }
         } else {
-          etaBadge.style.display = 'none';
+          etaRow.style.display = 'none';
         }
       }
     }
