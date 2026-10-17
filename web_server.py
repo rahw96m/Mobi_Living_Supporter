@@ -2540,7 +2540,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     /* Master Command Bar (Sticky Terminal Control Deck) */
     .master-command-bar {
       position: sticky;
-      top: 72px;
+      top: var(--header-height, 102px);
       z-index: 850;
       margin-bottom: 18px;
       background: #181818;
@@ -2549,7 +2549,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-bottom: 1px solid var(--line);
       border-radius: 0;
       padding: 12px 14px;
-      box-shadow: none;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+      transition: top 0.1s ease;
     }
     .master-command-bar.running {
       border-top-color: var(--invert-bg);
@@ -2711,7 +2712,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     @media (max-width: 820px) {
       .master-command-bar {
         padding: 10px 12px;
-        top: 6px;
+        top: var(--header-height, 102px);
       }
       .mcb-inner {
         flex-direction: column;
@@ -3537,6 +3538,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
       } catch(e) {}
     };
 
+    // Dynamic Sticky Header Height Calculator
+    function updateStickyHeaderOffset() {
+      const header = document.querySelector('header');
+      if (header) {
+        const h = header.offsetHeight;
+        document.documentElement.style.setProperty('--header-height', `${h}px`);
+      }
+    }
+    window.addEventListener('resize', updateStickyHeaderOffset);
+    window.addEventListener('orientationchange', updateStickyHeaderOffset);
+
     // ==========================================
     // Modern CLI Text Helpers (Gauge & Spinner)
     // ==========================================
@@ -3556,6 +3568,40 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (c >= m) filled = len;
       else if (c < m && filled === len && len > 1) filled = len - 1;
       return '[' + '■'.repeat(filled) + '□'.repeat(Math.max(0, len - filled)) + ']';
+    }
+
+    function getWeightColorByRatio(ratio) {
+      if (ratio <= 0.6) {
+        return '#E5E7EB'; // 0~60%: 여유 있을 땐 깨끗한 흰색
+      }
+      // 60% ~ 100%: 흰색(#E5E7EB)에서 붉은색(#EF4444)으로 점진적 보간
+      const t = Math.min(1.0, (ratio - 0.6) / 0.4);
+      const r = Math.round(229 + (239 - 229) * t);
+      const g = Math.round(231 + (68 - 231) * t);
+      const b = Math.round(235 + (68 - 235) * t);
+      if (ratio > 1.0) {
+        return '#EF4444'; // 100% 초과 시 선명한 적색
+      }
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function makeWeightGaugeHtml(cur, max, len = 5) {
+      const c = Math.max(0, Number(cur) || 0);
+      const m = Math.max(1, Number(max) || 1);
+      const ratio = c / m;
+      let filled = Math.round(Math.min(1, ratio) * len);
+      if (c > 0 && filled === 0) filled = 1;
+      if (c >= m) filled = len;
+      else if (c < m && filled === len && len > 1) filled = len - 1;
+
+      const gaugeStr = '[' + '■'.repeat(filled) + '□'.repeat(Math.max(0, len - filled)) + ']';
+      const color = getWeightColorByRatio(ratio);
+      const isOver = ratio >= 1.0;
+      const glowStyle = isOver ? 'text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); font-weight: 700;' : '';
+      const percentStr = (ratio * 100).toFixed(1);
+      const remain = Math.max(0, m - c);
+
+      return `<span class="cli-gauge" style="color: ${color}; ${glowStyle}" title="무게 ${percentStr}% (남은 여유: ${remain})">${gaugeStr}</span>`;
     }
 
     setInterval(function() {
@@ -6653,7 +6699,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const curWeight = inv.CurrentInventoryWeightAsDecimal || 0;
           const maxWeight = inv.MaxInventoryWeightAsDecimal || 0;
           if (weightPill) {
-            weightPill.innerHTML = `무게 <span class="mono-num">${curWeight}/${maxWeight}</span>`;
+            const ratio = maxWeight > 0 ? (curWeight / maxWeight) : 0;
+            const gaugeHtml = maxWeight > 0 ? makeWeightGaugeHtml(curWeight, maxWeight, 5) : '';
+            const weightColor = maxWeight > 0 ? getWeightColorByRatio(ratio) : 'var(--text)';
+            const isOver = ratio >= 1.0;
+            const glowStyle = isOver ? 'text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); font-weight: 700;' : '';
+            weightPill.innerHTML = `무게 <span class="mono-num" style="color: ${weightColor}; ${glowStyle}">${curWeight}/${maxWeight}</span> ${gaugeHtml}`;
+            weightPill.title = `가방 무게: ${curWeight}/${maxWeight} (${(ratio * 100).toFixed(1)}%${curWeight > maxWeight ? ' - 무게 초과!' : ''})`;
           }
         } else {
           const errCode = data.error_code || '';
@@ -6905,6 +6957,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     // Safe Init View (each call isolated in try/catch)
     function initAll() {
+      try { updateStickyHeaderOffset(); } catch(e) {}
       try { applyAlteringView(); } catch(e) { console.error('applyAlteringView error:', e); }
       try { applyQuickAlterView(); } catch(e) { console.error('applyQuickAlterView error:', e); }
       try { applyDeliveryTargetsView(); } catch(e) { console.error('applyDeliveryTargetsView error:', e); }
