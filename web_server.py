@@ -2820,7 +2820,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-top">
         <div class="logo-area">
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span class="badge">v0.7.2</span></h1>
+            <h1>모비노기 생활 지원도구 <span class="badge">v1.0.0</span></h1>
           </div>
         </div>
         <div class="header-actions">
