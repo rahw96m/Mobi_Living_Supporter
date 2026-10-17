@@ -1613,7 +1613,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: 700;
       color: var(--invert-text);
       background: var(--invert-bg);
-      border-radius: 2px;
+      border-radius: 0;
       flex-shrink: 0;
     }
     .title {
@@ -1696,10 +1696,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--text);
       font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
-      background: var(--bg-panel);
-      border: 1px solid var(--line);
-      border-radius: 4px;
-      padding: 7px 14px;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 2px 0;
     }
     .status-pills { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .status-delim {
@@ -1720,7 +1720,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       white-space: nowrap;
     }
     .pill.online { color: var(--text-bright); }
-    .pill.offline { color: var(--invert-text); background: var(--invert-bg); padding: 1px 6px; border-radius: 2px; font-weight: 700; }
+    .pill.offline { color: var(--invert-text); background: var(--invert-bg); padding: 1px 6px; border-radius: 0; font-weight: 700; }
     .pill.warning { color: var(--text-bright); }
     .pill.wings { color: var(--text); }
     .pill.weight { color: var(--text); }
@@ -1732,29 +1732,33 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     }
 
-    /* Layout & Surface Cards */
+    /* Layout & Surface Cards (Line-Divided Terminal Layout) */
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     @media (max-width: 1024px) { .grid { grid-template-columns: 1fr; } }
 
     .card {
-      background: var(--bg-panel);
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 16px 18px 14px 18px;
-      margin-bottom: 18px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      background: transparent;
+      border: none;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      padding: 18px 0 8px 0;
+      margin-bottom: 20px;
+      box-shadow: none;
     }
     .card-sub-box {
-      background: var(--bg-sub-panel);
-      border: 1px solid var(--line-subtle);
-      border-radius: 4px;
-      padding: 12px 14px;
+      background: transparent;
+      border: none;
+      border-top: 1px solid var(--line-subtle);
+      border-bottom: 1px solid var(--line-subtle);
+      border-radius: 0;
+      padding: 10px 0;
     }
     .target-card {
-      background: var(--bg-sub-panel);
-      border: 1px solid var(--line-subtle);
-      border-radius: 4px;
-      padding: 10px 12px;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border-line);
+      border-radius: 0;
+      padding: 10px 0;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -1780,7 +1784,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .badge {
       font-size: var(--fs-sm);
       padding: 1px 6px;
-      border-radius: 2px;
+      border-radius: 0;
       font-weight: 700;
       background: var(--invert-bg);
       color: var(--invert-text);
@@ -1803,7 +1807,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .badge-dim {
       font-size: var(--fs-sm);
       padding: 1px 6px;
-      border-radius: 2px;
+      border-radius: 0;
       font-weight: 600;
       background: #1E1E1E;
       color: var(--text-muted);
@@ -1933,7 +1937,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border: 1px solid var(--line);
       color: var(--text-bright);
       padding: 7px 10px;
-      border-radius: 2px;
+      border-radius: 0;
       font-size: var(--fs-md);
       outline: none;
       transition: border-color 0.15s;
@@ -1984,10 +1988,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     @media(max-width: 600px) { .facility-grid { grid-template-columns: 1fr; } }
 
     .facility-card {
-      background: var(--bg-sub-panel);
-      border: 1px solid var(--line-subtle);
-      border-radius: 4px;
-      padding: 10px 12px;
+      background: transparent;
+      border: none;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      padding: 10px 0;
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
@@ -2047,9 +2052,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     /* BOM Table & Group Separators */
     .bom-table-container {
-      background: #131313;
-      border: 1px solid var(--line-subtle);
-      border-radius: 4px;
+      background: transparent;
+      border: none;
+      border-radius: 0;
       overflow-x: auto;
       margin-top: 8px;
     }
@@ -2107,19 +2112,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
     #altering-collapsed-bar,
     #delivery-targets-collapsed-bar,
     #quick-alter-collapsed-bar {
-      background: var(--bg-sub-panel) !important;
-      border: 1px solid var(--line-subtle) !important;
-      border-radius: 4px !important;
-      padding: 9px 14px !important;
+      background: transparent !important;
+      border: none !important;
+      border-top: 1px solid var(--line-subtle) !important;
+      border-radius: 0 !important;
+      padding: 8px 0 !important;
       margin-top: 10px !important;
       cursor: pointer;
-      transition: background 0.15s ease, border-color 0.15s ease;
+      transition: color 0.15s ease;
     }
     #altering-collapsed-bar:hover,
     #delivery-targets-collapsed-bar:hover,
     #quick-alter-collapsed-bar:hover {
-      background: #222222 !important;
-      border-color: #383838 !important;
+      background: transparent !important;
+      color: var(--text-bright) !important;
     }
 
     /* 7-Slot Quick Alter Styling */
@@ -2130,7 +2136,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-size: var(--fs-md);
       font-weight: 600;
       padding: 4px 10px;
-      border-radius: 2px;
+      border-radius: 0;
     }
     .quick-tab::before, .quick-tab::after { content: none !important; display: none !important; }
     .quick-tab:hover { color: var(--text-bright); border-color: var(--text-muted); }
@@ -2142,10 +2148,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
       box-shadow: none;
     }
     .quick-cat-card {
-      background: var(--bg-sub-panel);
-      border: 1px solid var(--line-subtle);
-      border-radius: 4px;
-      padding: 12px 14px;
+      background: transparent;
+      border: none;
+      border-top: 1px solid var(--line-subtle);
+      border-radius: 0;
+      padding: 12px 0;
       margin-bottom: 12px;
     }
     .quick-tier-table {
@@ -2153,9 +2160,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-collapse: collapse;
       font-size: 12px;
       margin-top: 8px;
-      background: #131313;
-      border: 1px solid var(--line-subtle);
-      border-radius: 4px;
+      background: transparent;
+      border: none;
+      border-radius: 0;
     }
     .quick-tier-table th {
       background: var(--bg-table-header);
@@ -2189,7 +2196,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .mcb-mode-tab {
       background: transparent;
       border: 1px solid var(--line);
-      border-radius: 2px;
+      border-radius: 0;
       padding: 4px 10px;
       display: inline-flex;
       align-items: center;
@@ -2212,7 +2219,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-size: var(--fs-sm);
       font-weight: 700;
       padding: 0 5px;
-      border-radius: 2px;
+      border-radius: 0;
       background: #222222;
       color: var(--text-muted);
     }
@@ -2256,7 +2263,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: inline-flex;
       background: transparent;
       border: 1px solid var(--line);
-      border-radius: 2px;
+      border-radius: 0;
       padding: 1px;
       gap: 2px;
     }
@@ -2268,7 +2275,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-size: var(--fs-sm);
       font-weight: 600;
       padding: 2px 8px;
-      border-radius: 1px;
+      border-radius: 0;
       cursor: pointer;
       white-space: nowrap;
       display: inline-flex;
@@ -2310,7 +2317,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .modal-dialog {
       background: var(--bg-panel);
       border: 1px solid var(--invert-bg);
-      border-radius: 2px;
+      border-radius: 0;
       width: 90%;
       max-width: 680px;
       max-height: 85vh;
@@ -2349,7 +2356,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .summary-stat-card {
       background: var(--bg);
       border: 1px solid var(--line);
-      border-radius: 2px;
+      border-radius: 0;
       padding: 10px;
       text-align: left;
     }
@@ -2396,13 +2403,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       z-index: 850;
       margin-bottom: 18px;
       background: #181818;
-      border: 1px solid #2C2C2C;
-      border-radius: 6px;
-      padding: 12px 16px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+      border: none;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      padding: 12px 14px;
+      box-shadow: none;
     }
     .master-command-bar.running {
-      border-color: var(--invert-bg);
+      border-top-color: var(--invert-bg);
+      border-bottom-color: var(--invert-bg);
       background: #1C1C1C;
     }
     .mcb-inner {
@@ -2647,7 +2657,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Delivery-Exclusive Alarm Section -->
-        <div class="card-sub-box" style="margin-top: 14px;">
+        <div style="margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-bright);"><span class="sym-prefix">&gt;</span>주간 납품 전용 가공 알람 목록</span>
@@ -2659,7 +2669,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <button class="btn btn-sm" onclick="clearAllAlarms()">알람 비우기</button>
             </div>
           </div>
-          <div id="alarm-list-container" style="max-height: 120px; overflow-y: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px; background: #131313; border: 1px solid var(--line-subtle); border-radius: 3px; padding: 6px 10px;">
+          <div id="alarm-list-container" style="max-height: 120px; overflow-y: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px; background: #131313; border: 1px solid var(--line-subtle); border-radius: 0; padding: 6px 10px;">
             <p style="color: var(--text-muted); font-size: var(--fs-sm);">&gt; 현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>
           </div>
         </div>
@@ -2761,7 +2771,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <!-- Expanded Content (shown by default) -->
         <div id="delivery-targets-expanded-content" style="margin-top: 14px;">
           <!-- Quick Manual Add Input Form -->
-          <div class="card-sub-box" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 12px;">
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line);">
             <div style="flex: 2; min-width: 170px;">
               <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
               <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
@@ -2783,7 +2793,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
 
           <!-- Preset Save/Load Section -->
-          <div class="card-sub-box" style="margin-bottom: 14px;">
+          <div style="margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
               <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-bright);"><span class="sym-prefix">&gt;</span>주간 납품 프리셋 (퀘스트 조합 저장)</span>
@@ -2967,7 +2977,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         <div style="margin-top: 14px;">
           <!-- Quick Manual Add Input Form -->
-          <div class="card-sub-box" style="margin-bottom: 14px;">
+          <div style="margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line);">
             <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 8px;">
               <span><span class="sym-prefix">&gt;</span>제작할 아이템 직접 등록 (원하는 품목과 수량을 등록하면 아래 플래너가 모든 하위 재료를 일괄 계산합니다)</span>
             </div>
@@ -3277,7 +3287,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <!-- QR Code Container -->
-        <div style="margin: 18px auto 14px; width: 190px; height: 190px; padding: 10px; background: #ffffff; border-radius: 2px; display: flex; align-items: center; justify-content: center;">
+        <div style="margin: 18px auto 14px; width: 190px; height: 190px; padding: 10px; background: #ffffff; border-radius: 0; display: flex; align-items: center; justify-content: center;">
           <img id="mobile-qr-img" src="" alt="스마트폰 접속 QR 코드" style="width: 170px; height: 170px; display: block;" onerror="this.style.display='none'; document.getElementById('mobile-qr-fallback').style.display='block';">
           <div id="mobile-qr-fallback" style="display: none; color: #000; font-size: var(--fs-sm); font-weight: 600;">QR 생성 중...</div>
         </div>
@@ -5577,7 +5587,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const compDetail = f.completed_detail ? ` (${f.completed_detail})` : '';
 
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 4px; padding: 8px 10px;">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">${f.facility}</span>
                     <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
@@ -6278,7 +6288,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const isOver = f.overflow > 0;
               
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 4px; padding: 8px 10px;">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">${f.facility}</span>
                     <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
