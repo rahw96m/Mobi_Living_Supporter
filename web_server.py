@@ -2727,6 +2727,90 @@ HTML_PAGE = r"""<!DOCTYPE html>
       .mcb-running-info { text-align: left; }
       .mcb-running-desc { max-width: 100%; }
     }
+
+    /* Mobile / Smartphone View Optimization (max-width: 540px) */
+    @media (max-width: 540px) {
+      .container {
+        padding: 0 10px;
+      }
+      header {
+        padding: 8px 0;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .title h1 {
+        font-size: 18px;
+        letter-spacing: -0.5px;
+      }
+      .header-actions {
+        width: 100%;
+        gap: 2px 6px;
+        padding-top: 4px;
+      }
+      .header-action-btn {
+        padding: 3px 6px;
+        font-size: 12px;
+      }
+      .header-status-bar {
+        font-size: 12px;
+        gap: 4px 6px;
+      }
+      .master-command-bar {
+        padding: 8px 10px;
+        margin-bottom: 12px;
+      }
+      .mcb-mode-tabs {
+        gap: 4px;
+        margin-bottom: 8px;
+        padding-bottom: 8px;
+        width: 100%;
+      }
+      .mcb-mode-tab {
+        flex: 1 1 auto;
+        justify-content: center;
+        padding: 5px 6px;
+        font-size: 12px;
+        gap: 4px;
+      }
+      .mcb-mode-tab .mcb-tab-pill {
+        font-size: 10px;
+        padding: 0 4px;
+      }
+      .mcb-briefing {
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .mcb-options-row {
+        gap: 10px;
+        font-size: 12px;
+      }
+      .btn-mcb-start,
+      .btn-danger-abort {
+        padding: 10px 16px !important;
+        font-size: 14px !important;
+        width: 100%;
+        justify-content: center;
+      }
+      .bom-table th,
+      .bom-table td {
+        padding: 5px 6px;
+        font-size: 11px;
+      }
+      .modal-dialog {
+        width: 96%;
+        max-width: 96%;
+        max-height: 92vh;
+      }
+      .modal-header {
+        padding: 10px 14px;
+      }
+      .modal-body {
+        padding: 12px 14px;
+      }
+      .modal-footer {
+        padding: 10px 14px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -2761,13 +2845,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <!-- 구분 선 -->
       <div class="header-divider"></div>
 
-      <!-- 2층: 캐릭터 상태 바 (세로선 | 구분 & 무게 게이지 제거) -->
+      <!-- 2층: 캐릭터 상태 바 (세로선 | 구분) -->
       <div class="header-status-bar status-pills" id="status-pills">
         <div class="pill online" id="pill-status" onclick="openCliModal()" style="cursor: pointer;" title="클릭하여 연결 상태 및 설정 확인">커넥터 연결 확인 중</div>
         <span class="status-delim">|</span>
         <div class="pill wings" id="pill-wings">날개 -</div>
         <span class="status-delim">|</span>
         <div class="pill weight" id="pill-weight">무게 -/-</div>
+        <span class="status-delim">|</span>
+        <div class="pill sound" id="pill-sound" onclick="toggleSoundAlarmSetting()" style="cursor: pointer;" title="클릭하여 작업 완료 알림음 ON/OFF 전환">알람 소리: 꺼짐</div>
       </div>
     </header>
 
@@ -4073,6 +4159,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     let currentAlterOrder = safeGetStorage('mabi_alter_order', 'high_tier');
     let currentGoalFulfillmentMode = (safeGetStorage('mabi_goal_fulfillment_mode', 'true') === 'true');
     let currentSoundAlarmEnabled = (safeGetStorage('mabi_sound_alarm_enabled', 'false') === 'true');
+    let currentIsWeightOver = false;
     let cachedBatchPlan = null;
 
     async function loadSettings() {
@@ -4293,6 +4380,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
         soundIcon.style.color = currentSoundAlarmEnabled ? 'var(--text-bright)' : 'var(--text-dim)';
       }
       if (soundText) soundText.innerText = currentSoundAlarmEnabled ? '알림음 켜짐' : '알림음 꺼짐';
+      const pillSound = document.getElementById('pill-sound');
+      if (pillSound) {
+        if (currentSoundAlarmEnabled) {
+          pillSound.innerHTML = `알람 소리: <span style="color: var(--text-bright); font-weight: 700;">켜짐</span>`;
+          pillSound.title = '클릭하여 작업 완료 알림음 끄기 (현재 켜짐)';
+        } else {
+          pillSound.innerHTML = `알람 소리: <span style="color: var(--text-dim);">꺼짐</span>`;
+          pillSound.title = '클릭하여 작업 완료 알림음 켜기 (현재 꺼짐)';
+        }
+      }
       if (orderText) orderText.innerText = currentAlterOrder === 'low_tier' ? '가공: 하위티어 우선' : '가공: 상위티어 우선';
       if (startIcon) startIcon.innerText = '';
 
@@ -4372,6 +4469,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
       }
 
+      if (currentIsWeightOver && briefing) {
+        briefing.innerHTML += ` <span style="color: #EF4444; font-weight: 700; text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); margin-left: 6px;">[!] 가방 무게 초과 (정리 필요)</span>`;
+      }
+
       const goalToggleLabel = document.getElementById('mcb-goal-toggle-label');
       if (goalToggleLabel) {
         goalToggleLabel.style.display = (currentMainMode === 'quick_alter') ? 'none' : 'inline-flex';
@@ -4431,6 +4532,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     function triggerMasterStartAction() {
+      if (currentIsWeightOver) {
+        if (!confirm('[!] 가방 무게 초과 (정리 필요)\n\n현재 가방 무게가 최대치를 초과한 상태입니다.\n이대로 진행하면 채집/가공 완료품을 획득하지 못할 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?')) {
+          return;
+        }
+      }
       if (currentMainMode === 'delivery') {
         executeBatchPipeline();
       } else if (currentMainMode === 'custom_craft') {
@@ -5174,6 +5280,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     async function executeQuickAlter() {
+      if (currentIsWeightOver) {
+        if (!confirm('[!] 가방 무게 초과 (정리 필요)\n\n현재 가방 무게가 최대치를 초과한 상태입니다.\n이대로 진행하면 채집/가공 완료품을 획득하지 못할 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?')) {
+          return;
+        }
+      }
       const catText = currentQuickCategory === 'all' ? '전체 가공대' : `'${currentQuickCategory}' 가공대`;
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어(T1~T7)부터 순차 가공 등록' : '최고 티어(T7~T1)부터 순차 가공 등록 (오래 걸리는 가공 우선)';
       const etaInfo = getPipelineEtaInfo('quick_alter');
@@ -5842,6 +5953,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     async function executeBatchPipeline() {
+      if (currentIsWeightOver) {
+        if (!confirm('[!] 가방 무게 초과 (정리 필요)\n\n현재 가방 무게가 최대치를 초과한 상태입니다.\n이대로 진행하면 채집/가공 완료품을 획득하지 못할 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?')) {
+          return;
+        }
+      }
       const modeTitle = currentGoalFulfillmentMode ? '목표 완수 모드' : '주간 납품 일괄 제작';
       const modeExpl = currentGoalFulfillmentMode 
         ? '가공품 완료 시 즉시 수령 -> 다음 티어 가공 -> 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
@@ -6545,6 +6661,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     async function executeCustomPipeline() {
+      if (currentIsWeightOver) {
+        if (!confirm('[!] 가방 무게 초과 (정리 필요)\n\n현재 가방 무게가 최대치를 초과한 상태입니다.\n이대로 진행하면 채집/가공 완료품을 획득하지 못할 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?')) {
+          return;
+        }
+      }
       const modeTitle = currentGoalFulfillmentMode ? '목표 완수 모드' : '지정 아이템 일괄 제작';
       const modeExpl = currentGoalFulfillmentMode
         ? '가공품 완료 시 즉시 수령 -> 다음 티어 가공 -> 목표 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
@@ -6698,14 +6819,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const inv = data.inventory || {};
           const curWeight = inv.CurrentInventoryWeightAsDecimal || 0;
           const maxWeight = inv.MaxInventoryWeightAsDecimal || 0;
+          const wasWeightOver = currentIsWeightOver;
+          currentIsWeightOver = (maxWeight > 0 && curWeight > maxWeight);
           if (weightPill) {
             const ratio = maxWeight > 0 ? (curWeight / maxWeight) : 0;
             const gaugeHtml = maxWeight > 0 ? makeWeightGaugeHtml(curWeight, maxWeight, 5) : '';
             const weightColor = maxWeight > 0 ? getWeightColorByRatio(ratio) : 'var(--text)';
-            const isOver = ratio >= 1.0;
+            const isOver = currentIsWeightOver;
             const glowStyle = isOver ? 'text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); font-weight: 700;' : '';
-            weightPill.innerHTML = `무게 <span class="mono-num" style="color: ${weightColor}; ${glowStyle}">${curWeight}/${maxWeight}</span> ${gaugeHtml}`;
-            weightPill.title = `가방 무게: ${curWeight}/${maxWeight} (${(ratio * 100).toFixed(1)}%${curWeight > maxWeight ? ' - 무게 초과!' : ''})`;
+            const overText = isOver ? ` <span style="color: #EF4444; font-weight: 700; text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); margin-left: 4px;">[!] 가방 무게 초과 (정리 필요)</span>` : '';
+            weightPill.innerHTML = `무게 <span class="mono-num" style="color: ${weightColor}; ${glowStyle}">${curWeight}/${maxWeight}</span> ${gaugeHtml}${overText}`;
+            weightPill.title = `가방 무게: ${curWeight}/${maxWeight} (${(ratio * 100).toFixed(1)}%${isOver ? ' - [!] 가방 무게 초과 (정리 필요)' : ''})`;
+          }
+          if (wasWeightOver !== currentIsWeightOver) {
+            updateMasterCommandBar();
           }
         } else {
           const errCode = data.error_code || '';
