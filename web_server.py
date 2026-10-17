@@ -1572,10 +1572,45 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--text-bright);
     }
     .cli-gauge {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: 1px;
+      vertical-align: middle;
       font-family: var(--font-mono);
       letter-spacing: 0;
       color: var(--text-bright);
+      line-height: 1;
+      user-select: none;
+    }
+    .cli-gauge .gauge-bracket {
+      color: inherit;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      opacity: 0.85;
+      line-height: 1;
+    }
+    .cli-gauge .gauge-cells {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      margin: 0 1px;
+    }
+    .cli-gauge .gauge-cell {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      box-sizing: border-box;
+      border-radius: 1px;
+      flex-shrink: 0;
+    }
+    .cli-gauge .gauge-cell.filled {
+      background-color: currentColor;
+      border: 1px solid currentColor;
+    }
+    .cli-gauge .gauge-cell.empty {
+      background-color: rgba(255, 255, 255, 0.04);
+      border: 1.5px solid currentColor;
+      opacity: 0.45;
     }
     .sym-prefix {
       color: var(--text-muted);
@@ -2875,7 +2910,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-top">
         <div class="logo-area">
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span class="badge">v1.0.0</span></h1>
+            <h1>모비노기 생활 지원도구 <span class="badge">v1.1.0</span></h1>
           </div>
         </div>
         <div class="header-actions">
@@ -3703,6 +3738,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       return CLI_SPINNER_FRAMES[cliSpinnerFrameIdx % CLI_SPINNER_FRAMES.length];
     }
 
+    function renderGaugeCells(filled, len = 5) {
+      let cells = '';
+      for (let i = 0; i < len; i++) {
+        const isFilled = i < filled;
+        cells += `<span class="gauge-cell ${isFilled ? 'filled' : 'empty'}"></span>`;
+      }
+      return `<span class="gauge-bracket">[</span><span class="gauge-cells">${cells}</span><span class="gauge-bracket">]</span>`;
+    }
+
     function makeTextGauge(cur, max, len = 5) {
       const c = Math.max(0, Number(cur) || 0);
       const m = Math.max(1, Number(max) || 1);
@@ -3711,7 +3755,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (c > 0 && filled === 0) filled = 1;
       if (c >= m) filled = len;
       else if (c < m && filled === len && len > 1) filled = len - 1;
-      return '[' + '■'.repeat(filled) + '□'.repeat(Math.max(0, len - filled)) + ']';
+      return renderGaugeCells(filled, len);
     }
 
     function getWeightColorByRatio(ratio) {
@@ -3738,14 +3782,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (c >= m) filled = len;
       else if (c < m && filled === len && len > 1) filled = len - 1;
 
-      const gaugeStr = '[' + '■'.repeat(filled) + '□'.repeat(Math.max(0, len - filled)) + ']';
+      const gaugeInner = renderGaugeCells(filled, len);
       const color = getWeightColorByRatio(ratio);
       const isOver = ratio >= 1.0;
       const glowStyle = isOver ? 'text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); font-weight: 700;' : '';
       const percentStr = (ratio * 100).toFixed(1);
       const remain = Math.max(0, m - c);
 
-      return `<span class="cli-gauge" style="color: ${color}; ${glowStyle}" title="무게 ${percentStr}% (남은 여유: ${remain})">${gaugeStr}</span>`;
+      return `<span class="cli-gauge" style="color: ${color}; ${glowStyle}" title="무게 ${percentStr}% (남은 여유: ${remain})">${gaugeInner}</span>`;
     }
 
     setInterval(function() {
@@ -4219,6 +4263,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
     let currentSoundAlarmEnabled = (safeGetStorage('mabi_sound_alarm_enabled', 'false') === 'true');
     let currentIsWeightOver = false;
     let cachedBatchPlan = null;
+    let cachedCustomPlan = null;
+    let cachedQuickPlan = null;
 
     async function loadSettings() {
       applyAlterOrderUI();
@@ -5182,7 +5228,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     // 2.5. 7-Slot Max Level Alteration Quick Routine
     let currentQuickCategory = 'all';
-    let cachedQuickPlan = null;
 
     function selectQuickCategory(cat) {
       currentQuickCategory = cat;
