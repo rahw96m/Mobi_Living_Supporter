@@ -1914,22 +1914,34 @@ HTML_PAGE = r"""<!DOCTYPE html>
       box-shadow: 0 0 14px rgba(255, 255, 255, 0.25) !important;
     }
 
-    /* Tier 1: 최상위 메인 실행 버튼 (강조 1단계: 솔리드 녹색 박스, #101010 어두운 텍스트, 무테두리, 직각 코너 + 은은한 에메랄드 광채) */
+    /* Tier 1: 최상위 메인 실행 버튼 (강조 1단계: 솔리드 녹색 박스, #FFFFFF 화이트 텍스트, 무테두리, 직각 코너 + 은은한 에메랄드 광채) */
     .btn-solid-core,
     .btn-mcb-start,
     #btn-batch-execute,
     #btn-quick-alter-execute,
     #btn-custom-execute {
       background: #10B981 !important;
-      color: #101010 !important;
+      color: #FFFFFF !important;
+      font-family: var(--font-sans) !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
-      padding: 8px 18px !important;
+      line-height: 1 !important;
+      height: 38px !important;
+      min-height: 38px !important;
+      max-height: 38px !important;
+      box-sizing: border-box !important;
+      padding: 0 18px !important;
+      display: inline-flex;
+      align-items: center !important;
+      justify-content: center !important;
       border-radius: 0 !important;
       border: none !important;
       box-shadow: 0 0 14px rgba(16, 185, 129, 0.45), 0 0 4px rgba(16, 185, 129, 0.25) !important;
       text-shadow: none !important;
       cursor: pointer;
+      white-space: nowrap !important;
+      flex-shrink: 0;
+      vertical-align: middle;
       transition: all 0.15s ease;
     }
     .btn-solid-core::before, .btn-solid-core::after,
@@ -1946,24 +1958,47 @@ HTML_PAGE = r"""<!DOCTYPE html>
     #btn-quick-alter-execute:hover:not(:disabled),
     #btn-custom-execute:hover:not(:disabled) {
       background: #34D399 !important;
-      color: #101010 !important;
+      color: #FFFFFF !important;
       border: none !important;
       box-shadow: 0 0 20px rgba(52, 211, 153, 0.65), 0 0 6px rgba(52, 211, 153, 0.35) !important;
       transform: translateY(-1px) !important;
+    }
+    .btn-solid-core:disabled,
+    .btn-mcb-start:disabled,
+    #btn-batch-execute:disabled,
+    #btn-quick-alter-execute:disabled,
+    #btn-custom-execute:disabled {
+      opacity: 0.45 !important;
+      cursor: not-allowed !important;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    .btn-solid-core.btn-sm {
+      height: 28px !important;
+      min-height: 28px !important;
+      max-height: 28px !important;
+      padding: 0 10px !important;
+      font-size: var(--fs-sm) !important;
     }
 
     /* Tier 2: 중간 위계 액션 버튼 (강조 2단계: 1단계와 동일한 에메랄드에 투명도를 많이 준 연한 배경 + 선명한 녹색 텍스트, 무테두리, 직각 + 은은한 광채) */
     #btn-collect-all-altering {
       background: rgba(16, 185, 129, 0.18) !important;
       color: #10B981 !important;
-      font-size: var(--fs-md) !important;
+      font-size: var(--fs-sm) !important;
       font-weight: 700 !important;
-      padding: 6px 14px !important;
+      padding: 3px 10px !important;
+      height: 26px !important;
+      min-height: 26px !important;
+      max-height: 26px !important;
       border-radius: 0 !important;
       border: none !important;
       box-shadow: 0 0 10px rgba(16, 185, 129, 0.28) !important;
       text-shadow: none !important;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       transition: all 0.15s ease;
     }
     #btn-collect-all-altering::before, #btn-collect-all-altering::after {
@@ -2661,32 +2696,48 @@ HTML_PAGE = r"""<!DOCTYPE html>
       min-width: 0;
       max-width: 100%;
     }
-    /* Tier 1 Abort: 즉시 중지 버튼 (솔리드 레드 배경, #101010 어두운 텍스트, 무테두리, 직각 코너 + 은은한 레드 광채) */
+    /* Tier 1 Abort: 즉시 중지 버튼 (솔리드 레드 배경, #FFFFFF 화이트 텍스트, 무테두리, 직각 코너 + 은은한 레드 광채) */
     .btn-danger-abort {
       background: #EF4444 !important;
-      color: #101010 !important;
+      color: #FFFFFF !important;
+      font-family: var(--font-sans) !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
-      padding: 8px 16px !important;
+      line-height: 1 !important;
+      height: 38px !important;
+      min-height: 38px !important;
+      max-height: 38px !important;
+      box-sizing: border-box !important;
+      padding: 0 18px !important;
+      display: inline-flex;
+      align-items: center !important;
+      justify-content: center !important;
       border-radius: 0 !important;
       border: none !important;
       box-shadow: 0 0 14px rgba(239, 68, 68, 0.55), 0 0 4px rgba(239, 68, 68, 0.35) !important;
       text-shadow: none !important;
       cursor: pointer;
-      white-space: nowrap;
+      white-space: nowrap !important;
       flex-shrink: 0;
+      vertical-align: middle;
       transition: all 0.15s ease;
     }
     .btn-danger-abort::before, .btn-danger-abort::after {
       content: none !important;
       display: none !important;
     }
-    .btn-danger-abort:hover {
+    .btn-danger-abort:hover:not(:disabled) {
       background: #F87171 !important;
-      color: #101010 !important;
+      color: #FFFFFF !important;
       border: none !important;
       box-shadow: 0 0 22px rgba(248, 113, 113, 0.75), 0 0 6px rgba(248, 113, 113, 0.45) !important;
       transform: translateY(-1px) !important;
+    }
+    .btn-danger-abort:disabled {
+      opacity: 0.45 !important;
+      cursor: not-allowed !important;
+      transform: none !important;
+      box-shadow: none !important;
     }
     .mcb-running-info {
       text-align: right;
@@ -2785,10 +2836,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         font-size: 12px;
       }
       .btn-mcb-start,
+      .btn-solid-core,
       .btn-danger-abort {
-        padding: 10px 16px !important;
+        padding: 0 16px !important;
         font-size: 14px !important;
         width: 100%;
+        height: 40px !important;
+        min-height: 40px !important;
+        max-height: 40px !important;
         justify-content: center;
       }
       .bom-table th,
@@ -3133,7 +3188,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Action Button for Batch Pipeline -->
-        <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 10px;">
+        <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px; align-items: center;">
+          <button id="btn-batch-abort" class="btn btn-danger-abort" style="display: none;" onclick="abortQuickAlter()">
+            즉시 중지
+          </button>
           <button id="btn-batch-execute" class="btn btn-solid-core" onclick="executeBatchPipeline()">
             주간 납품 일괄 실행
           </button>
@@ -5321,26 +5379,34 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (!confirm('현재 진행 중인 작업(채집/가공 루틴)을 즉시 중지하시겠습니까?')) {
         return;
       }
+      const abortBtns = [
+        document.getElementById('btn-quick-alter-abort'),
+        document.getElementById('btn-custom-abort'),
+        document.getElementById('btn-batch-abort')
+      ];
       try {
-        const btn = document.getElementById('btn-quick-alter-abort');
-        if (btn) {
-          btn.innerText = '중지 신호 전송 중...';
-          btn.disabled = true;
-        }
+        abortBtns.forEach(btn => {
+          if (btn) {
+            btn.innerText = '중지 요청 중...';
+            btn.disabled = true;
+          }
+        });
         const res = await fetch('/api/abort_quick_alter', { method: 'POST' });
         const d = await res.json();
         pollLogs();
         updateStatus();
         setTimeout(loadQuickAlterPlan, 1000);
+        setTimeout(loadCustomPlan, 1000);
         setTimeout(loadAlteringQueue, 1000);
       } catch (e) {
         alert('중지 요청 실패: ' + e);
       } finally {
-        const btn = document.getElementById('btn-quick-alter-abort');
-        if (btn) {
-          btn.innerText = '작업 즉시 중지';
-          btn.disabled = false;
-        }
+        abortBtns.forEach(btn => {
+          if (btn) {
+            btn.innerText = '즉시 중지';
+            btn.disabled = false;
+          }
+        });
       }
     }
 
@@ -5856,7 +5922,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const specialNote = (neededSpecial.length > 0) ? ` (별도 확보 ${neededSpecial.length}종 필요)` : '';
           const alterCount = plan.total_works_to_queue || 0;
 
-          btnExec.className = 'btn-solid-core';
+          btnExec.className = 'btn btn-solid-core';
           if (tasks.length === 0) {
             btnExec.innerText = '주간 납품 일괄 실행';
             btnExec.disabled = true;
@@ -6460,7 +6526,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           if (btnExec) {
             btnExec.disabled = true;
             btnExec.innerText = '지정 제작 일괄 실행';
-            btnExec.className = 'btn-solid-core';
+            btnExec.className = 'btn btn-solid-core';
           }
           if (summaryText) summaryText.innerHTML = '';
           return;
@@ -6563,7 +6629,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const gatherNote = (neededRawGather.length > 0) ? ` / 채집 ${neededRawGather.length}종` : '';
           const specialNote = (neededSpecial.length > 0) ? ` (별도 확보 ${neededSpecial.length}종 필요)` : '';
 
-          btnExec.className = 'btn-solid-core';
+          btnExec.className = 'btn btn-solid-core';
           if (plan.all_completed) {
             btnExec.innerText = '모든 지정 목표 제작 완료';
             btnExec.disabled = true;
@@ -6708,6 +6774,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const busyText = document.getElementById('busy-text');
       const produceBtn = document.getElementById('btn-produce');
       const batchBtn = document.getElementById('btn-batch-execute');
+      const batchAbortBtn = document.getElementById('btn-batch-abort');
       const quickAlterBtn = document.getElementById('btn-quick-alter-execute');
       const customExecuteBtn = document.getElementById('btn-custom-execute');
       const abortBtn = document.getElementById('btn-quick-alter-abort');
@@ -6726,6 +6793,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (batchBtn) batchBtn.disabled = true;
         if (quickAlterBtn) quickAlterBtn.disabled = true;
         if (customExecuteBtn) customExecuteBtn.disabled = true;
+        if (batchAbortBtn) batchAbortBtn.style.display = 'inline-flex';
         if (abortBtn) abortBtn.style.display = 'inline-flex';
         if (customAbortBtn) customAbortBtn.style.display = 'inline-flex';
 
@@ -6740,6 +6808,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (batchBtn) batchBtn.disabled = false;
         if (quickAlterBtn && cachedQuickPlan) quickAlterBtn.disabled = !cachedQuickPlan.can_start;
         if (customExecuteBtn && cachedCustomPlan) customExecuteBtn.disabled = cachedCustomPlan.all_completed;
+        if (batchAbortBtn) batchAbortBtn.style.display = 'none';
         if (abortBtn) abortBtn.style.display = 'none';
         if (customAbortBtn) customAbortBtn.style.display = 'none';
 
