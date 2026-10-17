@@ -1768,6 +1768,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .target-card:hover {
       border-color: #3A3A3A;
     }
+    .target-card.target-done {
+      opacity: 0.55;
+    }
     .card-title {
       font-size: var(--fs-lg);
       font-weight: 700;
@@ -1816,41 +1819,43 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     /* Buttons Hierarchy */
-    /* Default .btn -> Tier 3: Auxiliary text button with [ ] hover brackets & zero layout shift */
+    /* Default .btn & .btn-sm: subtle light box for clear distinction when next to non-button text */
     .btn {
-      padding: 4px 2px;
+      padding: 3px 8px;
       border-radius: 0;
-      border: none;
+      border: 1px solid var(--line-subtle);
+      background: rgba(255, 255, 255, 0.04);
       cursor: pointer;
       font-family: var(--font-sans);
-      font-weight: 400;
+      font-weight: 500;
       font-size: var(--fs-md);
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      background: transparent;
-      color: #AAAAAA;
+      gap: 2px;
+      color: var(--text);
       white-space: nowrap;
       flex-shrink: 0;
       user-select: none;
-      transition: color 0.12s ease;
+      transition: all 0.12s ease;
     }
     .btn::before {
       content: "[ ";
       font-family: var(--font-mono);
       opacity: 0;
       color: var(--text-bright);
+      transition: opacity 0.1s ease;
     }
     .btn::after {
       content: " ]";
       font-family: var(--font-mono);
       opacity: 0;
       color: var(--text-bright);
+      transition: opacity 0.1s ease;
     }
     .btn:hover:not(:disabled) {
-      background: transparent;
+      background: rgba(255, 255, 255, 0.09);
+      border-color: var(--text-muted);
       color: var(--text-bright);
-      text-shadow: 0 0 0.5px currentColor;
       transform: none;
     }
     .btn:hover:not(:disabled)::before,
@@ -1862,8 +1867,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       cursor: not-allowed;
     }
     .btn-sm {
-      padding: 2px 2px;
-      font-size: var(--fs-md);
+      padding: 1px 6px;
+      font-size: var(--fs-sm);
+      line-height: 1.35;
     }
 
     /* Tier 1: Top-level Core Action Buttons (핵심 버튼 색상 적용) */
@@ -1926,6 +1932,49 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: #FFFFFF !important;
       border-color: #34D399 !important;
       transform: translateY(-1px) !important;
+    }
+
+    /* Facility Header Collect Button (Tight Green Box) */
+    .btn-facility-collect {
+      background: #059669 !important;
+      color: #FFFFFF !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      padding: 2px 7px !important;
+      border-radius: 0 !important;
+      border: 1px solid #10B981 !important;
+      box-shadow: none !important;
+      cursor: pointer;
+      line-height: 1.3 !important;
+      white-space: nowrap !important;
+      transition: background 0.12s ease;
+    }
+    .btn-facility-collect:hover {
+      background: #047857 !important;
+      border-color: #34D399 !important;
+    }
+    .btn-facility-collect::before,
+    .btn-facility-collect::after {
+      content: none !important;
+      display: none !important;
+    }
+    .btn-facility-idle {
+      background: rgba(255, 255, 255, 0.03) !important;
+      color: var(--text-dim) !important;
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      padding: 2px 6px !important;
+      border: 1px solid var(--line-subtle) !important;
+      border-radius: 0 !important;
+      cursor: default;
+      line-height: 1.3 !important;
+      white-space: nowrap !important;
+      opacity: 0.6;
+    }
+    .btn-facility-idle::before,
+    .btn-facility-idle::after {
+      content: none !important;
+      display: none !important;
     }
 
     /*Inputs */
@@ -2020,13 +2069,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
       gap: 4px;
       max-height: 110px;
       overflow-y: auto;
+      padding-right: 8px; /* Breathing room so 완료 badge does not touch the scrollbar */
     }
     .facility-item-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
       font-size: var(--fs-sm);
-      padding: 3px 0;
+      padding: 3px 2px 3px 0;
       border-bottom: 1px dashed var(--line-subtle);
     }
     .facility-item-row:last-child { border-bottom: none; }
@@ -2039,16 +2089,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
       white-space: nowrap;
     }
     .btn-manual-bell {
-      background: none;
-      border: none;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--line-subtle);
+      border-radius: 0;
       color: var(--text-muted);
       cursor: pointer;
       font-family: var(--font-mono);
-      font-size: var(--fs-sm);
+      font-size: 11px;
       margin-left: 6px;
-      padding: 0 2px;
+      padding: 1px 5px;
+      line-height: 1.2;
+      transition: all 0.12s ease;
     }
-    .btn-manual-bell:hover { color: var(--text-bright); font-weight: 700; }
+    .btn-manual-bell:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--text-muted);
+      color: var(--text-bright);
+    }
 
     /* BOM Table & Group Separators */
     .bom-table-container {
@@ -2084,11 +2141,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
       white-space: nowrap;
       background: transparent;
     }
-    .bom-table tbody tr:nth-child(even) td {
-      background: rgba(255, 255, 255, 0.015);
+    /* Unified background across all rows (no zebra striping) */
+    .bom-table tbody tr td {
+      background: transparent;
     }
     .bom-table tbody tr:hover td {
-      background: #202020 !important;
+      background: #1C1C1C !important;
+    }
+    /* Satisfied / Done rows dimmed to emphasize remaining work */
+    .bom-table tr.row-satisfied td {
+      color: var(--text-dim) !important;
+    }
+    .bom-table tr.row-satisfied td:first-child {
+      border-left-color: var(--line-subtle) !important;
+    }
+    .bom-table tr.row-satisfied .badge-dim,
+    .bom-table tr.row-satisfied .badge {
+      opacity: 0.5;
     }
     .bom-table tr.row-alter td:first-child {
       border-left: 3px solid var(--bar-alter);
@@ -3445,9 +3514,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         let cleanTitle = sum.title || '작업 완료 리포트';
         cleanTitle = cleanTitle.replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)/g, '').trim();
         if (sum.status === 'aborted') {
-          titleEl.innerText = `// ${cleanTitle} [사용자 중지]`;
+          titleEl.innerText = `// ${cleanTitle} --- 사용자 중지 ---`;
         } else if (sum.status === 'error') {
-          titleEl.innerText = `// ${cleanTitle} [오류 중단]`;
+          titleEl.innerText = `// ${cleanTitle} --- 오류 중단 ---`;
         } else {
           titleEl.innerText = `// ${cleanTitle}`;
         }
@@ -3455,7 +3524,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const durText = sum.duration_text || (sum.duration_seconds ? sum.duration_seconds + '초' : '0초');
       let statText = sum.status_text || '완료';
       statText = statText.replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)\s*⏳?/g, '').replace(/[✅🛑❌⏳]/g, '').trim() || '완료';
-      if (subtitleEl) subtitleEl.innerText = `> 소요 시간: ${durText} | 상태: ${statText}`;
+      if (subtitleEl) subtitleEl.innerText = `// 소요 시간: ${durText} | 상태: ${statText}`;
 
       // 1. Wings
       const wings = sum.wings || {};
@@ -3601,32 +3670,32 @@ HTML_PAGE = r"""<!DOCTYPE html>
           '============================================================',
           `// ${cleanTitle}`,
           '============================================================',
-          `> 진행 상태: ${cleanStatus}`,
-          `> 소요 시간: ${s.duration_text || (s.duration_seconds ? s.duration_seconds + '초' : '0초')}`,
-          `> 정령의 날개: ${(s.wings ? s.wings.used : 0)}개 소모 (${s.wings ? s.wings.initial : 0} -> ${s.wings ? s.wings.final : 0}개)`,
+          `// 진행 상태: ${cleanStatus}`,
+          `// 소요 시간: ${s.duration_text || (s.duration_seconds ? s.duration_seconds + '초' : '0초')}`,
+          `// 정령의 날개: ${(s.wings ? s.wings.used : 0)}개 소모 (${s.wings ? s.wings.initial : 0} -> ${s.wings ? s.wings.final : 0}개)`,
           ''
         ];
         const gItems = (s.gather && s.gather.items) ? s.gather.items : (s.gathered || []);
-        lines.push(`[원자재 채집] 총 ${gItems.length}품목`);
+        lines.push(`=== 원자재 채집 === 총 ${gItems.length}품목`);
         gItems.forEach(it => {
           lines.push(`  - ${it.name || it.item}: +${it.gained}개 (목표: ${it.required}개)`);
         });
         lines.push('');
         const aItems = (s.alter && s.alter.items) ? s.alter.items : (s.altered || []);
-        lines.push(`[가공 대기열 등록] 총 ${(s.alter ? s.alter.count : s.total_altered_slots || 0)}슬롯`);
+        lines.push(`=== 가공 대기열 등록 === 총 ${(s.alter ? s.alter.count : s.total_altered_slots || 0)}슬롯`);
         aItems.forEach(it => {
           lines.push(`  - ${it.recipe || it.item} (${it.facility}): ${it.slots || it.registered}슬롯 (예상: +${it.expected_yield || it.yield_est}개)`);
         });
         lines.push('');
         const cItems = (s.craft && s.craft.items) ? s.craft.items : (s.crafted || []);
-        lines.push(`[최종 제작 완료] 총 ${(s.craft ? s.craft.count : s.total_crafted_count || 0)}개`);
+        lines.push(`=== 최종 제작 완료 === 총 ${(s.craft ? s.craft.count : s.total_crafted_count || 0)}개`);
         cItems.forEach(it => {
           lines.push(`  - ${it.item || it.name}: ${it.count !== undefined ? it.count : it.crafted}개`);
         });
         const coll = s.collected_facilities || s.collected;
         if (coll && coll.length > 0) {
           lines.push('');
-          lines.push(`[사전 수령] ${coll.join(', ')}`);
+          lines.push(`=== 사전 수령 === ${coll.join(', ')}`);
         }
         lines.push('============================================================');
         text = lines.join('\n');
@@ -3708,19 +3777,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(input.value).then(() => {
-            if (msg) msg.innerText = '> [완료] 접속 URL이 클립보드에 복사되었습니다.';
+            if (msg) msg.innerText = '> === 복사 완료 === 접속 URL이 클립보드에 복사되었습니다.';
             setTimeout(() => { if (msg) msg.innerText = ''; }, 3000);
           }).catch(() => {
             document.execCommand('copy');
-            if (msg) msg.innerText = '> [완료] 접속 URL이 복사되었습니다.';
+            if (msg) msg.innerText = '> === 복사 완료 === 접속 URL이 복사되었습니다.';
           });
         } else {
           document.execCommand('copy');
-          if (msg) msg.innerText = '> [완료] 접속 URL이 복사되었습니다.';
+          if (msg) msg.innerText = '> === 복사 완료 === 접속 URL이 복사되었습니다.';
         }
       } catch (e) {
         document.execCommand('copy');
-        if (msg) msg.innerText = '> [완료] 접속 URL이 복사되었습니다.';
+        if (msg) msg.innerText = '> === 복사 완료 === 접속 URL이 복사되었습니다.';
       }
     }
 
@@ -4234,7 +4303,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
       const titleEl = document.getElementById('mcb-running-title');
       const descEl = document.getElementById('mcb-running-desc');
-      if (titleEl) titleEl.innerText = '[중지 요청 전송 중...]';
+      if (titleEl) titleEl.innerText = '--- 중지 요청 전송 중... ---';
       if (descEl) descEl.innerText = '> 진행 중인 동작을 안전하게 정리하고 중지합니다';
       try {
         await fetch('/api/abort_pipeline', { method: 'POST' });
@@ -4607,7 +4676,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             const compTag = hasComp ? ' <span style="color:var(--text-main);font-size:var(--fs-sm);">(일부완료)</span>' : '';
             quickSummaryParts.push(`${facShort}: <span class="mono-num" style="color:var(--text-main);font-weight:700;">${formatRemaining(totalSec)}</span>${compTag}`);
           } else if (hasComp) {
-            quickSummaryParts.push(`${facShort}: <span style="color:var(--text-main);font-weight:700;">[완료]</span>`);
+            quickSummaryParts.push(`${facShort}: <span style="color:var(--text-main);font-weight:700;">=== 완료 ===</span>`);
           }
         }
       });
@@ -4629,8 +4698,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const firstCompletedName = hasCompleted ? completedAtFac[0].DisplayName : '';
 
         const collectBtn = hasCompleted
-          ? `<button class="btn-solid-core" style="padding: 3px 10px; font-size: var(--fs-sm);" onclick="collectAltering('${firstCompletedName}')">완료 가공품 수령 (<span class="mono-num">${completedAtFac.length}</span>)</button>`
-          : `<button class="btn btn-sm" disabled style="opacity: 0.3; font-size: var(--fs-sm);">수령 대기</button>`;
+          ? `<button class="btn-facility-collect" onclick="collectAltering('${firstCompletedName}')">완료 가공품 수령 (<span class="mono-num">${completedAtFac.length}</span>)</button>`
+          : `<button class="btn-facility-idle" disabled>수령 대기</button>`;
 
         let itemsHtml = '';
         if (itemsAtFac.length === 0) {
@@ -4648,7 +4717,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             }
 
             const bellBtn = (!w.IsCompleted && remSec > 0)
-              ? `<button class="btn-manual-bell" title="이 작업에 알람 추가" onclick="addManualAlarm('${fac.name}', '${w.DisplayName}', ${remSec})">[+알람]</button>`
+              ? `<button class="btn-manual-bell" title="이 작업에 알람 추가" onclick="addManualAlarm('${fac.name}', '${w.DisplayName}', ${remSec})">[ +알람 ]</button>`
               : '';
 
             itemsHtml += `
@@ -4723,7 +4792,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const remMs = al.targetTimestamp - Date.now();
         const remSec = Math.max(0, Math.ceil(remMs / 1000));
         const statusHtml = al.notified 
-          ? '<span style="color:var(--text-main); font-weight:700;">[전체 가공 완료 :: 수령 가능]</span>'
+          ? '<span style="color:var(--text-main); font-weight:700;">=== 전체 가공 완료 :: 수령 가능 ===</span>'
           : `<span class="mono-num" style="color:var(--text-main); font-weight:700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> ${formatRemaining(remSec)} 남음 <small style="color:var(--text-muted); font-size:var(--fs-sm);">(마지막 가공 완료)</small></span>`;
 
         const badgeClass = al.isDeliveryTarget ? 'badge' : 'badge-dim';
@@ -4828,7 +4897,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         cachedQuickPlan = data;
 
         if (data.error) {
-          container.innerHTML = `<p style="color: var(--text-main); font-size: var(--fs-md);">[오류] 계획 분석 오류: ${data.error}</p>`;
+          container.innerHTML = `<p style="color: var(--text-main); font-size: var(--fs-md);">[!] 계획 분석 오류: ${data.error}</p>`;
           if (execBtn) execBtn.disabled = true;
           return;
         }
@@ -4957,7 +5026,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         updateMasterCommandBar();
       } catch (e) {
         console.error('loadQuickAlterPlan error:', e);
-        if (container) container.innerHTML = `<p style="color: var(--text-main); font-size: var(--fs-md);">[오류] 계획 불러오기 실패: ${e}</p>`;
+        if (container) container.innerHTML = `<p style="color: var(--text-main); font-size: var(--fs-md);">[!] 계획 불러오기 실패: ${e}</p>`;
       }
     }
 
@@ -5053,8 +5122,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
             });
             const more = targets.length > 5 ? ` <span style="color:var(--text-muted);">외 ${targets.length - 5}건</span>` : '';
             const statusBadge = completedCount === targets.length
-              ? '<span class="badge">[전체 달성]</span>'
-              : `<span class="badge-dim mono-num">[${completedCount}/${targets.length} 완료]</span>`;
+              ? '<span class="badge">=== 전체 달성 ===</span>'
+              : `<span class="badge-dim mono-num">${completedCount}/${targets.length} 완료</span>`;
             quickSummaryEl.innerHTML = `${statusBadge} ${itemTexts.join(' | ')}${more}`;
           }
         }
@@ -5087,7 +5156,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
 
           html += `
-            <div class="target-card">
+            <div class="target-card ${isDone ? 'target-done' : ''}">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                   <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">${t.item_name}</div>
@@ -5113,7 +5182,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
                   <button class="btn btn-sm" onclick="updateTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">0개로</button>
                   ${t.storage_count > 0 ? `<small class="mono-num" style="color: var(--text-muted); font-size: var(--fs-sm);">(가방 ${t.inventory_count || 0} + 창고 ${t.storage_count})</small>` : ''}
                 </div>
-                <span class="mono-num" style="color: ${isDone ? 'var(--text-main)' : 'var(--text-muted)'}; font-weight: 700;">${isDone ? '[납품 준비 완료]' : `[${t.needed}개 부족]`}</span>
+                <span class="mono-num" style="color: ${isDone ? 'var(--text-dim)' : 'var(--text-bright)'}; font-weight: 700;">${isDone ? '=== 납품 준비 완료 ===' : `--- ${t.needed}개 부족 ---`}</span>
               </div>
             </div>
           `;
@@ -5445,9 +5514,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const queuedBadge = r.queued_works_count > 0 ? `<span class="mono-num" style="color:var(--text-muted); font-size:11px; margin-left:4px;">(대기 ${r.queued_works_count}회)</span>` : '';
               const completedBadge = r.completed_works_count > 0 ? `<span class="mono-num" style="color:var(--text-main); font-size:11px; margin-left:4px;">(수령가능 ${r.completed_works_count}회)</span>` : '';
 
+              const isSatisfied = (r.status === 'satisfied');
               let statusBadge = '';
-              if (r.status === 'satisfied') {
-                statusBadge = '<span style="color:var(--text-main); font-weight:700; white-space:nowrap;">[준비 완료]</span>' + completedBadge;
+              if (isSatisfied) {
+                statusBadge = '<span style="font-weight:700; white-space:nowrap;">=== 준비 완료 ===</span>' + completedBadge;
               } else if (r.status === 'needs_alter') {
                 statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">> ${r.works_needed}회 가공 필요</span>` + queuedBadge + completedBadge;
               } else if (r.status === 'in_queue') {
@@ -5462,7 +5532,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const facShort = formatFacilityShort(r.facility);
 
               rowsHtml += `
-                <tr class="row-alter">
+                <tr class="row-alter ${isSatisfied ? 'row-satisfied' : ''}">
                   <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${r.item_name}</td>
                   <td style="text-align:center; white-space:nowrap;"><span class="badge-dim">${facShort}</span></td>
                   <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${r.total_needed}개</td>
@@ -5477,8 +5547,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
             plan.raw_materials.forEach(rm => {
               let statusBadge = '';
               const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
-              if (rm.deficit === 0) {
-                statusBadge = '<span style="color:var(--text-main); font-weight:700; white-space:nowrap;">[준비 완료]</span>';
+              const isRmSatisfied = (rm.deficit === 0);
+              if (isRmSatisfied) {
+                statusBadge = '<span style="font-weight:700; white-space:nowrap;">=== 준비 완료 ===</span>';
               } else if (isSpecial) {
                 statusBadge = `<span class="mono-num" style="color:var(--text-muted); font-weight:700; white-space:nowrap;">> 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
               } else if (rm.tool_ok) {
@@ -5497,7 +5568,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const rowClass = isSpecial ? 'row-special' : 'row-gather';
 
               rowsHtml += `
-                <tr class="${rowClass}">
+                <tr class="${rowClass} ${isRmSatisfied ? 'row-satisfied' : ''}">
                   <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${rm.item_name}</td>
                   <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
                   <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
@@ -5606,7 +5677,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             if (summaryBadge) {
               summaryBadge.innerHTML = plan.has_slot_issue 
                 ? '<span style="color: var(--text-main); font-weight: 700;">[!] 일부 시설 슬롯 초과 예상</span>' 
-                : '<span style="color: var(--text-muted); font-weight: 600;">[전 시설 슬롯 여유 충분]</span>';
+                : '<span style="color: var(--text-muted); font-weight: 600;">--- 전 시설 슬롯 여유 충분 ---</span>';
             }
           } else {
             slotsSec.style.display = 'none';
@@ -5745,7 +5816,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
 
           html += `
-            <div class="target-card">
+            <div class="target-card ${isDone ? 'target-done' : ''}">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                   <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">${t.item_name}</div>
@@ -5753,7 +5824,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span class="${isDone ? 'badge' : 'badge-dim'} mono-num">
-                    ${isDone ? '달성 완료' : (t.needed || 0) + '개 부족'}
+                    ${isDone ? '=== 달성 완료 ===' : (t.needed || 0) + '개 부족'}
                   </span>
                   <button class="btn btn-sm" onclick="deleteCustomTarget('${safeName}')" title="삭제">삭제</button>
                 </div>
@@ -6028,7 +6099,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           });
         }
       } catch (e) {
-        container.innerHTML = `<div style="color:var(--text-main); font-size:var(--fs-sm); padding:8px;">[오류] 조회 실패: ${e}</div>`;
+        container.innerHTML = `<div style="color:var(--text-main); font-size:var(--fs-sm); padding:8px;">[!] 조회 실패: ${e}</div>`;
       }
     }
 
@@ -6087,7 +6158,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         });
         const d = await res.json();
         if (d.status === 'success') {
-          if (msgEl) msgEl.innerText = '> [저장 완료]';
+          if (msgEl) msgEl.innerText = '> === 저장 완료 ===';
           closeRecipeModal();
           pollLogs();
           loadCustomTargets();
@@ -6116,7 +6187,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (!tbody) return;
 
         if (plan.error) {
-          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-main); padding: 20px;">[오류] ${plan.error}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-main); padding: 20px;">[!] 오류: ${plan.error}</td></tr>`;
           if (statusText) statusText.innerText = '계획 로드 실패';
           return;
         }
@@ -6147,9 +6218,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const queuedBadge = queuedCnt > 0 ? `<span class="mono-num" style="color:var(--text-muted); font-size:11px; margin-left:4px;">(대기 ${queuedCnt}회)</span>` : '';
           const compBadge = compCnt > 0 ? `<span class="mono-num" style="color:var(--text-main); font-size:11px; margin-left:4px;">(수령가능 ${compCnt}회)</span>` : '';
 
+          const isSatisfied = (m.status === 'satisfied' || (deficit === 0 && worksNeeded === 0));
           let statusBadge = '';
-          if (m.status === 'satisfied' || (deficit === 0 && worksNeeded === 0)) {
-            statusBadge = '<span style="color:var(--text-main); font-weight:700;">[재료 준비 완료]</span>' + compBadge;
+          if (isSatisfied) {
+            statusBadge = '<span style="font-weight:700;">=== 재료 준비 완료 ===</span>' + compBadge;
           } else if (m.status === 'ready_to_collect' || (compCnt > 0 && worksNeeded === 0)) {
             statusBadge = `<span class="badge mono-num">수령 가능 (${compCnt}회)</span>`;
           } else if (m.status === 'in_queue' || (queuedCnt > 0 && worksNeeded === 0)) {
@@ -6157,7 +6229,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           } else if (worksNeeded > 0) {
             statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700;">> ${shortFac} ${worksNeeded}회 등록 필요</span>` + queuedBadge + compBadge;
           } else {
-            statusBadge = '<span style="color:var(--text-main); font-weight:700;">[준비 완료]</span>';
+            statusBadge = '<span style="font-weight:700;">=== 준비 완료 ===</span>';
           }
 
           const invCnt = m.inventory_count || 0;
@@ -6165,7 +6237,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const bagStorageText = `<span class="mono-num">${invCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${storeCnt}개)</span>`;
 
           rowsHtml += `
-            <tr class="row-alter">
+            <tr class="row-alter ${isSatisfied ? 'row-satisfied' : ''}">
               <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${m.item_name}</td>
               <td style="text-align:center; white-space:nowrap;"><span class="badge-dim">${shortFac}</span></td>
               <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${m.total_needed}개</td>
@@ -6186,8 +6258,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
           rawMaterials.forEach(rm => {
             let statusBadge = '';
             const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
-            if (rm.deficit === 0) {
-              statusBadge = '<span style="color:var(--text-main); font-weight:700; white-space:nowrap;">[준비 완료]</span>';
+            const isRmSatisfied = (rm.deficit === 0);
+            if (isRmSatisfied) {
+              statusBadge = '<span style="font-weight:700; white-space:nowrap;">=== 준비 완료 ===</span>';
             } else if (isSpecial) {
               statusBadge = `<span class="mono-num" style="color:var(--text-muted); font-weight:700; white-space:nowrap;">> 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
             } else if (rm.tool_ok) {
@@ -6206,7 +6279,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             const rowClass = isSpecial ? 'row-special' : 'row-gather';
 
             rowsHtml += `
-              <tr class="${rowClass}">
+              <tr class="${rowClass} ${isRmSatisfied ? 'row-satisfied' : ''}">
                 <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${rm.item_name}</td>
                 <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
                 <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
@@ -6217,7 +6290,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <td style="text-align:center; color:var(--text-dim); white-space:nowrap;">-</td>
                 <td style="white-space:nowrap;">${statusBadge}</td>
               </tr>
-            `;
           });
         }
 
@@ -6307,7 +6379,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             if (summaryBadge) {
               summaryBadge.innerHTML = plan.has_slot_issue 
                 ? '<span style="color: var(--text-main); font-weight: 700;">[!] 일부 시설 슬롯 초과 예상</span>' 
-                : '<span style="color: var(--text-muted); font-weight: 600;">[전 시설 슬롯 여유 충분]</span>';
+                : '<span style="color: var(--text-muted); font-weight: 600;">--- 전 시설 슬롯 여유 충분 ---</span>';
             }
           } else {
             slotsSec.style.display = 'none';
@@ -6661,7 +6733,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         html += `<span class="mono-num">> 제작: ${d.craft.length}건 | 가공: ${d.alter.length}건 | 채집: ${d.gather.length}건</span></div>`;
         resEl.innerHTML = html;
       } catch (e) {
-        resEl.innerHTML = `<span style="color:var(--text-main);">[오류] 검색 오류: ${e}</span>`;
+        resEl.innerHTML = `<span style="color:var(--text-main);">[!] 검색 오류: ${e}</span>`;
       }
     }
 
