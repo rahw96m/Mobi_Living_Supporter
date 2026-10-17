@@ -1872,23 +1872,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
       line-height: 1.35;
     }
 
-    /* Buttons positioned alongside regular text: borderless hatched box (연한 빗금 패턴, 테두리 없음, 좌우 [, ] 없음) */
+    /* Buttons positioned alongside regular text: borderless subtle light box (연한 박스, 테두리 없음, 좌우 [, ] 없음) */
     .btn-boxed,
     .target-card .btn,
     .preset-item .btn,
     .alarm-item .btn,
     .btn-manual-bell {
-      background: repeating-linear-gradient(
-        -45deg,
-        rgba(255, 255, 255, 0.12),
-        rgba(255, 255, 255, 0.12) 1px,
-        rgba(255, 255, 255, 0.02) 1px,
-        rgba(255, 255, 255, 0.02) 4px
-      ) !important;
+      background: rgba(255, 255, 255, 0.07) !important;
       border: none !important;
       border-radius: 2px !important;
       padding: 1px 6px !important;
-      color: var(--text-bright) !important;
+      color: var(--text-main) !important;
       font-weight: 500 !important;
       line-height: 1.35;
     }
@@ -1905,32 +1899,32 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .preset-item .btn:hover:not(:disabled),
     .alarm-item .btn:hover:not(:disabled),
     .btn-manual-bell:hover:not(:disabled) {
-      background: repeating-linear-gradient(
-        -45deg,
-        rgba(255, 255, 255, 0.22),
-        rgba(255, 255, 255, 0.22) 1px,
-        rgba(255, 255, 255, 0.06) 1px,
-        rgba(255, 255, 255, 0.06) 4px
-      ) !important;
+      background: rgba(255, 255, 255, 0.14) !important;
       border: none !important;
-      color: #FFFFFF !important;
+      color: var(--text-bright) !important;
     }
 
-    /* Tier 1: Top-level Core Action Buttons (핵심 버튼 색상 적용) */
+    /* Tier 1: Top-level Core Action Buttons (초록색 빗금 패턴) */
     .btn-solid-core,
     .btn-mcb-start,
     #btn-batch-execute,
     #btn-quick-alter-execute,
     #btn-custom-execute {
-      background: #2563EB !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        #059669,
+        #059669 5px,
+        #065F46 5px,
+        #065F46 10px
+      ) !important;
       color: #FFFFFF !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
       padding: 8px 18px !important;
       border-radius: 4px !important;
-      border: 1px solid #3B82F6 !important;
+      border: 1px solid #10B981 !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-      text-shadow: none !important;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
       cursor: pointer;
       transition: all 0.15s ease;
     }
@@ -1947,15 +1941,27 @@ HTML_PAGE = r"""<!DOCTYPE html>
     #btn-batch-execute:hover:not(:disabled),
     #btn-quick-alter-execute:hover:not(:disabled),
     #btn-custom-execute:hover:not(:disabled) {
-      background: #1D4ED8 !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        #10B981,
+        #10B981 5px,
+        #047857 5px,
+        #047857 10px
+      ) !important;
       color: #FFFFFF !important;
-      border-color: #60A5FA !important;
+      border-color: #34D399 !important;
       transform: translateY(-1px) !important;
     }
 
-    /* 완료 가공품 수령 (Emerald Accent) */
+    /* 완료 가공품 수령 (Emerald Accent Hatched) */
     #btn-collect-all-altering {
-      background: #059669 !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        #059669,
+        #059669 5px,
+        #065F46 5px,
+        #065F46 10px
+      ) !important;
       color: #FFFFFF !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
@@ -1963,7 +1969,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-radius: 4px !important;
       border: 1px solid #10B981 !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-      text-shadow: none !important;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
       cursor: pointer;
       transition: all 0.15s ease;
     }
@@ -1972,30 +1978,49 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: none !important;
     }
     #btn-collect-all-altering:hover:not(:disabled) {
-      background: #047857 !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        #10B981,
+        #10B981 5px,
+        #047857 5px,
+        #047857 10px
+      ) !important;
       color: #FFFFFF !important;
       border-color: #34D399 !important;
       transform: translateY(-1px) !important;
     }
 
-    /* Facility Header Collect Button (Tight Green Box, Borderless) */
+    /* Facility Header Collect Button (Tight Green Hatched) */
     .btn-facility-collect {
-      background: #059669 !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        #059669,
+        #059669 4px,
+        #065F46 4px,
+        #065F46 8px
+      ) !important;
       color: #FFFFFF !important;
       font-size: 11px !important;
       font-weight: 700 !important;
       padding: 2px 7px !important;
       border-radius: 2px !important;
-      border: none !important;
+      border: 1px solid #10B981 !important;
       box-shadow: none !important;
       cursor: pointer;
       line-height: 1.3 !important;
       white-space: nowrap !important;
-      transition: background 0.12s ease;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+      transition: all 0.12s ease;
     }
     .btn-facility-collect:hover {
-      background: #047857 !important;
-      border: none !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        #10B981,
+        #10B981 4px,
+        #047857 4px,
+        #047857 8px
+      ) !important;
+      border-color: #34D399 !important;
     }
     .btn-facility-collect::before,
     .btn-facility-collect::after {
@@ -2133,16 +2158,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       white-space: nowrap;
     }
     .btn-manual-bell {
-      background: repeating-linear-gradient(
-        -45deg,
-        rgba(255, 255, 255, 0.12),
-        rgba(255, 255, 255, 0.12) 1px,
-        rgba(255, 255, 255, 0.02) 1px,
-        rgba(255, 255, 255, 0.02) 4px
-      );
+      background: rgba(255, 255, 255, 0.07);
       border: none;
       border-radius: 2px;
-      color: var(--text-bright);
+      color: var(--text-main);
       cursor: pointer;
       font-family: var(--font-mono);
       font-size: 11px;
@@ -2157,15 +2176,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: none !important;
     }
     .btn-manual-bell:hover {
-      background: repeating-linear-gradient(
-        -45deg,
-        rgba(255, 255, 255, 0.22),
-        rgba(255, 255, 255, 0.22) 1px,
-        rgba(255, 255, 255, 0.06) 1px,
-        rgba(255, 255, 255, 0.06) 4px
-      );
+      background: rgba(255, 255, 255, 0.14);
       border: none;
-      color: #FFFFFF;
+      color: var(--text-bright);
     }
 
     /* BOM Table & Group Separators */
@@ -2213,24 +2226,42 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .bom-table tr.row-satisfied td {
       color: var(--text-dim) !important;
     }
-    .bom-table tr.row-satisfied td:first-child {
-      border-left-color: var(--line-subtle) !important;
-    }
     .bom-table tr.row-satisfied .badge-dim,
     .bom-table tr.row-satisfied .badge {
       opacity: 0.5;
     }
-    .bom-table tr.row-alter td:first-child {
-      border-left: 3px solid var(--bar-alter);
+    .bom-table tr.row-alter td:first-child,
+    .bom-table tr.row-gather td:first-child,
+    .bom-table tr.row-special td:first-child,
+    .bom-table tr.row-satisfied td:first-child {
+      border-left: none !important;
       padding-left: 10px;
     }
-    .bom-table tr.row-gather td:first-child {
-      border-left: 3px solid var(--bar-gather);
-      padding-left: 10px;
+    /* Colored bullet dot in front of material name */
+    .bom-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      margin-right: 8px;
+      vertical-align: middle;
+      flex-shrink: 0;
     }
-    .bom-table tr.row-special td:first-child {
-      border-left: 3px solid var(--bar-special);
-      padding-left: 10px;
+    .dot-alter {
+      background-color: #60A5FA;
+      box-shadow: 0 0 4px rgba(96, 165, 250, 0.5);
+    }
+    .dot-gather {
+      background-color: #34D399;
+      box-shadow: 0 0 4px rgba(52, 211, 153, 0.5);
+    }
+    .dot-special {
+      background-color: #F59E0B;
+      box-shadow: 0 0 4px rgba(245, 158, 11, 0.5);
+    }
+    .bom-table tr.row-satisfied .bom-dot {
+      opacity: 0.35;
+      box-shadow: none;
     }
     .bom-table .badge-dim,
     .bom-table .badge {
@@ -2632,7 +2663,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       max-width: 100%;
     }
     .btn-danger-abort {
-      background: #DC2626 !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        #DC2626,
+        #DC2626 5px,
+        #991B1B 5px,
+        #991B1B 10px
+      ) !important;
       color: #FFFFFF !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
@@ -2640,6 +2677,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-radius: 4px !important;
       border: 1px solid #EF4444 !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
@@ -2650,7 +2688,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: none !important;
     }
     .btn-danger-abort:hover {
-      background: #B91C1C !important;
+      background: repeating-linear-gradient(
+        -45deg,
+        #EF4444,
+        #EF4444 5px,
+        #B91C1C 5px,
+        #B91C1C 10px
+      ) !important;
       color: #FFFFFF !important;
       border-color: #F87171 !important;
       transform: translateY(-1px) !important;
@@ -5594,7 +5638,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
               rowsHtml += `
                 <tr class="row-alter ${isSatisfied ? 'row-satisfied' : ''}">
-                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${r.item_name}</td>
+                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot dot-alter"></span>${r.item_name}</td>
                   <td style="text-align:center; white-space:nowrap;"><span class="badge-dim">${facShort}</span></td>
                   <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${r.total_needed}개</td>
                   <td style="text-align:center; white-space:nowrap;">${bagStorageText}</td>
@@ -5630,7 +5674,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
               rowsHtml += `
                 <tr class="${rowClass} ${isRmSatisfied ? 'row-satisfied' : ''}">
-                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${rm.item_name}</td>
+                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot ${isSpecial ? 'dot-special' : 'dot-gather'}"></span>${rm.item_name}</td>
                   <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
                   <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
                   <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
@@ -6299,7 +6343,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           rowsHtml += `
             <tr class="row-alter ${isSatisfied ? 'row-satisfied' : ''}">
-              <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${m.item_name}</td>
+              <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot dot-alter"></span>${m.item_name}</td>
               <td style="text-align:center; white-space:nowrap;"><span class="badge-dim">${shortFac}</span></td>
               <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${m.total_needed}개</td>
               <td style="text-align:center; white-space:nowrap;">${bagStorageText}</td>
@@ -6341,7 +6385,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
             rowsHtml += `
               <tr class="${rowClass} ${isRmSatisfied ? 'row-satisfied' : ''}">
-                <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${rm.item_name}</td>
+                <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot ${isSpecial ? 'dot-special' : 'dot-gather'}"></span>${rm.item_name}</td>
                 <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
                 <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
                 <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
