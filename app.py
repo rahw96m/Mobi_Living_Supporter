@@ -34,7 +34,7 @@ def show_character_status(dm: DeliveryManager):
         print(f"• 정령의 날개: {wings:,}개")
         print(f"• 가방 무게: {cur_wt} / {max_wt}")
     except Exception as ex:
-        print(f"⚠️ 상태 조회 실패: {ex}")
+        print(f"[오류] 상태 조회 실패: {ex}")
     print("-----------------------------------")
 
 def run_interactive(dm: DeliveryManager):
@@ -46,13 +46,13 @@ def run_interactive(dm: DeliveryManager):
         order_str = "상위 티어 우선 (오래 걸리는 가공부터)" if curr_order != "low_tier" else "하위 티어 우선 (기초 재료부터)"
 
         print("\n[메뉴를 선택해주세요]")
-        print("1. 🎯 현재 수락된 주간 의뢰/납품 퀘스트 자동 감지 & 제작")
-        print("2. ✍️ 아이템 이름 & 수량 직접 입력하여 제작 (예: 로터스 힐링 완드 6개)")
-        print("3. 🔍 제작/가공/채집 레시피 검색")
-        print("4. 🌐 웹 대시보드(Web UI) 실행 (브라우저로 편리하게 사용)")
-        print(f"5. ⚡ 7슬롯 최고 레벨 가공대 빠른 실행 [{order_str}]")
-        print(f"6. ⚙️ 가공 우선순위 설정 변경 (현재: {order_str})")
-        print("7. 📂 내 문서 데이터 폴더 열기 (레시피·설정 영구 보존)")
+        print("1. 현재 수락된 주간 의뢰/납품 퀘스트 자동 감지 & 제작")
+        print("2. 아이템 이름 & 수량 직접 입력하여 제작 (예: 로터스 힐링 완드 6개)")
+        print("3. 제작/가공/채집 레시피 검색")
+        print("4. 웹 대시보드(Web UI) 실행 (브라우저로 편리하게 사용)")
+        print(f"5. 7슬롯 최고 레벨 가공대 빠른 실행 [{order_str}]")
+        print(f"6. 가공 우선순위 설정 변경 (현재: {order_str})")
+        print("7. 내 문서 데이터 폴더 열기 (레시피·설정 영구 보존)")
         print("q. 종료")
 
         choice = input("\n선택 > ").strip()
@@ -60,12 +60,12 @@ def run_interactive(dm: DeliveryManager):
         if choice == "1":
             tasks = dm.detect_delivery_quests()
             if not tasks:
-                print("\n⚠️ 현재 퀘스트 목록에 납품 관련 목표(예: '〇〇 보유 X/Y')가 없습니다.")
+                print("\n[안내] 현재 퀘스트 목록에 납품 관련 목표(예: '〇〇 보유 X/Y')가 없습니다.")
                 continue
 
-            print(f"\n📋 [감지된 납품 퀘스트: 총 {len(tasks)}건]")
+            print(f"\n[감지된 납품 퀘스트: 총 {len(tasks)}건]")
             for idx, t in enumerate(tasks, start=1):
-                status_str = "✅ 완료됨" if t.is_completed else f"⏳ {t.needed}개 부족"
+                status_str = "완료됨" if t.is_completed else f"{t.needed}개 부족"
                 print(f"  [{idx}] {t.quest_title} -> {t.item_name} (현재: {t.current}/{t.goal} | {status_str})")
 
             sel = input("\n제작할 퀘스트 번호를 입력하세요 (취소: 0) > ").strip()
@@ -83,7 +83,7 @@ def run_interactive(dm: DeliveryManager):
                 try:
                     dm.resolve_and_produce(selected_task.item_name, selected_task.goal)
                 except Exception as ex:
-                    print(f"\n❌ 작업 중 오류 발생: {ex}")
+                    print(f"\n[오류] 작업 중 오류 발생: {ex}")
 
         elif choice == "2":
             item_name = input("\n제작할 아이템 이름을 입력하세요 (예: 로터스 힐링 완드) > ").strip()
@@ -99,7 +99,7 @@ def run_interactive(dm: DeliveryManager):
                 try:
                     dm.resolve_and_produce(item_name, count)
                 except Exception as ex:
-                    print(f"\n❌ 작업 중 오류 발생: {ex}")
+                    print(f"\n[오류] 작업 중 오류 발생: {ex}")
 
         elif choice == "3":
             query = input("\n검색할 아이템 또는 재료 이름 > ").strip()
@@ -134,12 +134,12 @@ def run_interactive(dm: DeliveryManager):
 
         elif choice == "5":
             print("\n[7슬롯 최고 레벨 가공대 빠른 실행]")
-            print(f"ℹ️ 가공 우선순위: {order_str}")
-            print("1. ⚡ 전체 가공대 일괄 (금속, 목재, 가죽, 옷감)")
-            print("2. 🪙 금속 가공 시설 (백금강괴 ~ 철괴)")
-            print("3. 🪵 목재 가공 시설 (특급 목재 ~ 목재)")
-            print("4. 🦊 가죽 가공 시설 (특급 가죽 ~ 가죽)")
-            print("5. 🧶 옷감 가공 시설 (특급 옷감 ~ 옷감)")
+            print(f"가공 우선순위: {order_str}")
+            print("1. 전체 가공대 일괄 (금속, 목재, 가죽, 옷감)")
+            print("2. 금속 가공 시설 (백금강괴 ~ 철괴)")
+            print("3. 목재 가공 시설 (특급 목재 ~ 목재)")
+            print("4. 가죽 가공 시설 (특급 가죽 ~ 가죽)")
+            print("5. 옷감 가공 시설 (특급 옷감 ~ 옷감)")
             print("0. 취소")
 
             c_sel = input("\n가공 종류 선택 > ").strip()
@@ -149,11 +149,11 @@ def run_interactive(dm: DeliveryManager):
                 continue
 
             target_cat = cat_map[c_sel]
-            print(f"\n🔍 '{target_cat}' 가공대 상태 및 재료 분석 중... ({order_str})")
+            print(f"\n'{target_cat}' 가공대 상태 및 재료 분석 중... ({order_str})")
             try:
                 plan = dm.analyze_quick_alter(target_cat if target_cat != "all" else None)
                 print("\n=======================================================")
-                print(f"📋 [7슬롯 빠른 가공 분석 결과 ({order_str})]")
+                print(f"[7슬롯 빠른 가공 분석 결과 ({order_str})]")
                 print("=======================================================")
                 for cat, c_info in plan["categories"].items():
                     print(f"\n[{cat} ({c_info['facility']})]")
@@ -169,32 +169,32 @@ def run_interactive(dm: DeliveryManager):
                             print(f"    - Tier {s['tier']} {s['item_name']}: {s['reason']}")
 
                 if plan["total_raw_needed"]:
-                    print(f"\n🌿 [사전 맞춤 채집 필요 원자재 (부족 수량만 자동 채집)]")
+                    print(f"\n[사전 맞춤 채집 필요 원자재 (부족 수량만 자동 채집)]")
                     for r_name, r_qty in plan["total_raw_needed"].items():
                         print(f" • {r_name}: {r_qty}개")
                 else:
-                    print(f"\n✨ 사전 채집이 필요한 원자재가 없습니다 (보유량 충분).")
+                    print(f"\n사전 채집이 필요한 원자재가 없습니다 (보유량 충분).")
 
                 if not plan["can_start"]:
-                    print("\n⚠️ 수령할 완료품이 없거나 가공 가능한 티어가 없습니다.")
+                    print("\n[안내] 수령할 완료품이 없거나 가공 가능한 티어가 없습니다.")
                     continue
 
-                conf = input("\n위 계획대로 [수령 ➔ 채집 ➔ 가공]을 시작할까요? (y/n) > ").strip().lower()
+                conf = input("\n위 계획대로 [수령 -> 채집 -> 가공]을 시작할까요? (y/n) > ").strip().lower()
                 if conf == "y":
                     dm.execute_quick_alter(plan)
             except Exception as ex:
-                print(f"\n❌ 실행 중 오류 발생: {ex}")
+                print(f"\n[오류] 실행 중 오류 발생: {ex}")
 
         elif choice == "6":
             curr = settings_store.get("alter_order", "high_tier")
             new_val = "low_tier" if curr == "high_tier" else "high_tier"
             settings_store.set("alter_order", new_val)
             new_str = "상위 티어 우선 (오래 걸리는 가공부터)" if new_val != "low_tier" else "하위 티어 우선 (기초 재료부터)"
-            print(f"\n✅ 가공 우선순위가 변경되었습니다: {new_str}")
+            print(f"\n가공 우선순위가 변경되었습니다: {new_str}")
 
         elif choice == "7":
             data_dir = get_user_data_dir()
-            print(f"\n📂 내 문서 데이터 저장 폴더: {data_dir}")
+            print(f"\n내 문서 데이터 저장 폴더: {data_dir}")
             try:
                 if sys.platform == "win32":
                     os.startfile(data_dir)
@@ -223,7 +223,7 @@ def main():
     if args.alter_order:
         norm = "low_tier" if "low" in args.alter_order else "high_tier"
         settings_store.set("alter_order", norm)
-        print(f"⚙️ 가공 우선순위 설정: {'상위 티어 우선' if norm == 'high_tier' else '하위 티어 우선'}")
+        print(f"가공 우선순위 설정: {'상위 티어 우선' if norm == 'high_tier' else '하위 티어 우선'}")
 
     if args.web:
         from web_server import start_server

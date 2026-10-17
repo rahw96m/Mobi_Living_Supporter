@@ -15,13 +15,13 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "배포용_Mobi_Living_Supporter")
 VERSION_INFO = os.path.join(BASE_DIR, "file_version_info.txt")
 
 print("=" * 65)
-print("📦 [모비노기 생활 지원도구] 배포 패키지 빌드 시작")
+print("[모비노기 생활 지원도구] 배포 패키지 빌드 시작")
 print("   - 빌드 방식: PyInstaller --onedir (폴더형 독립 패키지)")
 print("   - 장점: 실시간 임시폴더 압축해제(Dropper 행위)가 없어 백신 오탐 대폭 방지 및 초고속 실행")
 print("=" * 65)
 
 # 1. PyInstaller 빌드 실행
-print("\n🔨 최신 코드로 폴더형 독립 패키지를 빌드합니다...")
+print("\n최신 코드로 폴더형 독립 패키지를 빌드합니다...")
 build_cmd = [
     sys.executable,
     "-m",
@@ -45,11 +45,11 @@ build_cmd = [
 
 ret = subprocess.run(build_cmd, cwd=BASE_DIR)
 if ret.returncode != 0 or not os.path.exists(DIST_BUILD_DIR):
-    print("❌ 빌드에 실패했습니다.")
+    print("[오류] 빌드에 실패했습니다.")
     sys.exit(1)
 
 # 2. 기존 배포 폴더 정리 및 새로 복사
-print("\n📂 배포 폴더를 구성합니다...")
+print("\n배포 폴더를 구성합니다...")
 if os.path.exists(OUTPUT_DIR):
     shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
 
@@ -86,15 +86,15 @@ for icon_name in ("app_icon.ico", "app_icon.png"):
 shortcut_bat_content = """@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-echo 📌 바탕화면에 '모비노기 생활 지원도구' 바로가기를 생성합니다...
+echo 바탕화면에 '모비노기 생활 지원도구' 바로가기를 생성합니다...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $target = Join-Path $pwd '모비노기_생활_지원도구.exe'; if (-not (Test-Path $target)) { $target = Join-Path $pwd 'Mobi_Living_Supporter.exe' }; $ico = Join-Path $pwd 'app_icon.ico'; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), '모비노기 생활 지원도구.lnk')); $s.TargetPath = $target; $s.WorkingDirectory = $pwd; if (Test-Path $ico) { $s.IconLocation = \\"$ico,0\\" } else { $s.IconLocation = \\"$target,0\\" }; $s.Description = '모비노기 생활 지원도구'; $s.Save()"
 if %errorlevel% equ 0 (
     echo.
-    echo ✅ 바탕화면에 '모비노기 생활 지원도구' 바로가기가 생성되었습니다!
+    echo 바탕화면에 '모비노기 생활 지원도구' 바로가기가 생성되었습니다!
     echo.
 ) else (
     echo.
-    echo ❌ 바로가기 생성 중 오류가 발생했습니다. 직접 '모비노기_생활_지원도구.exe'를 우클릭하여 바로가기를 만들어주세요.
+    echo 바로가기 생성 중 오류가 발생했습니다. 직접 '모비노기_생활_지원도구.exe'를 우클릭하여 바로가기를 만들어주세요.
     echo.
 )
 pause
@@ -103,7 +103,7 @@ with open(os.path.join(OUTPUT_DIR, "바탕화면_바로가기_만들기.bat"), "
     f.write(shortcut_bat_content)
 
 # 6. 사용방법 안내 텍스트 파일 작성
-guide_text = """[ 🗡️ 모비노기 생활 지원도구 ]
+guide_text = """[ 모비노기 생활 지원도구 ]
 
 ■ 실행 방법:
 1. 배포받은 압축(ZIP) 파일을 원하는 폴더에 압축 해제합니다.
@@ -120,7 +120,7 @@ guide_text = """[ 🗡️ 모비노기 생활 지원도구 ]
 ■ 레시피 및 설정 영구 보존 & 자동 이전:
 - 버전을 업데이트하여 새 버전 폴더를 받더라도, 등록/학습하신 레시피와 설정, 프리셋은 사용자의 '내 문서\\MobiLivingSupporter'에 안전하게 영구 저장됩니다.
 - 이전 버전에서 사용하던 설정 파일들을 새 버전 폴더로 매번 복사해올 필요가 전혀 없습니다!
-- 웹 대시보드 상단 또는 [⚙️ 연결 설정] 모달에서 '📂 데이터 폴더'를 누르면 언제든 탐색기로 확인/백업할 수 있습니다.
+- 웹 대시보드 상단 또는 [연결 설정] 모달에서 '데이터 폴더'를 누르면 언제든 탐색기로 확인/백업할 수 있습니다.
 
 ■ 혹시 윈도우 SmartScreen / 디펜더 알림이 뜨는 경우:
 - 본 프로그램은 인증서(코드사인) 비용이 없는 오픈소스 유틸리티이므로, 인터넷에서 처음 받은 파일에 대해 윈도우가 "PC 보호" 알림을 띄울 수 있습니다.
@@ -129,7 +129,7 @@ guide_text = """[ 🗡️ 모비노기 생활 지원도구 ]
 
 ■ C드라이브가 아닌 D: 드라이브 등에 게임이 설치된 경우:
 - 프로그램이 컴퓨터 내 모든 드라이브 및 실행 중인 게임을 자동 탐색하여 연결합니다.
-- 만약 대시보드 상단에 'CLI 미발견'이 나타날 경우, 상단의 [⚙️ 연결 설정] 버튼을 눌러 마비노기 모바일 설치 폴더(예: D:\\Nexon\\MabinogiMobile)를 입력하고 [저장 & 연결]을 눌러주시면 됩니다.
+- 만약 대시보드 상단에 'CLI 미발견'이 나타날 경우, 상단의 [연결 설정] 버튼을 눌러 마비노기 모바일 설치 폴더(예: D:\\Nexon\\MabinogiMobile)를 입력하고 [저장 & 연결]을 눌러주시면 됩니다.
 
 ■ 백그라운드 사용 시 팁:
 - 마비노기 모바일 게임 창을 작업 표시줄로 [최소화(_)]하면 게임 엔진(유니티) 특성상 게임 동작과 통신이 일시 중지될 수 있습니다. 최소화하지 마시고 다른 창 뒤에 겹쳐 두시거나 전체 창모드로 유지해 주세요.
@@ -144,7 +144,7 @@ with open(os.path.join(OUTPUT_DIR, "사용방법.txt"), "w", encoding="utf-8") a
     f.write(guide_text)
 
 # 7. 자동 ZIP 압축 파일 생성
-print("\n🗜️ 배포용 ZIP 압축 파일을 생성합니다...")
+print("\n배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
 # GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v1.0.0.zip)
@@ -153,9 +153,9 @@ github_zip_path = os.path.join(BASE_DIR, f"Mobi_Living_Supporter_{VERSION}.zip")
 shutil.copy2(zip_path, github_zip_path)
 
 print("\n" + "=" * 65)
-print("🎉 [성공] 모비노기 생활 지원도구 배포 패키지 구성 및 압축 완료!")
-print(f"📁 배포 폴더: {OUTPUT_DIR}")
-print(f"📦 압축 파일: {zip_path}")
-print(f"📦 깃허브 릴리즈용: {github_zip_path}")
-print(f"💡 안내: 위 ZIP 파일 중 하나를 그대로 공유하거나 깃허브 릴리즈에 첨부하시면 됩니다!")
+print("[성공] 모비노기 생활 지원도구 배포 패키지 구성 및 압축 완료!")
+print(f"배포 폴더: {OUTPUT_DIR}")
+print(f"압축 파일: {zip_path}")
+print(f"깃허브 릴리즈용: {github_zip_path}")
+print(f"안내: 위 ZIP 파일 중 하나를 그대로 공유하거나 깃허브 릴리즈에 첨부하시면 됩니다!")
 print("=" * 65 + "\n")

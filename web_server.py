@@ -107,7 +107,7 @@ def schedule_shutdown(delay: float = 1800.0, reason: str = "웹 대시보드가 
                     return
             except Exception:
                 pass
-            print(f"\n🔌 [자동 종료] {reason} 마비노기 모바일도 실행 중이 아니므로 서버를 안전하게 종료합니다.")
+            print(f"\n[자동 종료] {reason} 마비노기 모바일도 실행 중이 아니므로 서버를 안전하게 종료합니다.")
             shutdown_server()
         shutdown_timer = threading.Timer(delay, _trigger)
         shutdown_timer.daemon = True
@@ -119,7 +119,7 @@ def shutdown_server():
         return
     is_shutting_down = True
     print("\n=========================================================")
-    print("🔌 [서버 자동 종료] 웹 대시보드가 종료되어 서버와 프로세스를 안전하게 정리합니다.")
+    print("[서버 자동 종료] 웹 대시보드가 종료되어 서버와 프로세스를 안전하게 정리합니다.")
     print("=========================================================\n")
     def _do_shutdown():
         try:
@@ -165,7 +165,7 @@ def watchdog_loop():
             pass
         # CRITICAL 3: Only shut down if no heartbeat for more than 4 hours (14400s) AND game is closed
         if has_client_connected and (now - last_heartbeat_time) > 14400.0:
-            print("\n🔌 [장시간 미사용 감지] 마비노기 모바일이 종료되었고 4시간 이상 대시보드 신호가 없어 안전하게 종료합니다...")
+            print("\n[장시간 미사용 감지] 마비노기 모바일이 종료되었고 4시간 이상 대시보드 신호가 없어 안전하게 종료합니다...")
             shutdown_server()
             break
 
@@ -196,7 +196,7 @@ def add_log(level: str, message: str):
         console_logs.append({"time": timestamp, "level": level, "message": message})
         if len(console_logs) > 300:
             console_logs.pop(0)
-    if is_busy and (level == "action" or message.startswith("🌾") or message.startswith("🌿") or message.startswith("🎯") or message.startswith("✅")):
+    if is_busy and (level in ("action", "busy") or "채집 진행 중" in message or "가공 중" in message or "제작 진행" in message or message.startswith("[목표") or message.startswith("[맞춤 채집") or message.startswith("[부족 수량")):
         current_task_info = message
 
 def get_cached_status() -> Dict[str, Any]:
@@ -676,7 +676,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     cached_status_time = 0.0
                     cached_character_time = 0.0
                     cached_status_data = None
-                add_log("success", f"⚙️ [연결 설정] 게임 CLI 경로가 갱신되었습니다: {cli_instance.cli_path}")
+                add_log("success", f"[연결 설정] 게임 CLI 경로가 갱신되었습니다: {cli_instance.cli_path}")
                 self._send_json({
                     "status": "success",
                     "cli_path": cli_instance.cli_path,
@@ -694,7 +694,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     cached_character_time = 0.0
                     cached_status_data = None
                 if found:
-                    add_log("success", f"🔍 [경로 자동 탐색] CLI 경로를 감지했습니다: {found} ({cli_instance.discovery_source})")
+                    add_log("success", f"[경로 자동 탐색] CLI 경로를 감지했습니다: {found} ({cli_instance.discovery_source})")
                     self._send_json({
                         "status": "found",
                         "cli_path": found,
@@ -716,7 +716,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     os.startfile(data_dir)
                 else:
                     subprocess.Popen(["xdg-open", data_dir])
-                add_log("info", f"📂 [데이터 폴더] 설정 및 레시피 저장 폴더를 열었습니다: {data_dir}")
+                add_log("info", f"[데이터 폴더] 설정 및 레시피 저장 폴더를 열었습니다: {data_dir}")
                 self._send_json({"status": "ok", "path": data_dir})
             except Exception as e:
                 self._send_error(e)
@@ -763,12 +763,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                                 last_execution_summary = res["summary"]
                                 last_summary_id += 1
                     except Exception as err:
-                        add_log("error", f"❌ 작업 실패: {str(err)}")
+                        add_log("error", f"작업 실패: {str(err)}")
                         with status_lock:
                             last_execution_summary = {
                                 "title": f"'{item_name}' 제작 작업 리포트 (오류 중단)",
                                 "status": "aborted",
-                                "status_text": "오류 중단 ❌",
+                                "status_text": "오류 중단",
                                 "duration_text": "0초",
                                 "wings": {"initial": 0, "final": 0, "used": 0},
                                 "gather": {"count": 0, "items": []},
@@ -794,7 +794,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
                 settings_store.update(req_json)
-                add_log("info", f"⚙️ 설정이 업데이트되었습니다: {req_json}")
+                add_log("info", f"설정이 업데이트되었습니다: {req_json}")
                 self._send_json({"status": "success", "settings": settings_store.get_all()})
             except Exception as e:
                 self._send_error(e)
@@ -817,7 +817,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             is_busy = True
             order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
             mode_tag = " [목표 완수 모드]" if goal_fulfillment_mode else ""
-            current_task_info = f"⚡ 전체 주간 납품 일괄 최적화 제작 진행 중 ({order_name}){mode_tag}..."
+            current_task_info = f"전체 주간 납품 일괄 최적화 제작 진행 중 ({order_name}){mode_tag}..."
 
             def batch_worker():
                 global is_busy, current_task_info, last_execution_summary, last_summary_id
@@ -837,12 +837,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                             last_execution_summary = res["summary"]
                             last_summary_id += 1
                 except Exception as err:
-                    add_log("error", f"❌ 일괄 제작 실패: {str(err)}")
+                    add_log("error", f"일괄 제작 실패: {str(err)}")
                     with status_lock:
                         last_execution_summary = {
                             "title": "주간 납품 작업 리포트 (오류 중단)",
                             "status": "aborted",
-                            "status_text": "오류 중단 ❌",
+                            "status_text": "오류 중단",
                             "duration_text": "0초",
                             "wings": {"initial": 0, "final": 0, "used": 0},
                             "gather": {"count": 0, "items": []},
@@ -877,7 +877,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             is_busy = True
             order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
             mode_tag = " [목표 완수 모드]" if goal_fulfillment_mode else ""
-            current_task_info = f"🔨 개별 지정 아이템 일괄 최적화 제작 진행 중 ({order_name}){mode_tag}..."
+            current_task_info = f"개별 지정 아이템 일괄 최적화 제작 진행 중 ({order_name}){mode_tag}..."
 
             def custom_batch_worker():
                 global is_busy, current_task_info, last_execution_summary, last_summary_id, cached_custom_targets
@@ -898,12 +898,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                             last_execution_summary = res["summary"]
                             last_summary_id += 1
                 except Exception as err:
-                    add_log("error", f"❌ 개별 지정 일괄 제작 실패: {str(err)}")
+                    add_log("error", f"개별 지정 일괄 제작 실패: {str(err)}")
                     with status_lock:
                         last_execution_summary = {
                             "title": "개별 지정 제작 리포트 (오류 중단)",
                             "status": "aborted",
-                            "status_text": "오류 중단 ❌",
+                            "status_text": "오류 중단",
                             "duration_text": "0초",
                             "wings": {"initial": 0, "final": 0, "used": 0},
                             "gather": {"count": 0, "items": []},
@@ -924,7 +924,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path in ("/api/abort_quick_alter", "/api/abort_pipeline"):
-            add_log("warn", "🛑 [중지 요청 접수] 사용자가 진행 중인 작업의 중단 명령을 전송했습니다.")
+            add_log("warn", "[중지 요청 접수] 사용자가 진행 중인 작업의 중단 명령을 전송했습니다.")
             manager_instance.request_abort()
             try:
                 cli_instance.stop_action()
@@ -949,7 +949,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 is_busy = True
                 cat_disp = "전체 가공대" if category == "all" else f"'{category}' 가공대"
                 order_name = "상위 티어 우선" if (alter_order or settings_store.get("alter_order")) != "low_tier" else "하위 티어 우선"
-                current_task_info = f"⚡ 7슬롯 최고 레벨 {cat_disp} 빠른 실행 진행 중 ({order_name})..."
+                current_task_info = f"7슬롯 최고 레벨 {cat_disp} 빠른 실행 진행 중 ({order_name})..."
 
                 def quick_alter_worker():
                     global is_busy, current_task_info, last_execution_summary, last_summary_id
@@ -961,7 +961,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                                 last_execution_summary = res["summary"]
                                 last_summary_id += 1
                     except Exception as err:
-                        add_log("error", f"❌ 빠른 가공 실행 실패: {str(err)}")
+                        add_log("error", f"빠른 가공 실행 실패: {str(err)}")
                     finally:
                         is_busy = False
                         current_task_info = ""
@@ -982,16 +982,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                 req_json = json.loads(body_bytes.decode("utf-8"))
                 item_name = req_json.get("item_name")
                 is_busy = True
-                current_task_info = f"🎁 '{item_name}' 가공품 수령 중..."
+                current_task_info = f"\'{item_name}\' 가공품 수령 중..."
                 try:
                     res = cli_instance.complete_altering_work(item_name)
-                    add_log("success", f"🎁 '{item_name}' 가공품 수령 완료: {res}")
+                    add_log("success", f"\'{item_name}\' 가공품 수령 완료: {res}")
                     self._send_json({"status": "success", "result": res})
                 finally:
                     is_busy = False
                     current_task_info = ""
             except Exception as e:
-                add_log("error", f"❌ 가공품 수령 실패: {str(e)}")
+                add_log("error", f"가공품 수령 실패: {str(e)}")
                 self._send_error(e)
             return
 
@@ -1046,9 +1046,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 added = manager_instance.add_detected_quests_to_targets()
                 if added:
-                    add_log("success", f"🎯 [주간 납품 등록] 현재 퀘스트 {len(added)}건이 납품 목표 목록에 등록되었습니다.")
+                    add_log("success", f"[주간 납품 등록] 현재 퀘스트 {len(added)}건이 납품 목표 목록에 등록되었습니다.")
                 else:
-                    add_log("warn", "⚠️ 현재 게임 내 퀘스트 추적창에서 감지된 주간 납품 퀘스트가 없습니다.")
+                    add_log("warn", "현재 게임 내 퀘스트 추적창에서 감지된 주간 납품 퀘스트가 없습니다.")
                 self._send_json({"status": "success", "added": added})
             except Exception as e:
                 self._send_error(e)
@@ -1077,7 +1077,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 else:
                     cur = max(prev_cur, eff_cur)
                 entry = delivery_target_store.add_or_update(item_name, goal, cur, quest_title)
-                add_log("success", f"🎯 [납품 목표 등록] '{item_name}' (목표: {goal}개 / 현재: {cur}개) 등록 완료")
+                add_log("success", f"[납품 목표 등록] '{item_name}' (목표: {goal}개 / 현재: {cur}개) 등록 완료")
                 self._send_json({"status": "success", "target": entry})
             except Exception as e:
                 self._send_error(e)
@@ -1095,7 +1095,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     return
                 entry = delivery_target_store.update_current(item_name, current)
                 if entry:
-                    add_log("info", f"✏️ [보유 수량 수정] '{item_name}' 보유 수량이 {entry['current']}/{entry['goal']}개로 갱신되었습니다.")
+                    add_log("info", f"[보유 수량 수정] '{item_name}' 보유 수량이 {entry['current']}/{entry['goal']}개로 갱신되었습니다.")
                     self._send_json({"status": "success", "target": entry})
                 else:
                     self._send_error("해당 아이템을 찾을 수 없습니다.", 404)
@@ -1106,7 +1106,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/reset_delivery_targets_current":
             try:
                 reset_count = delivery_target_store.reset_all_current()
-                add_log("info", f"🔄 [보유 수량 초기화] 등록된 {reset_count}개 납품 품목의 보유 수량이 모두 0개로 초기화되었습니다.")
+                add_log("info", f"[보유 수량 초기화] 등록된 {reset_count}개 납품 품목의 보유 수량이 모두 0개로 초기화되었습니다.")
                 self._send_json({"status": "success", "reset_count": reset_count})
             except Exception as e:
                 self._send_error(e)
@@ -1120,7 +1120,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 item_name = str(req_json.get("item_name", "")).strip()
                 if item_name:
                     delivery_target_store.delete(item_name)
-                    add_log("info", f"🗑️ [납품 목표 삭제] '{item_name}' 항목이 목표 목록에서 제거되었습니다.")
+                    add_log("info", f"[납품 목표 삭제] '{item_name}' 항목이 목표 목록에서 제거되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
                 self._send_error(e)
@@ -1129,7 +1129,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/clear_delivery_targets":
             try:
                 delivery_target_store.clear()
-                add_log("info", "🗑️ [납품 목표 초기화] 모든 등록된 납품 목표가 삭제되었습니다.")
+                add_log("info", "[납품 목표 초기화] 모든 등록된 납품 목표가 삭제되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
                 self._send_error(e)
@@ -1159,7 +1159,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 else:
                     cur = max(prev_cur, eff_cur)
                 entry = custom_target_store.add_or_update(item_name, goal, cur, quest_title="개별 지정 제작")
-                add_log("success", f"🔨 [개별 제작 등록] '{item_name}' (목표: {goal}개 / 현재: {cur}개) 등록 완료")
+                add_log("success", f"[개별 제작 등록] '{item_name}' (목표: {goal}개 / 현재: {cur}개) 등록 완료")
                 self._send_json({"status": "success", "target": entry})
             except Exception as e:
                 self._send_error(e)
@@ -1177,7 +1177,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     return
                 entry = custom_target_store.update_current(item_name, current)
                 if entry:
-                    add_log("info", f"✏️ [개별 보유 수량 수정] '{item_name}' 보유 수량이 {entry['current']}/{entry['goal']}개로 갱신되었습니다.")
+                    add_log("info", f"[개별 보유 수량 수정] '{item_name}' 보유 수량이 {entry['current']}/{entry['goal']}개로 갱신되었습니다.")
                     self._send_json({"status": "success", "target": entry})
                 else:
                     self._send_error("해당 아이템을 찾을 수 없습니다.", 404)
@@ -1193,7 +1193,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 item_name = str(req_json.get("item_name", "")).strip()
                 if item_name:
                     custom_target_store.delete(item_name)
-                    add_log("info", f"🗑️ [개별 제작 삭제] '{item_name}' 항목이 목표 목록에서 제거되었습니다.")
+                    add_log("info", f"[개별 제작 삭제] '{item_name}' 항목이 목표 목록에서 제거되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
                 self._send_error(e)
@@ -1202,7 +1202,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/clear_custom_targets":
             try:
                 custom_target_store.clear()
-                add_log("info", "🗑️ [개별 제작 초기화] 모든 등록된 개별 제작 목표가 삭제되었습니다.")
+                add_log("info", "[개별 제작 초기화] 모든 등록된 개별 제작 목표가 삭제되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
                 self._send_error(e)
@@ -1211,7 +1211,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/reset_custom_targets_current":
             try:
                 reset_count = custom_target_store.reset_all_current()
-                add_log("info", f"🔄 [개별 제작 수량 초기화] 등록된 {reset_count}개 목표의 보유 수량이 모두 0개로 초기화되었습니다.")
+                add_log("info", f"[개별 제작 수량 초기화] 등록된 {reset_count}개 목표의 보유 수량이 모두 0개로 초기화되었습니다.")
                 self._send_json({"status": "success", "reset_count": reset_count})
             except Exception as e:
                 self._send_error(e)
@@ -1220,7 +1220,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/sync_custom_targets_inventory":
             try:
                 sync_count = custom_target_store.clear_all_overrides()
-                add_log("info", f"🎒 [인벤토리 동기화] 등록된 {sync_count}개 개별 제작 목표의 수동 수량이 해제되어 실제 인벤토리와 다시 동기화됩니다.")
+                add_log("info", f"[인벤토리 동기화] 등록된 {sync_count}개 개별 제작 목표의 수동 수량이 해제되어 실제 인벤토리와 다시 동기화됩니다.")
                 self._send_json({"status": "success", "sync_count": sync_count})
             except Exception as e:
                 self._send_error(e)
@@ -1247,7 +1247,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         if k_str and v_int > 0:
                             clean_ingredients[k_str] = v_int
                 manager_instance.update_recipe(item_name, clean_ingredients)
-                add_log("success", f"📖 [레시피 갱신] '{item_name}' 제작 레시피 저장 완료: {clean_ingredients}")
+                add_log("success", f"[레시피 갱신] '{item_name}' 제작 레시피 저장 완료: {clean_ingredients}")
                 self._send_json({"status": "success", "item_name": item_name, "ingredients": clean_ingredients})
             except Exception as e:
                 self._send_error(e)
@@ -1269,7 +1269,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     return
                 items = [{"item_name": t["item_name"], "goal": t["goal"], "quest_title": t.get("quest_title", "주간 납품")} for t in targets]
                 preset = delivery_preset_store.save_preset(preset_name, items)
-                add_log("success", f"💾 [프리셋 저장] '{preset_name}' ({len(items)}개 항목) 프리셋이 저장되었습니다.")
+                add_log("success", f"[프리셋 저장] '{preset_name}' ({len(items)}개 항목) 프리셋이 저장되었습니다.")
                 self._send_json({"status": "success", "preset": preset})
             except Exception as e:
                 self._send_error(e)
@@ -1283,7 +1283,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 preset_name = req_json.get("name", "")
                 if preset_name:
                     delivery_preset_store.delete_preset(preset_name)
-                    add_log("info", f"🗑️ [프리셋 삭제] '{preset_name}' 프리셋이 삭제되었습니다.")
+                    add_log("info", f"[프리셋 삭제] '{preset_name}' 프리셋이 삭제되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
                 self._send_error(e)
@@ -1319,7 +1319,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         delivery_target_store.add_or_update(item_name, goal, cur, quest_title)
                         loaded_count += 1
                 mode_str = " (보유 수량 0개로 초기화)" if reset_current else " (기존 보유 수량 승계)"
-                add_log("success", f"📂 [프리셋 불러오기] '{preset_name}' ({loaded_count}개 항목) 프리셋이 등록되었습니다.{mode_str}")
+                add_log("success", f"[프리셋 불러오기] '{preset_name}' ({loaded_count}개 항목) 프리셋이 등록되었습니다.{mode_str}")
                 self._send_json({"status": "success", "loaded_count": loaded_count, "reset_current": reset_current})
             except Exception as e:
                 self._send_error(e)
@@ -1331,16 +1331,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
 
             is_busy = True
-            current_task_info = "🎁 완료 가공품 순차 수령 중..."
+            current_task_info = "완료 가공품 순차 수령 중..."
 
             def collect_worker():
                 global is_busy, current_task_info
                 try:
                     collected = manager_instance.collect_completed_altering_works(callback=add_log)
                     if not collected:
-                        add_log("info", "ℹ️ 수령할 완료된 가공품이 없습니다.")
+                        add_log("info", "수령할 완료된 가공품이 없습니다.")
                 except Exception as err:
-                    add_log("error", f"❌ 가공품 수령 실패: {str(err)}")
+                    add_log("error", f"가공품 수령 실패: {str(err)}")
                 finally:
                     is_busy = False
                     current_task_info = ""
@@ -3809,7 +3809,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
       const durText = sum.duration_text || (sum.duration_seconds ? sum.duration_seconds + '초' : '0초');
       let statText = sum.status_text || '완료';
-      statText = statText.replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)\s*⏳?/g, '').replace(/[✅🛑❌⏳]/g, '').trim() || '완료';
+      statText = statText.replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)\s*/g, '').trim() || '완료';
       if (subtitleEl) subtitleEl.innerText = `// 소요 시간: ${durText} | 상태: ${statText}`;
 
       // 1. Wings
@@ -3951,7 +3951,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       if (!text) {
         let cleanTitle = (s.title || '작업 진행 종합 리포트').replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)/g, '').trim();
-        let cleanStatus = (s.status_text || '완료').replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)\s*⏳?/g, '').replace(/[✅🛑❌⏳]/g, '').trim() || '완료';
+        let cleanStatus = (s.status_text || '완료').replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)\s*/g, '').trim() || '완료';
         const lines = [
           '============================================================',
           `// ${cleanTitle}`,

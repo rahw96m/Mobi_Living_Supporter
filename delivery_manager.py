@@ -103,7 +103,7 @@ PRODUCED_PER_CRAFT: Dict[str, int] = {
 # 4대 시설 가공품 표준 레시피 (계층형 BOM 완전 분해용 공식 테이블)
 # produced: 1회 가공당 산출량, ingredients: 1회 가공당 소요 재료, tier: 가공 티어 (1~7)
 STANDARD_ALTER_RECIPES: Dict[str, Dict[str, Any]] = {
-    # 🪙 금속 가공 시설 (Metal)
+    # 금속 가공 시설 (Metal)
     "철괴": {
         "facility": "금속 가공 시설",
         "produced": 3,
@@ -154,7 +154,7 @@ STANDARD_ALTER_RECIPES: Dict[str, Dict[str, Any]] = {
         "display_name": "백금강괴"
     },
 
-    # 🪵 목재 가공 시설 (Lumber)
+    # 목재 가공 시설 (Lumber)
     "목재": {
         "facility": "목재 가공 시설",
         "produced": 3,
@@ -219,7 +219,7 @@ STANDARD_ALTER_RECIPES: Dict[str, Dict[str, Any]] = {
         "display_name": "단단한 목재"
     },
 
-    # 🦊 가죽 가공 시설 (Leather)
+    # 가죽 가공 시설 (Leather)
     "가죽": {
         "facility": "가죽 가공 시설",
         "produced": 3,
@@ -270,7 +270,7 @@ STANDARD_ALTER_RECIPES: Dict[str, Dict[str, Any]] = {
         "display_name": "특급 가죽"
     },
 
-    # 🧶 옷감 가공 시설 (Cloth)
+    # 옷감 가공 시설 (Cloth)
     "옷감": {
         "facility": "옷감 가공 시설",
         "produced": 3,
@@ -328,7 +328,7 @@ STANDARD_ALTER_RECIPES: Dict[str, Dict[str, Any]] = {
         "display_name": "두꺼운 옷감"
     },
 
-    # 🧵 실크 (Silk)
+    # 실크 (Silk)
     "실크": {
         "facility": "옷감 가공 시설",
         "produced": 2,
@@ -358,7 +358,7 @@ STANDARD_ALTER_RECIPES: Dict[str, Dict[str, Any]] = {
         "display_name": "특급 실크"
     },
 
-    # 🌿 요리 및 기타 가공
+    # 요리 및 기타 가공
     "밀가루": {
         "facility": "요리 시설",
         "produced": 3,
@@ -444,7 +444,7 @@ STANDARD_ALTER_RECIPES: Dict[str, Dict[str, Any]] = {
         "display_name": "마요네즈"
     },
 
-    # ⚗️ 약품 / 결정
+    # 약품 / 결정
     "마력 기폭제": {
         "facility": "약품 가공 시설",
         "produced": 3,
@@ -515,9 +515,9 @@ def is_wool_family(item_name: str) -> bool:
 def get_wool_gather_candidates(target_item: str, preference: str = "drop_rate") -> List[Dict[str, Any]]:
     """
     항상 가장 빨리 필요한 재료를 확보할 수 있는 최적의 양 후보 목록을 반환합니다.
-    - 양털: 일반 양 (양털 최다 드롭) ➔ 곱슬 양 ➔ 먹구름 양
-    - 상급 양털: 곱슬 양 (상급 양털 최다 드롭) ➔ 먹구름 양 ➔ 일반 양
-    - 상급 양털+: 먹구름 양 (상급 양털+ 최다 드롭) ➔ 곱슬 양 ➔ 일반 양
+    - 양털: 일반 양 (양털 최다 드롭) -> 곱슬 양 -> 먹구름 양
+    - 상급 양털: 곱슬 양 (상급 양털 최다 드롭) -> 먹구름 양 -> 일반 양
+    - 상급 양털+: 먹구름 양 (상급 양털+ 최다 드롭) -> 곱슬 양 -> 일반 양
     (생활 레벨 미달 시 자동으로 하위 양으로 단계적 폴백)
     """
     cloud = WOOL_SPECIES_DATA["상급 양털+"]
@@ -592,9 +592,9 @@ def get_wood_gather_candidates(target_item: str, preference: str = "drop_rate") 
     """
     항상 가장 빨리 필요한 재료를 확보할 수 있는 최적의 나무 후보 목록을 반환합니다.
     - 나무 진액: 뾰족 나무 (진액 최다 드롭 타겟 고정, 일반 통나무 나무로 오인 폴백 방지)
-    - 통나무: 굵은 나무 (통나무 최다 드롭) ➔ 뾰족 나무 ➔ 상급 나무 ➔ 상급 나무+
-    - 상급 통나무: 상급 나무 (상급 통나무 최다 드롭) ➔ 상급 나무+ ➔ 굵은 나무 ➔ 뾰족 나무
-    - 상급 통나무+: 상급 나무+ (상급 통나무+ 최다 드롭) ➔ 상급 나무 ➔ 굵은 나무 ➔ 뾰족 나무
+    - 통나무: 굵은 나무 (통나무 최다 드롭) -> 뾰족 나무 -> 상급 나무 -> 상급 나무+
+    - 상급 통나무: 상급 나무 (상급 통나무 최다 드롭) -> 상급 나무+ -> 굵은 나무 -> 뾰족 나무
+    - 상급 통나무+: 상급 나무+ (상급 통나무+ 최다 드롭) -> 상급 나무 -> 굵은 나무 -> 뾰족 나무
     (생활 레벨 미달 시 자동으로 하위 나무로 단계적 폴백)
     """
     cloud = WOOD_SPECIES_DATA["상급 통나무+"]
@@ -1282,61 +1282,61 @@ class DeliveryManager:
         # Build clean formatted report
         lines = [
             "======================================================================",
-            f"📊 [{summary_title}]",
+            f"[{summary_title}]",
             "======================================================================",
         ]
 
         # 1. Wings
         if wings_used > 0:
-            lines.append(f"🪽 [정령의 날개 소모] 총 {wings_used:,}개 사용 (시작: {initial_wings:,}개 ➔ 현재: {final_wings:,}개)")
+            lines.append(f"[정령의 날개 소모] 총 {wings_used:,}개 사용 (시작: {initial_wings:,}개 -> 현재: {final_wings:,}개)")
         else:
-            lines.append(f"🪽 [정령의 날개 소모] 0개 사용 (날개 차감 없음 | 현재 보유: {final_wings:,}개)")
+            lines.append(f"[정령의 날개 소모] 0개 사용 (날개 차감 없음 | 현재 보유: {final_wings:,}개)")
 
         # 2. Gather
         lines.append("")
         if gathered_aggregated:
-            lines.append(f"🌿 [원자재 맞춤 채집] 총 {len(gathered_aggregated)}종 / {total_gathered_qty:,}개 채집 완료:")
+            lines.append(f"[원자재 맞춤 채집] 총 {len(gathered_aggregated)}종 / {total_gathered_qty:,}개 채집 완료:")
             for g in gathered_aggregated:
                 req_info = f" (목표: {g['required']:,}개)" if g.get("required") else ""
                 lines.append(f"   • {g['item']}: +{g['gained']:,}개 획득{req_info}")
         else:
-            lines.append("🌿 [원자재 맞춤 채집] 채집 작업 없음 (필요 원자재가 가방/창고에 충분함)")
+            lines.append("[원자재 맞춤 채집] 채집 작업 없음 (필요 원자재가 가방/창고에 충분함)")
 
         # 2.5 Non-gatherable / Special Materials Alert
         if special_materials:
             lines.append("")
-            lines.append(f"🛒 [별도 확보 필요 재료] 상점 구매 또는 사냥으로 직접 확보 필요한 재료 {len(special_materials)}종:")
+            lines.append(f"[별도 확보 필요 재료] 상점 구매 또는 사냥으로 직접 확보 필요한 재료 {len(special_materials)}종:")
             for sm in special_materials:
-                lines.append(f"   • {sm['item_name']}: {sm['deficit']}개 부족 (가방 {sm.get('inventory_count', 0)}개 / 필요 {sm.get('total_needed', 0)}개) ➔ 잡화점/식료품점 구매 또는 사냥 필요")
+                lines.append(f"   • {sm['item_name']}: {sm['deficit']}개 부족 (가방 {sm.get('inventory_count', 0)}개 / 필요 {sm.get('total_needed', 0)}개) -> 잡화점/식료품점 구매 또는 사냥 필요")
 
         # 3. Alter
         lines.append("")
         if altered_aggregated:
-            lines.append(f"⚙️ [시설 가공 등록] 총 {len(altered_aggregated)}개 품목 / {total_altered_slots}슬롯 등록 완료:")
+            lines.append(f"[시설 가공 등록] 총 {len(altered_aggregated)}개 품목 / {total_altered_slots}슬롯 등록 완료:")
             for a in altered_aggregated:
                 yield_info = f" (예상 산출량: 약 {a['yield_est']:,}개)" if a.get("yield_est") else ""
                 lines.append(f"   • [{a['facility']}] '{a['recipe']}': {a['registered']}슬롯{yield_info}")
         else:
-            lines.append("⚙️ [시설 가공 등록] 신규 가공 등록 없음")
+            lines.append("[시설 가공 등록] 신규 가공 등록 없음")
 
         # 4. Craft
         lines.append("")
         if crafted_aggregated:
-            lines.append(f"🔨 [완제품 납품 제작] 총 {len(crafted_aggregated)}개 품목 / {total_crafted_qty:,}개 제작 완료:")
+            lines.append(f"[완제품 납품 제작] 총 {len(crafted_aggregated)}개 품목 / {total_crafted_qty:,}개 제작 완료:")
             for c in crafted_aggregated:
-                lines.append(f"   • '{c['item']}': {c['crafted']:,}개 제작 완료 ✅")
+                lines.append(f"   • '{c['item']}': {c['crafted']:,}개 제작 완료")
         else:
-            lines.append("🔨 [완제품 납품 제작] 완제품 제작 없음 (현재 가공 대기열 진행 중)")
+            lines.append("[완제품 납품 제작] 완제품 제작 없음 (현재 가공 대기열 진행 중)")
 
         # 5. Pre-collection
         if unique_collected:
             lines.append("")
-            lines.append(f"📦 [사전 가공품 수령] {', '.join(unique_collected)} 완료 가공품 수령 완료 (슬롯 확보 및 재료 입고)")
+            lines.append(f"[사전 가공품 수령] {', '.join(unique_collected)} 완료 가공품 수령 완료 (슬롯 확보 및 재료 입고)")
 
         # 6. Deferred
         if deferred_works:
             lines.append("")
-            lines.append(f"⏳ [가공 보류/대기] 총 {len(deferred_works)}건의 가공이 슬롯 또는 하위 재료 대기로 보류되었습니다.")
+            lines.append(f"[가공 보류/대기] 총 {len(deferred_works)}건의 가공이 슬롯 또는 하위 재료 대기로 보류되었습니다.")
             for d in deferred_works[:3]:
                 fac = d.get("facility", "")
                 it = d.get("item_name", "")
@@ -1347,10 +1347,10 @@ class DeliveryManager:
 
         if status == "waiting_in_background":
             lines.append("")
-            lines.append("🔔 [알람 동기화] 등록된 가공이 백그라운드에서 진행 중입니다. 완료 알람 후 '일괄 제작'을 다시 실행하세요!")
+            lines.append("[알람 동기화] 등록된 가공이 백그라운드에서 진행 중입니다. 완료 알람 후 '일괄 제작'을 다시 실행하세요!")
         elif status == "aborted":
             lines.append("")
-            lines.append("🛑 [사용자 중지] 사용자의 요청으로 작업이 중간에 중단되었습니다. 중단 시점까지의 결과가 요약되었습니다.")
+            lines.append("[사용자 중지] 사용자의 요청으로 작업이 중간에 중단되었습니다. 중단 시점까지의 결과가 요약되었습니다.")
 
         lines.append("======================================================================")
 
@@ -1361,11 +1361,11 @@ class DeliveryManager:
         dur_str = f"{m}분 {s}초" if m > 0 else f"{s}초"
 
         status_text = {
-            "completed": "완료 ✅",
-            "waiting_in_background": "완료 ✅",
-            "aborted": "사용자 중지 🛑",
-            "error": "오류 중단 ❌"
-        }.get(status, "완료 ✅")
+            "completed": "완료",
+            "waiting_in_background": "완료",
+            "aborted": "사용자 중지",
+            "error": "오류 중단"
+        }.get(status, "완료")
 
         return {
             "title": summary_title,
@@ -1954,11 +1954,11 @@ class DeliveryManager:
            until the full required_count is collected!
         """
         if self.abort_requested:
-            self.log("🛑 [사용자 중지] 채집 시작 전 중지 요청이 확인되었습니다.", "warn", callback)
+            self.log("[사용자 중지] 채집 시작 전 중지 요청이 확인되었습니다.", "warn", callback)
             return {"status": "aborted", "item": item_name, "gathered": 0}
 
         if required_count <= 0:
-            self.log(f"🌿 '{item_name}'은(는) 이미 충분하여 채집을 건너뜁니다.", "info", callback)
+            self.log(f"'{item_name}'은(는) 이미 충분하여 채집을 건너뜁니다.", "info", callback)
             return {"status": "satisfied", "item": item_name, "gathered": 0}
 
         is_gath, tool_ok = self.is_gatherable(item_name)
@@ -1996,16 +1996,16 @@ class DeliveryManager:
 
             target_sheep = candidate_list[0]
             self.log(
-                f"🧶 [양털 맞춤 채집 시작] 목표: '{item_name}' {required_count}개 "
-                f"(가방: {initial_count}개 ➔ 목표: {target_count}개) | "
+                f"[양털 맞춤 채집 시작] 목표: '{item_name}' {required_count}개 "
+                f"(가방: {initial_count}개 -> 목표: {target_count}개) | "
                 f"최적 대상: {target_sheep['species']}({target_sheep['gather_target']})",
                 "action",
                 callback
             )
             if len(candidate_list) > 1:
-                cand_names = " ➔ ".join([c["species"] for c in candidate_list])
+                cand_names = " -> ".join([c["species"] for c in candidate_list])
                 self.log(
-                    f"ℹ️ [단계적 폴백 활성화] 생활 레벨 및 채집 가능 여부에 따라 단계적 순차 채집: {cand_names}",
+                    f"[단계적 폴백 활성화] 생활 레벨 및 채집 가능 여부에 따라 단계적 순차 채집: {cand_names}",
                     "info",
                     callback
                 )
@@ -2029,24 +2029,24 @@ class DeliveryManager:
 
             target_tree = candidate_list[0]
             self.log(
-                f"🪓 [벌목 맞춤 채집 시작] 목표: '{item_name}' {required_count}개 "
-                f"(가방: {initial_count}개 ➔ 목표: {target_count}개) | "
+                f"[벌목 맞춤 채집 시작] 목표: '{item_name}' {required_count}개 "
+                f"(가방: {initial_count}개 -> 목표: {target_count}개) | "
                 f"최적 대상: {target_tree['species']}({target_tree['gather_target']})",
                 "action",
                 callback
             )
             if len(candidate_list) > 1:
-                cand_names = " ➔ ".join([c["species"] for c in candidate_list])
+                cand_names = " -> ".join([c["species"] for c in candidate_list])
                 self.log(
-                    f"ℹ️ [단계적 폴백 활성화] 생활 레벨 및 채집 가능 여부에 따라 단계적 순차 채집: {cand_names}",
+                    f"[단계적 폴백 활성화] 생활 레벨 및 채집 가능 여부에 따라 단계적 순차 채집: {cand_names}",
                     "info",
                     callback
                 )
         else:
             candidate_list = [{"gather_target": item_name, "species": item_name, "tier": 1, "desc": item_name}]
             self.log(
-                f"🌿 [부족 수량 맞춤 채집 시작] '{item_name}' 목표: {required_count}개 추가 채집 "
-                f"(현재 가방: {initial_count}개 ➔ 목표: {target_count}개)", 
+                f"[부족 수량 맞춤 채집 시작] '{item_name}' 목표: {required_count}개 추가 채집 "
+                f"(현재 가방: {initial_count}개 -> 목표: {target_count}개)", 
                 "action", 
                 callback
             )
@@ -2071,7 +2071,7 @@ class DeliveryManager:
             # Check tool status before launching or re-launching
             is_gath, tool_ok = self.is_gatherable(gather_target_item)
             if not tool_ok:
-                self.log(f"⚠️ '{species_label}'({gather_target_item}) 채집 도구가 소모되었거나 내구도가 0입니다. 채집을 중단합니다.", "warn", callback)
+                self.log(f"'{species_label}'({gather_target_item}) 채집 도구가 소모되었거나 내구도가 0입니다. 채집을 중단합니다.", "warn", callback)
                 break
 
             worker_error = []
@@ -2096,7 +2096,7 @@ class DeliveryManager:
 
                 # Check abort request
                 if self.abort_requested:
-                    self.log(f"🛑 [사용자 중지 요청] '{item_name}' 채집을 즉시 중단합니다.", "warn", callback)
+                    self.log(f"[사용자 중지 요청] '{item_name}' 채집을 즉시 중단합니다.", "warn", callback)
                     self._force_stop_worker(worker_thread)
                     return {
                         "status": "aborted",
@@ -2110,7 +2110,7 @@ class DeliveryManager:
                 try:
                     activity = self.cli.get_activity()
                     if activity.get("IsDead") or activity.get("IsReviving"):
-                        self.log(f"⚠️ 캐릭터가 행동 불능 상태입니다. 채집을 중단합니다.", "warn", callback)
+                        self.log(f"캐릭터가 행동 불능 상태입니다. 채집을 중단합니다.", "warn", callback)
                         self._force_stop_worker(worker_thread)
                         return {
                             "status": "dead",
@@ -2129,7 +2129,7 @@ class DeliveryManager:
                     if max_w > 0 and (cur_w / max_w) >= 0.95:
                         pct = (cur_w / max_w) * 100
                         self.log(
-                            f"⚠️ [가방 무게 경고] 가방 무게가 {pct:.1f}%({cur_w:.1f}/{max_w:.1f})에 도달하여 과적 방지를 위해 채집을 즉시 안전 중단합니다.",
+                            f"[가방 무게 경고] 가방 무게가 {pct:.1f}%({cur_w:.1f}/{max_w:.1f})에 도달하여 과적 방지를 위해 채집을 즉시 안전 중단합니다.",
                             "warn",
                             callback
                         )
@@ -2148,12 +2148,12 @@ class DeliveryManager:
                 if gained != last_logged_gained and gained > 0:
                     last_logged_gained = gained
                     extra_info = f" | 대상: {species_label}" if (is_wool or is_wood) and species_label != item_name else ""
-                    self.log(f"🌾 '{item_name}' 채집 진행 중... ({gained}/{required_count}개 획득, 현재 가방: {curr_count}개{extra_info})", "info", callback)
+                    self.log(f"'{item_name}' 채집 진행 중... ({gained}/{required_count}개 획득, 현재 가방: {curr_count}개{extra_info})", "info", callback)
 
                 # 3. Check if target count is reached
                 if curr_count >= target_count or gained >= required_count:
                     self.log(
-                        f"🎯 [목표 달성] '{item_name}' 부족 수량 {required_count}개 채집 완료! "
+                        f"[목표 달성] '{item_name}' 부족 수량 {required_count}개 채집 완료! "
                         f"(가방: {curr_count}개, 획득: {gained}개) 채집을 즉시 자동 중단합니다.", 
                         "success", 
                         callback
@@ -2169,7 +2169,7 @@ class DeliveryManager:
                         idle_counter += 1
                         # After 8s of not moving/playing, safely recognize that field node is gone
                         if idle_counter >= 8:
-                            self.log(f"ℹ️ 필드에 더 이상 상호작용 가능한 '{species_label}' 노드가 없어 채집 동작을 일시 종료합니다.", "info", callback)
+                            self.log(f"필드에 더 이상 상호작용 가능한 '{species_label}' 노드가 없어 채집 동작을 일시 종료합니다.", "info", callback)
                             self._force_stop_worker(worker_thread)
                             break
                     else:
@@ -2194,7 +2194,7 @@ class DeliveryManager:
             if worker_error:
                 err = worker_error[0]
                 err_msg = str(err)
-                self.log(f"⚠️ '{species_label}'({gather_target_item}) 채집 중 응답: {err_msg}", "warn", callback)
+                self.log(f"'{species_label}'({gather_target_item}) 채집 중 응답: {err_msg}", "warn", callback)
 
                 # 단계적 폴백 조건: 생활 레벨 부족, 경로 없음, 노드 없음 등의 경우 다음 하위 후보로 전환
                 is_level_or_route_err = any(k in err_msg for k in ["insufficient_living_skill_level", "no_route", "not_found", "locked"])
@@ -2202,7 +2202,7 @@ class DeliveryManager:
                     candidate_idx += 1
                     next_cand = candidate_list[candidate_idx]
                     self.log(
-                        f"🔄 [단계적 폴백] '{species_label}' 채집 불가 ({err_msg}). "
+                        f"[단계적 폴백] '{species_label}' 채집 불가 ({err_msg}). "
                         f"생활 레벨 조건을 고려하여 다음 순위인 '{next_cand['species']}'({next_cand['gather_target']})(으)로 자동 전환합니다.",
                         "warn",
                         callback
@@ -2226,7 +2226,7 @@ class DeliveryManager:
                         candidate_idx += 1
                         next_cand = candidate_list[candidate_idx]
                         self.log(
-                            f"🔄 [단계적 폴백] '{species_label}'에서 연속 획득 실패. "
+                            f"[단계적 폴백] '{species_label}'에서 연속 획득 실패. "
                             f"다음 후보인 '{next_cand['species']}'({next_cand['gather_target']})(으)로 전환하여 채집을 이어갑니다.",
                             "warn",
                             callback
@@ -2235,7 +2235,7 @@ class DeliveryManager:
                         time.sleep(1.0)
                         continue
                     else:
-                        self.log(f"⚠️ '{item_name}' 채집 시도에서 더 이상 아이템을 획득하지 못하여 채집을 종료합니다.", "warn", callback)
+                        self.log(f"'{item_name}' 채집 시도에서 더 이상 아이템을 획득하지 못하여 채집을 종료합니다.", "warn", callback)
                         break
             else:
                 consecutive_zero_gains = 0
@@ -2244,7 +2244,7 @@ class DeliveryManager:
             remaining_deficit = target_count - curr_count
             if remaining_deficit > 0:
                 self.log(
-                    f"🔄 '{species_label}' 1회 채집 구간 종료 (현재 가방: {curr_count}개, 총 획득: {curr_count - initial_count}/{required_count}개). "
+                    f"'{species_label}' 1회 채집 구간 종료 (현재 가방: {curr_count}개, 총 획득: {curr_count - initial_count}/{required_count}개). "
                     f"남은 부족분 {remaining_deficit}개를 마저 채집하기 위해 연속 채집을 계속 진행합니다...", 
                     "action", 
                     callback
@@ -2257,13 +2257,13 @@ class DeliveryManager:
 
         if total_gained >= required_count or final_count >= target_count:
             self.log(
-                f"✅ [맞춤 채집 완료] '{item_name}' 총 {total_gained}개 획득 (가방: {final_count}개 / 필요: {required_count}개)", 
+                f"[맞춤 채집 완료] '{item_name}' 총 {total_gained}개 획득 (가방: {final_count}개 / 필요: {required_count}개)", 
                 "success", 
                 callback
             )
         else:
             self.log(
-                f"⚠️ [채집 조기 종료] '{item_name}' {total_gained}/{required_count}개 획득 (가방: {final_count}개 / 목표: {target_count}개)", 
+                f"[채집 조기 종료] '{item_name}' {total_gained}/{required_count}개 획득 (가방: {final_count}개 / 목표: {target_count}개)", 
                 "warn", 
                 callback
             )
@@ -2282,7 +2282,7 @@ class DeliveryManager:
             t["updated_at"] = int(time.time() * 1000)
             delivery_target_store.targets[item_name] = t
             delivery_target_store.save()
-            self.log(f"📊 [납품 목표 갱신] '{item_name}' 채집 완료({total_gained}개 획득) 반영 ➔ 현재 {new_cur}/{goal}개", "info", callback)
+            self.log(f"[납품 목표 갱신] '{item_name}' 채집 완료({total_gained}개 획득) 반영 -> 현재 {new_cur}/{goal}개", "info", callback)
 
         # Update custom_target_store if this item is in registered custom targets
         if item_name in custom_target_store.targets and total_gained > 0:
@@ -2298,7 +2298,7 @@ class DeliveryManager:
             ct["updated_at"] = int(time.time() * 1000)
             custom_target_store.targets[item_name] = ct
             custom_target_store.save()
-            self.log(f"📊 [개별 제작 목표 갱신] '{item_name}' 채집 완료({total_gained}개 획득) 반영 ➔ 현재 {new_cur_c}/{goal_c}개", "info", callback)
+            self.log(f"[개별 제작 목표 갱신] '{item_name}' 채집 완료({total_gained}개 획득) 반영 -> 현재 {new_cur_c}/{goal_c}개", "info", callback)
 
         return {
             "status": "completed" if (total_gained >= required_count or final_count >= target_count) else "partial",
@@ -2320,7 +2320,7 @@ class DeliveryManager:
         try:
             works_info = self.cli.get_altering_works()
         except Exception as e:
-            self.log(f"⚠️ 가공 현황 조회 중 오류 (수령 건너뜀): {e}", "warn", callback)
+            self.log(f"가공 현황 조회 중 오류 (수령 건너뜀): {e}", "warn", callback)
             return []
 
         works = works_info.get("works", [])
@@ -2343,7 +2343,7 @@ class DeliveryManager:
             facilities.remove(preferred_facility)
             facilities.insert(0, preferred_facility)
 
-        self.log(f"🎁 [완료 가공품 감지] 총 {len(completed_works)}건의 완료된 가공 슬롯이 확인되었습니다. 새 가공 전 우선 수령합니다.", "action", callback)
+        self.log(f"[완료 가공품 감지] 총 {len(completed_works)}건의 완료된 가공 슬롯이 확인되었습니다. 새 가공 전 우선 수령합니다.", "action", callback)
 
         for fac in facilities:
             if self.abort_requested:
@@ -2354,14 +2354,14 @@ class DeliveryManager:
             try:
                 res = self.cli.complete_altering_work(rep_item)
                 collected_facilities.append(fac)
-                self.log(f"     ✅ '{fac}' 완료 가공품 수령 완료! (슬롯 확보 완료)", "success", callback)
+                self.log(f"     '{fac}' 완료 가공품 수령 완료! (슬롯 확보 완료)", "success", callback)
                 # Clean up alarms for items at this facility
                 for it in items:
                     key = f"{fac}_{it}"
                     alarm_store.delete_alarm(key)
                 time.sleep(1)
             except Exception as ex:
-                self.log(f"     ⚠️ '{fac}' 수령 중 알림/오류: {ex}", "warn", callback)
+                self.log(f"     '{fac}' 수령 중 알림/오류: {ex}", "warn", callback)
         if collected_facilities:
             self.notify_altering_updated()
 
@@ -2385,9 +2385,9 @@ class DeliveryManager:
         successful_works = 0
         for i in range(works_needed):
             if self.abort_requested:
-                self.log("🛑 [사용자 중지] 가공 등록이 중단되었습니다.", "warn", callback)
+                self.log("[사용자 중지] 가공 등록이 중단되었습니다.", "warn", callback)
                 break
-            self.log(f"⚙️ [가공 등록 {i+1}/{works_needed}] '{alter_display_name}' 가공 대기열에 등록합니다.", "action", callback)
+            self.log(f"[가공 등록 {i+1}/{works_needed}] '{alter_display_name}' 가공 대기열에 등록합니다.", "action", callback)
             try:
                 res = self.cli.execute_altering(alter_display_name)
                 self.log(f"   등록 결과: {res}", "info", callback)
@@ -2409,7 +2409,7 @@ class DeliveryManager:
                                 is_gath, _ = self.is_gatherable(ing_name)
                                 if is_gath:
                                     self.log(
-                                        f"💡 [전송기 보충 채집] 가방에 '{ing_name}'이(가) {inv_cnt}개 남아 1회분({ing_req}개) 합산 결제가 지연되었습니다. "
+                                        f"[전송기 보충 채집] 가방에 '{ing_name}'이(가) {inv_cnt}개 남아 1회분({ing_req}개) 합산 결제가 지연되었습니다. "
                                         f"가방 보충을 위해 부족분 {deficit_for_one}개를 즉시 현장 채집합니다.",
                                         "action",
                                         callback
@@ -2420,25 +2420,25 @@ class DeliveryManager:
                     if healed:
                         try:
                             res = self.cli.execute_altering(alter_display_name)
-                            self.log(f"   ✅ [전송기 보충 후 재시도 성공] {res}", "success", callback)
+                            self.log(f"   [전송기 보충 후 재시도 성공] {res}", "success", callback)
                             successful_works += 1
                             time.sleep(1)
                             continue
                         except MabinogiCLIError as retry_err:
-                            self.log(f"   ⚠️ 보충 후 가공 재시도 실패 ({retry_err}). 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
+                            self.log(f"   보충 후 가공 재시도 실패 ({retry_err}). 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
                             return {"status": "ingredient_missing_skipped", "item": item_name, "registered": successful_works, "facility": target_facility, "error": str(retry_err)}
                     else:
-                        self.log(f"   ⚠️ '{alter_display_name}' 가공 재료 부족 ({err}). 남은 {works_needed - successful_works}회 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
+                        self.log(f"   '{alter_display_name}' 가공 재료 부족 ({err}). 남은 {works_needed - successful_works}회 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
                         return {"status": "ingredient_missing_skipped", "item": item_name, "registered": successful_works, "facility": target_facility, "error": str(err)}
 
-                self.log(f"   ⚠️ 가공 등록 중 오류: {err}. 완료 가공 슬롯 재확인 후 1회 재시도합니다.", "warn", callback)
+                self.log(f"   가공 등록 중 오류: {err}. 완료 가공 슬롯 재확인 후 1회 재시도합니다.", "warn", callback)
                 self.collect_completed_altering_works(preferred_facility=target_facility, callback=callback)
                 try:
                     res = self.cli.execute_altering(alter_display_name)
                     self.log(f"   재시도 등록 결과: {res}", "success", callback)
                     successful_works += 1
                 except MabinogiCLIError as retry_err:
-                    self.log(f"   ⚠️ '{alter_display_name}' 가공 슬롯 부족/오류 ({retry_err}). 남은 {works_needed - successful_works}회 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
+                    self.log(f"   '{alter_display_name}' 가공 슬롯 부족/오류 ({retry_err}). 남은 {works_needed - successful_works}회 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
                     return {"status": "slot_full_skipped", "item": item_name, "registered": successful_works, "facility": target_facility, "error": str(retry_err)}
             time.sleep(1)
 
@@ -2475,31 +2475,31 @@ class DeliveryManager:
                 works_count=len(f_works)
             )
             rem_m = math.ceil(total_facility_remaining / 60)
-            self.log(f"🔔 [가공시설 알람 등록] '{facility_name}'의 마지막 가공 완료 시각(약 {rem_m}분 뒤)에 맞춰 알람이 등록되었습니다.", "info", callback)
+            self.log(f"[가공시설 알람 등록] '{facility_name}'의 마지막 가공 완료 시각(약 {rem_m}분 뒤)에 맞춰 알람이 등록되었습니다.", "info", callback)
 
         # Non-blocking transition if remaining time > 45s
         if total_facility_remaining > 45:
             remaining_min = math.ceil(total_facility_remaining / 60)
-            self.log(f"☕ [비동기 백그라운드 전환] '{facility_name}' 가공 완료까지 약 {remaining_min}분({total_facility_remaining}초) 소요됩니다.", "info", callback)
-            self.log(f"🎮 캐릭터 조작이 즉시 자유화되었습니다! 편하게 사냥, 던전 등 다른 콘텐츠를 플레이하세요.", "success", callback)
-            self.log(f"🔔 마지막 가공이 끝나면 알람이 울리며 웹 대시보드에서 즉시 수령 후 제작을 진행할 수 있습니다.", "info", callback)
+            self.log(f"[비동기 백그라운드 전환] '{facility_name}' 가공 완료까지 약 {remaining_min}분({total_facility_remaining}초) 소요됩니다.", "info", callback)
+            self.log(f"캐릭터 조작이 즉시 자유화되었습니다! 편하게 사냥, 던전 등 다른 콘텐츠를 플레이하세요.", "success", callback)
+            self.log(f"마지막 가공이 끝나면 알람이 울리며 웹 대시보드에서 즉시 수령 후 제작을 진행할 수 있습니다.", "info", callback)
             return {"status": "waiting_in_background", "item": item_name, "remaining_seconds": total_facility_remaining, "registered": successful_works, "facility": facility_name}
 
         # Short wait
-        self.log(f"⏳ [가공 대기] '{item_name}' 가공 완료를 잠시 기다립니다 (약 {max_remaining}초)...", "info", callback)
+        self.log(f"[가공 대기] '{item_name}' 가공 완료를 잠시 기다립니다 (약 {max_remaining}초)...", "info", callback)
         while True:
             works_info = self.cli.get_altering_works()
             pending_works = [w for w in works_info.get("works", []) if w.get("DisplayName") == item_name and not w.get("IsCompleted")]
 
             if not pending_works:
-                self.log(f"✨ [가공 완료 확인] 모든 '{item_name}' 작업이 완료되었습니다.", "success", callback)
+                self.log(f"[가공 완료 확인] 모든 '{item_name}' 작업이 완료되었습니다.", "success", callback)
                 break
 
             remaining_sec = max([w.get("RemainingSeconds", 0) for w in pending_works], default=5)
             time.sleep(min(5, max(1, remaining_sec)))
 
         # Collect
-        self.log(f"📦 [가공품 수령] '{item_name}' 가공 결과물을 수령합니다.", "action", callback)
+        self.log(f"[가공품 수령] '{item_name}' 가공 결과물을 수령합니다.", "action", callback)
         coll_res = self.cli.complete_altering_work(item_name)
         self.log(f"   수령 결과: {coll_res}", "success", callback)
         return coll_res
@@ -2519,7 +2519,7 @@ class DeliveryManager:
             crafts_needed = math.ceil(remaining_needed / produced_per_craft)
             batch = crafts_needed if max_batch_limit is None else min(crafts_needed, max_batch_limit)
             self.log(
-                f"🔨 [제작 시작] '{item_name}' {batch}회 제작 시도... "
+                f"[제작 시작] '{item_name}' {batch}회 제작 시도... "
                 f"(필요: {remaining_needed}개, 1회당 산출: {produced_per_craft}개)",
                 "action",
                 callback
@@ -2536,11 +2536,11 @@ class DeliveryManager:
 
                 items_made = max(produced_now, batch * produced_per_craft)
                 total_produced += items_made
-                self.log(f"🔨 [제작 성공] {batch}회 제작 완료 (산출: +{items_made}개 / 누적: {total_produced}/{needed_target}개)", "success", callback)
+                self.log(f"[제작 성공] {batch}회 제작 완료 (산출: +{items_made}개 / 누적: {total_produced}/{needed_target}개)", "success", callback)
 
                 remaining_needed = max(0, needed_target - total_produced)
                 if remaining_needed <= 0:
-                    self.log(f"🎯 [목표 달성] '{item_name}' 필요 수량({needed_target}개) 제작이 완료되어 추가 제작을 종료합니다.", "success", callback)
+                    self.log(f"[목표 달성] '{item_name}' 필요 수량({needed_target}개) 제작이 완료되어 추가 제작을 종료합니다.", "success", callback)
                     break
             except MabinogiCLIError as err:
                 data = err.response_data or {}
@@ -2550,7 +2550,7 @@ class DeliveryManager:
                     max_count = data.get("maxCount", 1)
                     max_batch_limit = max_count
                     batch = min(crafts_needed, max_count)
-                    self.log(f"⚠️ 1회 최대 제작량 제한({max_count}회)으로 분할 제작합니다.", "warn", callback)
+                    self.log(f"1회 최대 제작량 제한({max_count}회)으로 분할 제작합니다.", "warn", callback)
                     try:
                         res = self.cli.execute_crafting(item_name, craft_count=batch)
                         produced_now = 0
@@ -2563,17 +2563,17 @@ class DeliveryManager:
                         items_made = max(produced_now, batch * produced_per_craft)
                         total_produced += items_made
                         remaining_needed = max(0, needed_target - total_produced)
-                        self.log(f"🔨 [분할 제작 성공] {batch}회 완료 (산출: +{items_made}개 / 누적: {total_produced}/{needed_target}개)", "success", callback)
+                        self.log(f"[분할 제작 성공] {batch}회 완료 (산출: +{items_made}개 / 누적: {total_produced}/{needed_target}개)", "success", callback)
                         if remaining_needed <= 0:
                             break
                         continue
                     except Exception as retry_err:
-                        self.log(f"⚠️ 분할 제작 시도 중 오류: {retry_err}", "warn", callback)
+                        self.log(f"분할 제작 시도 중 오류: {retry_err}", "warn", callback)
                         raise retry_err
                 elif err_code == "not_enough_ingredient":
                     if batch > 1:
                         batch = max(1, batch // 2)
-                        self.log(f"⚠️ 재료 부족으로 제작 수량을 {batch}회로 낮추어 재시도합니다.", "warn", callback)
+                        self.log(f"재료 부족으로 제작 수량을 {batch}회로 낮추어 재시도합니다.", "warn", callback)
                         try:
                             res = self.cli.execute_crafting(item_name, craft_count=batch)
                             produced_now = 0
@@ -2586,7 +2586,7 @@ class DeliveryManager:
                             items_made = max(produced_now, batch * produced_per_craft)
                             total_produced += items_made
                             remaining_needed = max(0, needed_target - total_produced)
-                            self.log(f"🔨 [감소 제작 성공] {batch}회 완료 (산출: +{items_made}개)", "success", callback)
+                            self.log(f"[감소 제작 성공] {batch}회 완료 (산출: +{items_made}개)", "success", callback)
                             if remaining_needed <= 0:
                                 break
                             continue
@@ -2603,7 +2603,7 @@ class DeliveryManager:
                                 is_gath, _ = self.is_gatherable(ing_name)
                                 if is_gath:
                                     self.log(
-                                        f"💡 [전송기 보충 채집] 가방에 '{ing_name}'이(가) {inv_cnt}개 남아 1회분({per_craft}개) 합산 결제가 지연되었습니다. "
+                                        f"[전송기 보충 채집] 가방에 '{ing_name}'이(가) {inv_cnt}개 남아 1회분({per_craft}개) 합산 결제가 지연되었습니다. "
                                         f"가방 보충을 위해 부족분 {deficit_for_one}개를 즉시 현장 채집합니다.",
                                         "action",
                                         callback
@@ -2624,12 +2624,12 @@ class DeliveryManager:
                             items_made = max(produced_now, produced_per_craft)
                             total_produced += items_made
                             remaining_needed = max(0, needed_target - total_produced)
-                            self.log(f"🔨 [전송기 보충 후 제작 성공] 1회 제작 완료 (산출: +{items_made}개)", "success", callback)
+                            self.log(f"[전송기 보충 후 제작 성공] 1회 제작 완료 (산출: +{items_made}개)", "success", callback)
                             if remaining_needed <= 0:
                                 break
                             continue
                         except MabinogiCLIError as retry_err:
-                            self.log(f"⚠️ 보충 후 제작 재시도 실패 ({retry_err})", "warn", callback)
+                            self.log(f"보충 후 제작 재시도 실패 ({retry_err})", "warn", callback)
                             raise retry_err
                     else:
                         raise err
@@ -2651,7 +2651,7 @@ class DeliveryManager:
             t["updated_at"] = int(time.time() * 1000)
             delivery_target_store.targets[item_name] = t
             delivery_target_store.save()
-            self.log(f"📊 [납품 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 ➔ 현재 {new_cur}/{goal}개", "info", callback)
+            self.log(f"[납품 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 -> 현재 {new_cur}/{goal}개", "info", callback)
 
         # Update custom_target_store if this item is in registered custom targets
         if item_name in custom_target_store.targets and total_produced > 0:
@@ -2667,7 +2667,7 @@ class DeliveryManager:
             ct["updated_at"] = int(time.time() * 1000)
             custom_target_store.targets[item_name] = ct
             custom_target_store.save()
-            self.log(f"📊 [개별 제작 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 ➔ 현재 {new_cur_c}/{goal_c}개", "info", callback)
+            self.log(f"[개별 제작 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 -> 현재 {new_cur_c}/{goal_c}개", "info", callback)
 
         return total_produced
 
@@ -3085,13 +3085,13 @@ class DeliveryManager:
             if new_demand > 0 and not can_fit_all:
                 has_slot_issue = True
                 slot_warnings.append(
-                    f"⚠️ '{fac}': 가공 {new_demand}회 필요하지만 "
+                    f"'{fac}': 가공 {new_demand}회 필요하지만 "
                     f"수령 후에도 가용 슬롯이 {available_after_collect}개뿐입니다 "
                     f"({overflow}회분 초과). 진행 중 {usage['in_progress']}건 완료 후 추가 등록이 필요합니다."
                 )
             elif new_demand > 0 and usage["completed"] > 0 and new_demand > available:
                 slot_warnings.append(
-                    f"ℹ️ '{fac}': 완료된 가공 {usage['completed']}건을 먼저 수령하면 "
+                    f"'{fac}': 완료된 가공 {usage['completed']}건을 먼저 수령하면 "
                     f"슬롯 {available_after_collect}개 확보 가능 (필요: {new_demand}회)"
                 )
 
@@ -3187,9 +3187,9 @@ class DeliveryManager:
             goal_fulfillment_mode = bool(plan.get("goal_fulfillment_mode", settings_store.get("goal_fulfillment_mode", True)))
 
         order_label = "상위 티어 우선 (오래 걸리는 가공부터)" if alter_order != "low_tier" else "하위 티어 우선 (기초 재료부터)"
-        mode_label = " [🎯 목표 완수 모드]" if goal_fulfillment_mode else ""
+        mode_label = " [목표 완수 모드]" if goal_fulfillment_mode else ""
         self.reset_abort()
-        self.log(f"🚀 [통합 일괄 납품 파이프라인 가동{mode_label}] ({order_label}) 전체 목표 최적화 제작을 시작합니다.", "action", callback)
+        self.log(f"[통합 일괄 납품 파이프라인 가동{mode_label}] ({order_label}) 전체 목표 최적화 제작을 시작합니다.", "action", callback)
 
         start_time = time.time()
         initial_wings = self._safe_get_wings()
@@ -3200,7 +3200,7 @@ class DeliveryManager:
         deferred_works: List[Dict[str, Any]] = []
 
         if self.abort_requested:
-            self.log("🛑 [사용자 중지] 시작 전 중지 요청이 확인되었습니다.", "warn", callback)
+            self.log("[사용자 중지] 시작 전 중지 요청이 확인되었습니다.", "warn", callback)
             final_wings = self._safe_get_wings(initial_wings)
             summary = self.format_and_log_summary(
                 summary_title="주간 납품 작업 (사용자 중지)",
@@ -3227,18 +3227,18 @@ class DeliveryManager:
         raw_mats = plan.get("raw_materials", [])
 
         # Stage 1: Collect any completed altering works across all facilities first!
-        self.log("📦 [사전 가공품 수령] 모든 시설의 완료된 가공품을 수령하여 슬롯을 비우고 재료를 확보합니다.", "action", callback)
+        self.log("[사전 가공품 수령] 모든 시설의 완료된 가공품을 수령하여 슬롯을 비우고 재료를 확보합니다.", "action", callback)
         collected_facilities = self.collect_completed_altering_works(callback=callback)
         if collected_facilities:
             collected_facilities_all.extend(collected_facilities)
-            self.log("🔄 [BOM 재계산] 완료 가공품 수령으로 재고가 변동되어 최적 필요 수량을 재계산합니다.", "info", callback)
+            self.log("[BOM 재계산] 완료 가공품 수령으로 재고가 변동되어 최적 필요 수량을 재계산합니다.", "info", callback)
             plan = self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
             intermediate_reqs = plan.get("intermediate_requirements", [])
             tasks = plan.get("tasks", [])
             raw_mats = plan.get("raw_materials", [])
 
         if self.abort_requested:
-            self.log("🛑 [사용자 중지] 작업이 중단되었습니다.", "warn", callback)
+            self.log("[사용자 중지] 작업이 중단되었습니다.", "warn", callback)
             final_wings = self._safe_get_wings(initial_wings)
             summary = self.format_and_log_summary(
                 summary_title="주간 납품 작업 (사용자 중지)",
@@ -3258,7 +3258,7 @@ class DeliveryManager:
         # Stage 1.5: Warn about non-gatherable / shop materials
         special_needed = [r for r in raw_mats if r.get("deficit", 0) > 0 and (r.get("is_special_obtain") or not r.get("is_gatherable"))]
         if special_needed:
-            self.log(f"🛒 [별도 확보 필요 안내] 상점 구매 또는 드랍으로 획득해야 하는 재료 {len(special_needed)}종이 부족합니다.", "warn", callback)
+            self.log(f"[별도 확보 필요 안내] 상점 구매 또는 드랍으로 획득해야 하는 재료 {len(special_needed)}종이 부족합니다.", "warn", callback)
             for sm in special_needed:
                 self.log(f"   • '{sm['item_name']}': 필요 {sm['total_needed']}개 / 보유 {sm['total_owned']}개 ({sm['deficit']}개 부족) -> 잡화점/식료품점 구매 또는 사냥으로 별도 확보 필요", "warn", callback)
 
@@ -3266,10 +3266,10 @@ class DeliveryManager:
         if raw_mats:
             needed_gather = [r for r in raw_mats if r.get("deficit", 0) > 0 and r.get("is_gatherable")]
             if needed_gather:
-                self.log(f"🌿 [부족 원자재 일괄 맞춤 채집] 주간 납품/가공에 부족한 원자재 총 {len(needed_gather)}종을 필드에서 1회 맞춤 채집합니다 (정령의 날개 낭비 방지).", "action", callback)
+                self.log(f"[부족 원자재 일괄 맞춤 채집] 주간 납품/가공에 부족한 원자재 총 {len(needed_gather)}종을 필드에서 1회 맞춤 채집합니다 (정령의 날개 낭비 방지).", "action", callback)
                 for rm in needed_gather:
                     if self.abort_requested:
-                        self.log("🛑 [사용자 중지] 채집 대기열이 중단되었습니다.", "warn", callback)
+                        self.log("[사용자 중지] 채집 대기열이 중단되었습니다.", "warn", callback)
                         final_wings = self._safe_get_wings(initial_wings)
                         summary = self.format_and_log_summary(
                             summary_title="주간 납품 작업 (사용자 중지)",
@@ -3289,15 +3289,15 @@ class DeliveryManager:
                     g_deficit = rm["deficit"]
                     is_gath, tool_ok = self.is_gatherable(g_name)
                     if not is_gath:
-                        self.log(f"⚠️ '{g_name}'은(는) 필드 채집이 불가능하여 건너뜁니다.", "warn", callback)
+                        self.log(f"'{g_name}'은(는) 필드 채집이 불가능하여 건너뜁니다.", "warn", callback)
                         continue
                     if not tool_ok:
-                        self.log(f"⚠️ '{g_name}' 채집 도구가 없거나 내구도가 0입니다! 채집을 건너뜁니다.", "warn", callback)
+                        self.log(f"'{g_name}' 채집 도구가 없거나 내구도가 0입니다! 채집을 건너뜁니다.", "warn", callback)
                         continue
 
                     stor_cnt = rm.get("storage_count", 0)
                     stor_msg = f" | 창고 {stor_cnt}개 보관 중 (인게임 가공 소모를 위해 가방 기준 채집)" if stor_cnt > 0 else ""
-                    self.log(f"🌿 [맞춤 채집 시작] '{g_name}' (가방 부족 수량: {g_deficit}개{stor_msg}) 채집을 진행합니다.", "action", callback)
+                    self.log(f"[맞춤 채집 시작] '{g_name}' (가방 부족 수량: {g_deficit}개{stor_msg}) 채집을 진행합니다.", "action", callback)
                     try:
                         g_res = self.auto_gather(g_name, g_deficit, callback=callback)
                         gained = g_res.get("gained", 0) if isinstance(g_res, dict) else 0
@@ -3308,7 +3308,7 @@ class DeliveryManager:
                             "status": g_res.get("status", "completed") if isinstance(g_res, dict) else "completed"
                         })
                         if isinstance(g_res, dict) and g_res.get("status") == "aborted":
-                            self.log("🛑 [사용자 중지] 파이프라인이 중단되었습니다.", "warn", callback)
+                            self.log("[사용자 중지] 파이프라인이 중단되었습니다.", "warn", callback)
                             final_wings = self._safe_get_wings(initial_wings)
                             summary = self.format_and_log_summary(
                                 summary_title="주간 납품 작업 (사용자 중지)",
@@ -3332,10 +3332,10 @@ class DeliveryManager:
                             "status": "failed",
                             "error": str(g_err)
                         })
-                        self.log(f"⚠️ '{g_name}' 채집 중 오류: {g_err}. 다음 작업으로 계속 진행합니다.", "warn", callback)
+                        self.log(f"'{g_name}' 채집 중 오류: {g_err}. 다음 작업으로 계속 진행합니다.", "warn", callback)
 
         if self.abort_requested:
-            self.log("🛑 [사용자 중지] 가공 등록 전 작업이 중단되었습니다.", "warn", callback)
+            self.log("[사용자 중지] 가공 등록 전 작업이 중단되었습니다.", "warn", callback)
             final_wings = self._safe_get_wings(initial_wings)
             summary = self.format_and_log_summary(
                 summary_title="주간 납품 작업 (사용자 중지)",
@@ -3367,7 +3367,7 @@ class DeliveryManager:
 
         for req in intermediate_reqs:
             if self.abort_requested:
-                self.log("🛑 [사용자 중지] 가공 대기열 등록이 중단되었습니다.", "warn", callback)
+                self.log("[사용자 중지] 가공 대기열 등록이 중단되었습니다.", "warn", callback)
                 break
 
             mat_name = req["item_name"]
@@ -3381,7 +3381,7 @@ class DeliveryManager:
             # Check if this facility has already filled up during this batch
             if facility in full_facilities:
                 self.log(
-                    f"⚠️ [{facility}] 이미 슬롯이 가득 찼으므로 '{mat_name}' 가공({works_needed}회)을 보류하고 다른 품목/시설로 스킵합니다.",
+                    f"[{facility}] 이미 슬롯이 가득 찼으므로 '{mat_name}' 가공({works_needed}회)을 보류하고 다른 품목/시설로 스킵합니다.",
                     "warn", callback
                 )
                 deferred_works.append({
@@ -3404,7 +3404,7 @@ class DeliveryManager:
                     missing_sub.append(f"{s_name} (보유 {s_owned}/{s_req}개)")
             if not can_start:
                 self.log(
-                    f"⏳ [{facility}] '{mat_name}' 하위 재료({', '.join(missing_sub)}) 가공 진행 대기 중. 현재 가공 완료 후 다음 차례에 등록됩니다.",
+                    f"[{facility}] '{mat_name}' 하위 재료({', '.join(missing_sub)}) 가공 진행 대기 중. 현재 가공 완료 후 다음 차례에 등록됩니다.",
                     "info", callback
                 )
                 deferred_works.append({
@@ -3423,7 +3423,7 @@ class DeliveryManager:
             if available <= 0:
                 full_facilities.add(facility)
                 self.log(
-                    f"⚠️ [{facility}] 슬롯 한도 도달(사용 중: {used}/{MAX_SLOTS}). '{mat_name}' 가공({works_needed}회)을 보류하고 다른 가공으로 스킵합니다.",
+                    f"[{facility}] 슬롯 한도 도달(사용 중: {used}/{MAX_SLOTS}). '{mat_name}' 가공({works_needed}회)을 보류하고 다른 가공으로 스킵합니다.",
                     "warn", callback
                 )
                 deferred_works.append({
@@ -3451,13 +3451,13 @@ class DeliveryManager:
             if deferred_count > 0:
                 if works_to_register == 0:
                     self.log(
-                        f"⏳ [{facility}] '{mat_name}' 하위 재료 가공 대기 중 (필요: {works_needed}회). "
+                        f"[{facility}] '{mat_name}' 하위 재료 가공 대기 중 (필요: {works_needed}회). "
                         f"하위 재료가 준비된 후 다음 차례에 등록됩니다.",
                         "info", callback
                     )
                 else:
                     self.log(
-                        f"⚠️ [{facility}] '{mat_name}' 가공 {works_needed}회 필요하지만 현재 재료/슬롯상 {works_to_register}회만 등록 가능합니다. "
+                        f"[{facility}] '{mat_name}' 가공 {works_needed}회 필요하지만 현재 재료/슬롯상 {works_to_register}회만 등록 가능합니다. "
                         f"{works_to_register}회 등록 후 {deferred_count}회는 보류합니다.",
                         "warn", callback
                     )
@@ -3471,7 +3471,7 @@ class DeliveryManager:
 
             if works_to_register > 0:
                 self.log(
-                    f"⚙️ [{facility}] '{recipe_name}' {works_to_register}회 가공 등록 시도 "
+                    f"[{facility}] '{recipe_name}' {works_to_register}회 가공 등록 시도 "
                     f"(필요 총량: {req['total_needed']}개, 시설 가용 슬롯: {available}/{MAX_SLOTS})",
                     "action", callback
                 )
@@ -3510,7 +3510,7 @@ class DeliveryManager:
                     if isinstance(alter_res, dict) and alter_res.get("status") in ("waiting_in_background", "slot_full_skipped"):
                         queued_any_long = True
                 except Exception as ex:
-                    self.log(f"⚠️ [{facility}] '{recipe_name}' 가공 등록 실패 ({ex}). 다음 항목으로 스킵합니다.", "warn", callback)
+                    self.log(f"[{facility}] '{recipe_name}' 가공 등록 실패 ({ex}). 다음 항목으로 스킵합니다.", "warn", callback)
                     deferred_works.append({
                         "item_name": mat_name,
                         "facility": facility,
@@ -3525,14 +3525,14 @@ class DeliveryManager:
 
         if deferred_works:
             self.log(
-                f"📋 [가공 슬롯/의존성 보류 요약] 총 {len(deferred_works)}건의 가공이 슬롯 또는 하위 재료 대기로 보류되었습니다. "
+                f"[가공 슬롯/의존성 보류 요약] 총 {len(deferred_works)}건의 가공이 슬롯 또는 하위 재료 대기로 보류되었습니다. "
                 f"현재 진행 중인 가공이 완료된 후 다시 '일괄 제작'을 실행하면 보류된 가공이 자동으로 등록됩니다.",
                 "warn", callback
             )
 
         if queued_any_long:
             alarm_store.sync_facility_alarms(self.cli, default_source="주간 납품")
-            self.log("🔔 [가공 알람 동기화] 등록된 가공 작업들의 완료 시각에 맞춰 알람이 동기화되었습니다.", "info", callback)
+            self.log("[가공 알람 동기화] 등록된 가공 작업들의 완료 시각에 맞춰 알람이 동기화되었습니다.", "info", callback)
 
         if altered_list:
             self.notify_altering_updated()
@@ -3543,7 +3543,7 @@ class DeliveryManager:
             collected_facilities_all.extend(new_collected)
 
         # Stage 4: Immediate Batch Crafting for any ready tasks!
-        self.log("🔨 [납품 완제품 제작 단계] 현재 가방/창고 상태에서 즉시 제작 가능한 납품 아이템을 확인합니다.", "action", callback)
+        self.log("[납품 완제품 제작 단계] 현재 가방/창고 상태에서 즉시 제작 가능한 납품 아이템을 확인합니다.", "action", callback)
         craftable_tasks = []
         waiting_tasks = []
         gather_ready_tasks = []
@@ -3569,7 +3569,7 @@ class DeliveryManager:
 
             recipe = self.get_recipe_ingredients(item_name)
             if not recipe:
-                self.log(f"ℹ️ '{item_name}'은(는) 제작 레시피가 없거나 완제품 제작 대상이 아니므로 제작 단계에서 건너뜁니다.", "info", callback)
+                self.log(f"'{item_name}'은(는) 제작 레시피가 없거나 완제품 제작 대상이 아니므로 제작 단계에서 건너뜁니다.", "info", callback)
                 continue
 
             can_craft_this = True
@@ -3602,15 +3602,15 @@ class DeliveryManager:
                 else:
                     short_names.append(f"{gn} ({g_cur}/{g_goal}개, {g_goal - g_cur}개 부족)")
             if ready_names:
-                self.log(f"🌿 [채집 납품 품목 가방 준비 완료] {len(ready_names)}건({', '.join(ready_names)})은 가방에 준비 완료되었습니다.", "success", callback)
+                self.log(f"[채집 납품 품목 가방 준비 완료] {len(ready_names)}건({', '.join(ready_names)})은 가방에 준비 완료되었습니다.", "success", callback)
             if short_names:
-                self.log(f"⚠️ [채집 납품 품목 가방 부족] {len(short_names)}건({', '.join(short_names)})은 가방 수량이 부족합니다. 추가 채집/확보가 필요합니다.", "warn", callback)
+                self.log(f"[채집 납품 품목 가방 부족] {len(short_names)}건({', '.join(short_names)})은 가방 수량이 부족합니다. 추가 채집/확보가 필요합니다.", "warn", callback)
 
         if craftable_tasks:
-            self.log(f"🎯 [즉시 제작 가능 목표] 총 {len(craftable_tasks)}개 품목은 재료가 모두 준비되어 있어 즉시 제작을 진행합니다!", "action", callback)
+            self.log(f"[즉시 제작 가능 목표] 총 {len(craftable_tasks)}개 품목은 재료가 모두 준비되어 있어 즉시 제작을 진행합니다!", "action", callback)
             for t in craftable_tasks:
                 if self.abort_requested:
-                    self.log("🛑 [사용자 중지] 완제품 제작이 중단되었습니다.", "warn", callback)
+                    self.log("[사용자 중지] 완제품 제작이 중단되었습니다.", "warn", callback)
                     break
                 item_name = t["item_name"]
                 goal = int(t.get("goal", 1))
@@ -3626,22 +3626,22 @@ class DeliveryManager:
 
                 if needed <= 0 or (not is_custom_task and not has_override and cur_owned >= goal):
                     loc_text = "전체 보유" if is_custom_task else "가방"
-                    self.log(f"🎉 '{item_name}'은(는) 이미 {loc_text}에 목표 수량({cur_owned}/{goal}개)을 보유 중이므로 제작을 건너뜁니다.", "success", callback)
+                    self.log(f"'{item_name}'은(는) 이미 {loc_text}에 목표 수량({cur_owned}/{goal}개)을 보유 중이므로 제작을 건너뜁니다.", "success", callback)
                     craft_results.append({"item_name": item_name, "crafted": 0, "status": "already_completed"})
                     continue
 
                 storage_info = " (창고 포함)" if is_custom_task else ""
-                self.log(f"🔨 [완제품 제작 시작] '{item_name}' {needed}개 제작 진행... (현재 보유: {cur_owned}개{storage_info}, 목표: {goal}개)", "action", callback)
+                self.log(f"[완제품 제작 시작] '{item_name}' {needed}개 제작 진행... (현재 보유: {cur_owned}개{storage_info}, 목표: {goal}개)", "action", callback)
                 try:
                     crafted_count = self.auto_craft(item_name, needed, callback=callback)
                     craft_results.append({"item_name": item_name, "crafted": crafted_count, "status": "success"})
-                    self.log(f"✅ '{item_name}' {crafted_count}개 제작 완료!", "success", callback)
+                    self.log(f"'{item_name}' {crafted_count}개 제작 완료!", "success", callback)
                 except Exception as e:
-                    self.log(f"❌ '{item_name}' 제작 중 오류: {str(e)}", "error", callback)
+                    self.log(f"'{item_name}' 제작 중 오류: {str(e)}", "error", callback)
                     craft_results.append({"item_name": item_name, "error": str(e), "status": "failed", "crafted": 0})
         else:
             if waiting_tasks:
-                self.log(f"ℹ️ [제작 대기] 아직 가공 완료 또는 재료 준비가 필요한 납품 품목 {len(waiting_tasks)}건은 가공 완료 후 제작됩니다.", "info", callback)
+                self.log(f"[제작 대기] 아직 가공 완료 또는 재료 준비가 필요한 납품 품목 {len(waiting_tasks)}건은 가공 완료 후 제작됩니다.", "info", callback)
                 for t, missing_list in waiting_tasks[:5]:
                     self.log(f"   • '{t['item_name']}': {', '.join(missing_list)} 대기 중", "info", callback)
                 if len(waiting_tasks) > 5:
@@ -3660,23 +3660,23 @@ class DeliveryManager:
                     return False
             return True
 
-        # Goal Fulfillment Mode Loop (목표 완수 모드: 전 단계 수령 ➔ 다음 가공 ➔ 완제품까지 자율 완주)
+        # Goal Fulfillment Mode Loop (목표 완수 모드: 전 단계 수령 -> 다음 가공 -> 완제품까지 자율 완주)
         if goal_fulfillment_mode and not _are_all_tasks_fulfilled() and not self.abort_requested:
             enable_prevent_sleep()
-            self.log("🎯 [목표 완수 모드 가동] PC 절전 방지 활성화. 가공 완료 수령 ➔ 다음 티어 가공 ➔ 완제품 제작까지 연속 진행합니다.", "action", callback)
+            self.log("[목표 완수 모드 가동] PC 절전 방지 활성화. 가공 완료 수령 -> 다음 티어 가공 -> 완제품 제작까지 연속 진행합니다.", "action", callback)
             cycle = 1
             try:
                 while not self.abort_requested:
                     if _are_all_tasks_fulfilled():
-                        self.log("🎉 [목표 완수 성공!] 모든 목표 아이템 수량이 100% 달성되었습니다!", "success", callback)
+                        self.log("[목표 완수 성공!] 모든 목표 아이템 수량이 100% 달성되었습니다!", "success", callback)
                         break
 
                     # 1. Safety check: game process running
                     if not self.cli.check_game_running():
-                        self.log("⚠️ 게임 클라이언트가 일시적으로 감지되지 않습니다. 10초 후 재확인합니다...", "warn", callback)
+                        self.log("게임 클라이언트가 일시적으로 감지되지 않습니다. 10초 후 재확인합니다...", "warn", callback)
                         time.sleep(10)
                         if not self.cli.check_game_running():
-                            self.log("🛑 게임 연결이 끊겨 목표 완수 모드를 안전하게 종료합니다.", "warn", callback)
+                            self.log("게임 연결이 끊겨 목표 완수 모드를 안전하게 종료합니다.", "warn", callback)
                             break
 
                     # 2. Safety check: bag weight
@@ -3685,7 +3685,7 @@ class DeliveryManager:
                         cur_w = float(inv.get("CurrentInventoryWeightAsDecimal", 0) or 0)
                         max_w = float(inv.get("MaxInventoryWeightAsDecimal", 100) or 100)
                         if max_w > 0 and (cur_w / max_w) >= 0.98:
-                            self.log(f"⚠️ [가방 과적 경고] 가방 무게({cur_w:.1f}/{max_w:.1f})가 98%에 도달하여 안전을 위해 가공 수령을 멈춥니다.", "warn", callback)
+                            self.log(f"[가방 과적 경고] 가방 무게({cur_w:.1f}/{max_w:.1f})가 98%에 도달하여 안전을 위해 가공 수령을 멈춥니다.", "warn", callback)
                             break
                     except Exception:
                         pass
@@ -3693,7 +3693,7 @@ class DeliveryManager:
                     # 3. Safety check: wings
                     curr_wings = self._safe_get_wings(100)
                     if curr_wings < 5:
-                        self.log(f"⚠️ [정령의 날개 부족] 남은 날개({curr_wings}개)가 부족하여 작업을 안전하게 마무리합니다.", "warn", callback)
+                        self.log(f"[정령의 날개 부족] 남은 날개({curr_wings}개)가 부족하여 작업을 안전하게 마무리합니다.", "warn", callback)
                         break
 
                     # 4. Check altering works in progress / completed
@@ -3701,20 +3701,20 @@ class DeliveryManager:
                         works_info = self.cli.get_altering_works()
                         self.notify_altering_updated(works_info)
                     except Exception as ex:
-                        self.log(f"⚠️ 가공 대기열 확인 중 일시 오류: {ex}. 5초 후 재시도합니다.", "warn", callback)
+                        self.log(f"가공 대기열 확인 중 일시 오류: {ex}. 5초 후 재시도합니다.", "warn", callback)
                         time.sleep(5)
                         continue
 
                     completed_count = int(works_info.get("completedCount", 0) or 0)
                     if completed_count > 0:
-                        self.log(f"🎁 [완료 가공품 감지] 총 {completed_count}건의 완료 가공품을 일괄 수령합니다.", "action", callback)
+                        self.log(f"[완료 가공품 감지] 총 {completed_count}건의 완료 가공품을 일괄 수령합니다.", "action", callback)
                         new_colls = self.collect_completed_altering_works(callback=callback)
                         if new_colls:
                             collected_facilities_all.extend(new_colls)
                             self.cli.invalidate_cache()
 
                             # Try crafting any newly ready tasks with fresh materials
-                            self.log("🔨 [완제품 추가 제작 확인] 새로 수령한 재료로 완제품 제작 가능 여부를 확인합니다.", "action", callback)
+                            self.log("[완제품 추가 제작 확인] 새로 수령한 재료로 완제품 제작 가능 여부를 확인합니다.", "action", callback)
                             for t in tasks:
                                 if self.abort_requested:
                                     break
@@ -3742,12 +3742,12 @@ class DeliveryManager:
                                     try:
                                         c_cnt = self.auto_craft(item_name, needed_cnt, callback=callback)
                                         craft_results.append({"item_name": item_name, "crafted": c_cnt, "status": "success"})
-                                        self.log(f"✅ '{item_name}' {c_cnt}개 추가 제작 완료!", "success", callback)
+                                        self.log(f"'{item_name}' {c_cnt}개 추가 제작 완료!", "success", callback)
                                     except Exception as ce:
-                                        self.log(f"❌ '{item_name}' 추가 제작 중 오류: {ce}", "error", callback)
+                                        self.log(f"'{item_name}' 추가 제작 중 오류: {ce}", "error", callback)
 
                             if _are_all_tasks_fulfilled():
-                                self.log("🎉 [목표 완수 성공!] 모든 목표가 달성되었습니다!", "success", callback)
+                                self.log("[목표 완수 성공!] 모든 목표가 달성되었습니다!", "success", callback)
                                 break
 
                     # 5. Try queuing next-tier alters into free slots
@@ -3787,7 +3787,7 @@ class DeliveryManager:
 
                         to_reg = min(w_needed, avail_slots, max_possible)
                         if to_reg > 0:
-                            self.log(f"⚙️ [연계 가공 등록] [{fac}] '{rec_name}' {to_reg}회 추가 가공 등록합니다.", "action", callback)
+                            self.log(f"[연계 가공 등록] [{fac}] '{rec_name}' {to_reg}회 추가 가공 등록합니다.", "action", callback)
                             try:
                                 alt_res = self.auto_alter(rec_name, to_reg, callback=callback, is_delivery=True)
                                 reg_cnt = alt_res.get("registered", to_reg) if isinstance(alt_res, dict) else to_reg
@@ -3802,7 +3802,7 @@ class DeliveryManager:
                                         "yield_est": reg_cnt * 3
                                     })
                             except Exception as al_err:
-                                self.log(f"⚠️ [{fac}] '{rec_name}' 가공 등록 실패: {al_err}", "warn", callback)
+                                self.log(f"[{fac}] '{rec_name}' 가공 등록 실패: {al_err}", "warn", callback)
 
                     # 6. Check active pending works
                     works_info = self.cli.get_altering_works()
@@ -3812,7 +3812,7 @@ class DeliveryManager:
 
                     if not pending_works:
                         if not registered_any_new:
-                            self.log("ℹ️ [목표 완수 종료] 더 이상 진행 가능한 가공 작업이 없습니다 (원자재 소진 또는 대기열 없음).", "info", callback)
+                            self.log("[목표 완수 종료] 더 이상 진행 가능한 가공 작업이 없습니다 (원자재 소진 또는 대기열 없음).", "info", callback)
                             break
                         else:
                             time.sleep(3)
@@ -3832,7 +3832,7 @@ class DeliveryManager:
                     fac_label = target_fac[0] if target_fac else "가공 시설"
 
                     self.log(
-                        f"⏳ [목표 완수 스마트 대기 {cycle}회차] '{fac_label}' 완료까지 약 {wait_minutes}분({wait_seconds}초) 대기합니다. (PC 절전 방지 유지 중)",
+                        f"[목표 완수 스마트 대기 {cycle}회차] '{fac_label}' 완료까지 약 {wait_minutes}분({wait_seconds}초) 대기합니다. (PC 절전 방지 유지 중)",
                         "info", callback
                     )
 
@@ -3844,7 +3844,7 @@ class DeliveryManager:
                         if status_reporter and rem_sec > 0:
                             rem_m = rem_sec // 60
                             rem_s = rem_sec % 60
-                            status_reporter(f"🎯 [목표 완수 모드 {cycle}회차] '{fac_label}' 가공 중 (다음 수령까지 약 {rem_m}분 {rem_s}초 남음)")
+                            status_reporter(f"[목표 완수 모드 {cycle}회차] '{fac_label}' 가공 중 (다음 수령까지 약 {rem_m}분 {rem_s}초 남음)")
                         time.sleep(min(2.0, max(0.5, rem_sec if rem_sec > 0 else 1)))
 
                     cycle += 1
@@ -3878,7 +3878,7 @@ class DeliveryManager:
         )
 
         if not goal_fulfillment_mode and queued_any_long:
-            self.log("☕ [가공 백그라운드 진행 안내] 대기열 가공이 진행 중입니다. 알람이 울리면 웹 대시보드에서 '일괄 제작'을 다시 실행하세요!", "success", callback)
+            self.log("[가공 백그라운드 진행 안내] 대기열 가공이 진행 중입니다. 알람이 울리면 웹 대시보드에서 '일괄 제작'을 다시 실행하세요!", "success", callback)
             return {
                 "status": "waiting_in_background",
                 "message": "가공 대기열 등록 완료 및 즉시 제작 가능한 아이템 제작 완료",
@@ -3887,13 +3887,13 @@ class DeliveryManager:
                 "summary": summary
             }
 
-        self.log("🎉 [통합 납품 파이프라인 처리 완료] 일괄 처리가 마무리되었습니다!", "success", callback)
+        self.log("[통합 납품 파이프라인 처리 완료] 일괄 처리가 마무리되었습니다!", "success", callback)
         return {"status": "completed", "results": craft_results, "deferred_works": deferred_works, "summary": summary}
 
     def resolve_and_produce(self, item_name: str, target_count: int, callback: Optional[LogCallback] = None) -> Dict[str, Any]:
         """Single-item production pipeline with recursive BOM and upfront gathering support."""
         self.reset_abort()
-        self.log(f"🚀 [개별 제작 파이프라인 시작] 목표: '{item_name}' {target_count}개", "info", callback)
+        self.log(f"[개별 제작 파이프라인 시작] 목표: '{item_name}' {target_count}개", "info", callback)
 
         start_time = time.time()
         initial_wings = self._safe_get_wings()
@@ -3905,12 +3905,12 @@ class DeliveryManager:
         activity = self.cli.get_activity()
         if activity.get("IsDead") or activity.get("IsReviving"):
             msg = "캐릭터가 행동 불능(사망 또는 부활 대기) 상태입니다. 게임 화면에서 부활을 먼저 완료해주세요."
-            self.log(f"❌ [작업 차단] {msg}", "error", callback)
+            self.log(f"[작업 차단] {msg}", "error", callback)
             raise MabinogiCLIError(msg, response_data={"error": "blocked", "kind": "dead"})
 
         owned = self.get_effective_owned(item_name)
         needed = target_count
-        self.log(f"📊 현재 보유량: {owned}개 (가방+창고) / 제작 요청 수량: {needed}개 진행 시작", "info", callback)
+        self.log(f"현재 보유량: {owned}개 (가방+창고) / 제작 요청 수량: {needed}개 진행 시작", "info", callback)
 
         # 1. Collect completed altering works first to free slots and update stock
         cf = self.collect_completed_altering_works(callback=callback)
@@ -3926,10 +3926,10 @@ class DeliveryManager:
         if raw_mats:
             needed_gather = [r for r in raw_mats if r.get("deficit", 0) > 0 and r.get("is_gatherable")]
             if needed_gather:
-                self.log(f"🌿 [부족 원자재 맞춤 채집] '{item_name}' 제작에 필요한 원자재 {len(needed_gather)}종을 필드에서 1회 맞춤 채집합니다 (정령의 날개 낭비 방지).", "action", callback)
+                self.log(f"[부족 원자재 맞춤 채집] '{item_name}' 제작에 필요한 원자재 {len(needed_gather)}종을 필드에서 1회 맞춤 채집합니다 (정령의 날개 낭비 방지).", "action", callback)
                 for rm in needed_gather:
                     if self.abort_requested:
-                        self.log("🛑 [사용자 중지] 채집 대기열이 중단되었습니다.", "warn", callback)
+                        self.log("[사용자 중지] 채집 대기열이 중단되었습니다.", "warn", callback)
                         final_wings = self._safe_get_wings(initial_wings)
                         summary = self.format_and_log_summary(
                             summary_title=f"'{item_name}' 제작 (사용자 중지)",
@@ -3948,12 +3948,12 @@ class DeliveryManager:
                     g_deficit = rm["deficit"]
                     is_gath, tool_ok = self.is_gatherable(g_name)
                     if not is_gath:
-                        self.log(f"⚠️ '{g_name}'은(는) 필드 채집이 불가능하여 건너뜁니다.", "warn", callback)
+                        self.log(f"'{g_name}'은(는) 필드 채집이 불가능하여 건너뜁니다.", "warn", callback)
                         continue
                     if not tool_ok:
-                        self.log(f"⚠️ '{g_name}' 채집 도구가 없거나 내구도가 0입니다! 채집을 건너뜁니다.", "warn", callback)
+                        self.log(f"'{g_name}' 채집 도구가 없거나 내구도가 0입니다! 채집을 건너뜁니다.", "warn", callback)
                         continue
-                    self.log(f"🌿 [맞춤 채집] '{g_name}' {g_deficit}개 채집 시작...", "action", callback)
+                    self.log(f"[맞춤 채집] '{g_name}' {g_deficit}개 채집 시작...", "action", callback)
                     try:
                         g_res = self.auto_gather(g_name, g_deficit, callback=callback)
                         gained = g_res.get("gained", 0) if isinstance(g_res, dict) else 0
@@ -3971,7 +3971,7 @@ class DeliveryManager:
                             "status": "failed",
                             "error": str(g_err)
                         })
-                        self.log(f"⚠️ '{g_name}' 채집 중 오류: {g_err}. 계속 진행합니다.", "warn", callback)
+                        self.log(f"'{g_name}' 채집 중 오류: {g_err}. 계속 진행합니다.", "warn", callback)
 
         if self.abort_requested:
             final_wings = self._safe_get_wings(initial_wings)
@@ -4006,12 +4006,12 @@ class DeliveryManager:
             for s_name, s_req in sub_ings.items():
                 if self.get_effective_owned(s_name, include_storage=True) < s_req:
                     can_start = False
-                    self.log(f"⏳ '{mat_name}' 하위 재료('{s_name}') 가공 대기 중입니다.", "info", callback)
+                    self.log(f"'{mat_name}' 하위 재료('{s_name}') 가공 대기 중입니다.", "info", callback)
                     break
             if not can_start:
                 continue
 
-            self.log(f"⚙️ '{recipe_name}' {works_needed}회 가공 등록 진행...", "action", callback)
+            self.log(f"'{recipe_name}' {works_needed}회 가공 등록 진행...", "action", callback)
             alter_res = self.auto_alter(recipe_name, works_needed, callback=callback, is_delivery=True)
             reg_count = alter_res.get("registered", works_needed) if isinstance(alter_res, dict) else works_needed
             if reg_count > 0:
@@ -4028,7 +4028,7 @@ class DeliveryManager:
                 queued_any_long = True
 
         if queued_any_long:
-            self.log(f"☕ '{item_name}' 가공 대기열이 등록되어 백그라운드 진행 중입니다. 완료 알람이 울리면 다시 실행하세요.", "info", callback)
+            self.log(f"'{item_name}' 가공 대기열이 등록되어 백그라운드 진행 중입니다. 완료 알람이 울리면 다시 실행하세요.", "info", callback)
             final_wings = self._safe_get_wings(initial_wings)
             summary = self.format_and_log_summary(
                 summary_title=f"'{item_name}' 가공 대기열 등록 완료",
@@ -4053,7 +4053,7 @@ class DeliveryManager:
         clean_target = item_name.split("(")[0].strip()
         is_gath, _ = self.is_gatherable(item_name)
         if is_gath or clean_target in KNOWN_GATHERABLE_ITEMS:
-            self.log(f"🌿 [채집 완료] '{item_name}'은(는) 필드 채집 아이템이므로 채집 완료로 모든 준비가 끝났습니다!", "success", callback)
+            self.log(f"[채집 완료] '{item_name}'은(는) 필드 채집 아이템이므로 채집 완료로 모든 준비가 끝났습니다!", "success", callback)
             final_wings = self._safe_get_wings(initial_wings)
             summary = self.format_and_log_summary(
                 summary_title=f"'{item_name}' 채집 완료 리포트",
@@ -4073,7 +4073,7 @@ class DeliveryManager:
         is_alt, alt_info = self.get_alter_info(item_name)
         if is_alt and alt_info:
             owned = self.get_effective_owned(item_name)
-            self.log(f"🎉 '{item_name}' 가공 준비 및 대기열 등록이 완료되었습니다! (현재 총 보유량: {owned}/{target_count}개)", "success", callback)
+            self.log(f"'{item_name}' 가공 준비 및 대기열 등록이 완료되었습니다! (현재 총 보유량: {owned}/{target_count}개)", "success", callback)
             final_wings = self._safe_get_wings(initial_wings)
             status_str = "waiting_in_background" if queued_any_long else "completed"
             summary = self.format_and_log_summary(
@@ -4105,7 +4105,7 @@ class DeliveryManager:
             owned_ing = self.get_effective_owned(ing_name, include_storage=True)
             if owned_ing < tot_needed_for_craft:
                 missing = tot_needed_for_craft - owned_ing
-                self.log(f"⚠️ '{item_name}' 제작 재료 '{ing_name}' {missing}개 부족 (필요: {tot_needed_for_craft}개, 전체 보유: {owned_ing}개)", "warn", callback)
+                self.log(f"'{item_name}' 제작 재료 '{ing_name}' {missing}개 부족 (필요: {tot_needed_for_craft}개, 전체 보유: {owned_ing}개)", "warn", callback)
                 final_wings = self._safe_get_wings(initial_wings)
                 summary = self.format_and_log_summary(
                     summary_title=f"'{item_name}' 재료 부족으로 제작 보류",
@@ -4124,7 +4124,7 @@ class DeliveryManager:
         crafted = self.auto_craft(item_name, needed, callback)
         craft_results.append({"item_name": item_name, "crafted": crafted, "status": "success"})
         new_count = self.get_effective_owned(item_name)
-        self.log(f"🎉 '{item_name}' {crafted}개 제작 완료! (총 보유량: {new_count}/{target_count}개)", "success", callback)
+        self.log(f"'{item_name}' {crafted}개 제작 완료! (총 보유량: {new_count}/{target_count}개)", "success", callback)
 
         final_wings = self._safe_get_wings(initial_wings)
         summary = self.format_and_log_summary(
@@ -4371,7 +4371,7 @@ class DeliveryManager:
             alter_order = "high_tier"
 
         order_label = "상위 티어 우선 (오래 걸리는 가공부터)" if alter_order != "low_tier" else "하위 티어 우선 (기초 재료부터)"
-        self.log(f"🚀 [7슬롯 최고 레벨 가공대 빠른 실행 가동] ({order_label}) 루틴을 시작합니다.", "action", callback)
+        self.log(f"[7슬롯 최고 레벨 가공대 빠른 실행 가동] ({order_label}) 루틴을 시작합니다.", "action", callback)
         self.reset_abort()
 
         start_time = time.time()
@@ -4397,7 +4397,7 @@ class DeliveryManager:
             target_cats = dict(self.CATEGORY_7_TIERS)
 
         if self.abort_requested:
-            self.log("🛑 [사용자 중지] 시작 전 중지 요청이 감지되었습니다.", "warn", callback)
+            self.log("[사용자 중지] 시작 전 중지 요청이 감지되었습니다.", "warn", callback)
             final_wings = self._safe_get_wings(initial_wings)
             summary = self.format_and_log_summary(
                 summary_title="7슬롯 빠른 가공 (사용자 중지)",
@@ -4420,7 +4420,7 @@ class DeliveryManager:
         collected_facilities = self.collect_completed_altering_works(callback=callback)
 
         if self.abort_requested:
-            self.log("🛑 [사용자 중지] 작업이 중단되었습니다.", "warn", callback)
+            self.log("[사용자 중지] 작업이 중단되었습니다.", "warn", callback)
             final_wings = self._safe_get_wings(initial_wings)
             summary = self.format_and_log_summary(
                 summary_title="7슬롯 빠른 가공 (사용자 중지)",
@@ -4440,13 +4440,13 @@ class DeliveryManager:
         # STEP 2: Evaluate ingredient shortages & determine plan AFTER collection!
         # (수령 완료 후 최신화된 가방 보유량 기준으로 부족 여부를 판단)
         # -------------------------------------------------------------
-        self.log(f"🔍 [가공 재료 판단] 가공품 수령 완료 후 최신 가방 상태를 기준으로 {order_label} 가공 가능 여부를 판단합니다.", "action", callback)
+        self.log(f"[가공 재료 판단] 가공품 수령 완료 후 최신 가방 상태를 기준으로 {order_label} 가공 가능 여부를 판단합니다.", "action", callback)
         plan = self.analyze_quick_alter(cat_key if cat_key != "all" else None, alter_order=alter_order)
         categories = plan.get("categories", {})
         total_raw_needed = plan.get("total_raw_needed", {})
 
         if self.abort_requested:
-            self.log("🛑 [사용자 중지] 채집 전 작업이 중단되었습니다.", "warn", callback)
+            self.log("[사용자 중지] 채집 전 작업이 중단되었습니다.", "warn", callback)
             final_wings = self._safe_get_wings(initial_wings)
             summary = self.format_and_log_summary(
                 summary_title="7슬롯 빠른 가공 (사용자 중지)",
@@ -4467,10 +4467,10 @@ class DeliveryManager:
         # (가공에 필요한 채집 원자재를 사전에 부족한 수량만큼만 채집)
         # -------------------------------------------------------------
         if total_raw_needed:
-            self.log(f"🌿 [사전 원자재 맞춤 채집] 가공에 부족한 원자재 총 {len(total_raw_needed)}종을 필요한 수량만큼만 채집합니다.", "action", callback)
+            self.log(f"[사전 원자재 맞춤 채집] 가공에 부족한 원자재 총 {len(total_raw_needed)}종을 필요한 수량만큼만 채집합니다.", "action", callback)
             for mat_name, needed_qty in total_raw_needed.items():
                 if self.abort_requested:
-                    self.log("🛑 [사용자 중지] 채집 대기열이 중단되었습니다.", "warn", callback)
+                    self.log("[사용자 중지] 채집 대기열이 중단되었습니다.", "warn", callback)
                     final_wings = self._safe_get_wings(initial_wings)
                     summary = self.format_and_log_summary(
                         summary_title="7슬롯 빠른 가공 (사용자 중지)",
@@ -4490,12 +4490,12 @@ class DeliveryManager:
                     continue
                 is_gath, tool_ok = self.is_gatherable(mat_name)
                 if not is_gath:
-                    self.log(f"⚠️ '{mat_name}'은(는) 필드 채집 목록에 없어 채집을 건너뜁니다.", "warn", callback)
+                    self.log(f"'{mat_name}'은(는) 필드 채집 목록에 없어 채집을 건너뜁니다.", "warn", callback)
                     continue
                 if not tool_ok:
-                    self.log(f"⚠️ '{mat_name}' 채집 도구가 없거나 내구도가 0입니다!", "warn", callback)
+                    self.log(f"'{mat_name}' 채집 도구가 없거나 내구도가 0입니다!", "warn", callback)
 
-                self.log(f"🌿 [맞춤 채집 시작] '{mat_name}' (부족 수량: {needed_qty}개) 목표 수량만큼만 채집을 진행합니다.", "action", callback)
+                self.log(f"[맞춤 채집 시작] '{mat_name}' (부족 수량: {needed_qty}개) 목표 수량만큼만 채집을 진행합니다.", "action", callback)
                 try:
                     g_res = self.auto_gather(mat_name, needed_qty, callback=callback)
                     gained = g_res.get("gained", 0) if isinstance(g_res, dict) else 0
@@ -4506,7 +4506,7 @@ class DeliveryManager:
                         "status": g_res.get("status", "completed") if isinstance(g_res, dict) else "completed"
                     })
                     if isinstance(g_res, dict) and g_res.get("status") == "aborted":
-                        self.log("🛑 [사용자 중지] 빠른 실행 파이프라인이 중단되었습니다.", "warn", callback)
+                        self.log("[사용자 중지] 빠른 실행 파이프라인이 중단되었습니다.", "warn", callback)
                         final_wings = self._safe_get_wings(initial_wings)
                         summary = self.format_and_log_summary(
                             summary_title="7슬롯 빠른 가공 (사용자 중지)",
@@ -4529,10 +4529,10 @@ class DeliveryManager:
                         "status": "failed",
                         "error": str(ex)
                     })
-                    self.log(f"⚠️ '{mat_name}' 채집 중 오류 발생: {ex}", "warn", callback)
+                    self.log(f"'{mat_name}' 채집 중 오류 발생: {ex}", "warn", callback)
 
         if self.abort_requested:
-            self.log("🛑 [사용자 중지] 가공 등록 전 작업이 중단되었습니다.", "warn", callback)
+            self.log("[사용자 중지] 가공 등록 전 작업이 중단되었습니다.", "warn", callback)
             final_wings = self._safe_get_wings(initial_wings)
             summary = self.format_and_log_summary(
                 summary_title="7슬롯 빠른 가공 (사용자 중지)",
@@ -4555,19 +4555,19 @@ class DeliveryManager:
         queued_results = []
         for c_name, c_info in categories.items():
             if self.abort_requested:
-                self.log("🛑 [사용자 중지] 가공 슬롯 등록 중 작업이 중단되었습니다.", "warn", callback)
+                self.log("[사용자 중지] 가공 슬롯 등록 중 작업이 중단되었습니다.", "warn", callback)
                 break
 
             facility = c_info["facility"]
             planned = c_info.get("planned_tiers", [])
             if not planned:
-                self.log(f"ℹ️ [{c_name} ({facility})] 등록 가능한 고티어 가공이 없어 건너뜁니다.", "info", callback)
+                self.log(f"[{c_name} ({facility})] 등록 가능한 고티어 가공이 없어 건너뜁니다.", "info", callback)
                 continue
 
-            self.log(f"⚙️ [{c_name} ({facility})] {order_label} 순차 가공 등록 시작 (총 {len(planned)}건)", "action", callback)
+            self.log(f"[{c_name} ({facility})] {order_label} 순차 가공 등록 시작 (총 {len(planned)}건)", "action", callback)
             for item in planned:
                 if self.abort_requested:
-                    self.log("🛑 [사용자 중지] 가공 등록이 중단되었습니다.", "warn", callback)
+                    self.log("[사용자 중지] 가공 등록이 중단되었습니다.", "warn", callback)
                     break
 
                 tier_num = item["tier"]
@@ -4597,10 +4597,10 @@ class DeliveryManager:
         # -------------------------------------------------------------
         synced = alarm_store.sync_facility_alarms(self.cli, default_source="빠른 가공")
         if synced:
-            self.log(f"🔔 [가공시설 알람 동기화] 총 {len(synced)}개 시설의 마지막 가공 완료 시각에 맞춰 알람이 등록되었습니다.", "info", callback)
+            self.log(f"[가공시설 알람 동기화] 총 {len(synced)}개 시설의 마지막 가공 완료 시각에 맞춰 알람이 등록되었습니다.", "info", callback)
 
-        self.log("🎉 [가공대 7슬롯 빠른 실행 완료] 수령 ➔ 가공 판단 ➔ 일괄 채집 ➔ 고티어 가공 등록이 완료되었습니다!", "success", callback)
-        self.log("🔔 각 가공시설별 마지막 가공이 끝나면 알람이 울립니다.", "info", callback)
+        self.log("[가공대 7슬롯 빠른 실행 완료] 수령 -> 가공 판단 -> 일괄 채집 -> 고티어 가공 등록이 완료되었습니다!", "success", callback)
+        self.log("각 가공시설별 마지막 가공이 끝나면 알람이 울립니다.", "info", callback)
 
         duration = time.time() - start_time
         final_wings = self._safe_get_wings(initial_wings)
