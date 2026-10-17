@@ -1495,7 +1495,7 @@ def start_server(port=8080):
     except (KeyboardInterrupt, SystemExit):
         pass
 
-HTML_PAGE = """<!DOCTYPE html>
+HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
@@ -1505,295 +1505,459 @@ HTML_PAGE = """<!DOCTYPE html>
   <link rel="apple-touch-icon" href="/api/icon">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Fira+Code:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #090d16;
-      --card-bg: rgba(23, 31, 51, 0.7);
-      --card-border: rgba(99, 102, 241, 0.2);
-      --accent: #6366f1;
-      --accent-glow: rgba(99, 102, 241, 0.4);
-      --emerald: #10b981;
-      --amber: #f59e0b;
-      --cyan: #38bdf8;
-      --rose: #f43f5e;
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
+      --bg: #121212;
+      --bg-panel: #161616;
+      --bg-elevated: #181818;
+      --line: #2A2A2A;
+      --line-subtle: #222222;
+      --border-line: #2A2A2A;
+      --border-focus: #DFDFDF;
+      --text: #E5E5E5;
+      --text-main: #E5E5E5;
+      --text-bright: #F5F5F5;
+      --text-title: #F5F5F5;
+      --text-muted: #888888;
+      --text-dim: #555555;
+      --invert-bg: #DFDFDF;
+      --invert-text: #121212;
+      --bar-gather: #3FB950;
+      --bar-alter: #6E8898;
+      --bar-special: #8B949E;
+      --font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'D2Coding', Consolas, monospace;
+      --fs-lg: 16px;
+      --fs-md: 14px;
+      --fs-sm: 12px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: var(--bg);
-      background-image: 
-        radial-gradient(at 10% 20%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-        radial-gradient(at 90% 80%, rgba(16, 185, 129, 0.12) 0px, transparent 50%);
       color: var(--text);
-      font-family: 'Pretendard', -apple-system, sans-serif;
+      font-family: var(--font-sans);
+      font-size: var(--fs-md);
+      line-height: 1.5;
       word-break: keep-all;
       min-height: 100vh;
-      padding: 24px;
+      padding: 20px 24px 40px;
     }
     .container { max-width: 1320px; margin: 0 auto; }
-    
-    /* Header (Sticky Floating Bar) */
+
+    /* Monospace & Tabular Numeric Rules */
+    .mono-num,
+    .cli-spinner,
+    .cli-gauge,
+    .status-delim,
+    .sym-prefix,
+    .badge,
+    .mcb-tab-pill,
+    .input-number,
+    .bom-table td:nth-child(3),
+    .bom-table td:nth-child(4),
+    .bom-table td:nth-child(5),
+    .bom-table td:nth-child(6) {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .cli-spinner {
+      display: inline-block;
+      width: 3ch;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--text-bright);
+    }
+    .cli-gauge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      letter-spacing: 0;
+      color: var(--text-bright);
+    }
+    .sym-prefix {
+      color: var(--text-muted);
+      font-weight: 700;
+      margin-right: 6px;
+      user-select: none;
+    }
+
+    /* Header (Sticky Line-Centric Terminal Bar) */
     header {
       position: sticky;
-      top: 12px;
+      top: 0;
       z-index: 1000;
       display: flex;
       flex-direction: column;
-      padding: 14px 22px;
-      background: rgba(15, 23, 42, 0.92);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid var(--card-border);
-      border-radius: 18px;
-      margin-bottom: 24px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      padding: 12px 0;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 20px;
       gap: 10px;
     }
     .header-top {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      flex-wrap: wrap-reverse;
+      flex-wrap: wrap;
       gap: 10px;
     }
-    .logo-area { display: flex; align-items: center; gap: 13px; }
+    .logo-area { display: flex; align-items: center; gap: 10px; }
     .logo-icon {
-      width: 42px; height: 42px; border-radius: 12px;
-      background: linear-gradient(135deg, #6366f1, #38bdf8);
+      width: 24px; height: 24px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 21px; box-shadow: 0 4px 15px var(--accent-glow);
+      font-family: var(--font-mono);
+      font-size: var(--fs-md);
+      font-weight: 700;
+      color: var(--invert-text);
+      background: var(--invert-bg);
+      border-radius: 2px;
       flex-shrink: 0;
     }
+    .title {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
     .title h1 {
-      font-size: 18.5px;
-      font-weight: 800;
-      letter-spacing: -0.4px;
+      font-size: var(--fs-lg);
+      font-weight: 700;
+      color: var(--text-bright);
       display: flex;
       align-items: center;
-      flex-wrap: wrap;
-      gap: 4px;
+      gap: 8px;
     }
-    .title p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .title p { font-size: var(--fs-sm); color: var(--text-muted); }
 
-    /* Header Action Buttons (연결설정, 최근 작업 리포트, 서버 종료) */
+    /* Header Action Buttons (Tier 3: Hover Bracket Style) */
     .header-actions {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
       margin-left: auto;
       flex-shrink: 0;
+      flex-wrap: wrap;
     }
     .header-action-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
-      padding: 5px 11px;
-      font-size: 11.5px;
-      font-weight: 700;
-      border-radius: 9999px;
+      padding: 3px 4px;
+      font-family: var(--font-sans);
+      font-size: var(--fs-md);
+      font-weight: 400;
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
       cursor: pointer;
-      border: 1px solid transparent;
       white-space: nowrap;
-      transition: all 0.2s ease;
-      line-height: 1.3;
       user-select: none;
+      transition: color 0.12s ease;
     }
-    .header-action-btn .btn-icon {
-      font-size: 12px;
-      line-height: 1;
+    .header-action-btn .btn-icon { display: none; }
+    .header-action-btn::before {
+      content: "[ ";
+      font-family: var(--font-mono);
+      opacity: 0;
+      color: var(--text-bright);
     }
-    .header-action-btn.btn-settings {
-      background: rgba(99, 102, 241, 0.16);
-      color: #a5b4fc;
-      border-color: rgba(99, 102, 241, 0.35);
+    .header-action-btn::after {
+      content: " ]";
+      font-family: var(--font-mono);
+      opacity: 0;
+      color: var(--text-bright);
     }
-    .header-action-btn.btn-settings:hover {
-      background: rgba(99, 102, 241, 0.3);
-      color: #e0e7ff;
-      transform: translateY(-1px);
+    .header-action-btn:hover {
+      color: var(--text-bright);
+      text-shadow: 0 0 0.5px currentColor;
     }
-    .header-action-btn.btn-summary {
-      background: rgba(59, 130, 246, 0.16);
-      color: #60a5fa;
-      border-color: rgba(59, 130, 246, 0.35);
-    }
-    .header-action-btn.btn-summary:hover {
-      background: rgba(59, 130, 246, 0.3);
-      color: #93c5fd;
-      transform: translateY(-1px);
-    }
-    .header-action-btn.btn-shutdown {
-      background: rgba(239, 68, 68, 0.14);
-      color: #f87171;
-      border-color: rgba(239, 68, 68, 0.3);
-    }
-    .header-action-btn.btn-shutdown:hover {
-      background: rgba(239, 68, 68, 0.25);
-      color: #fca5a5;
-      transform: translateY(-1px);
+    .header-action-btn:hover::before,
+    .header-action-btn:hover::after {
+      opacity: 1;
     }
 
     /* 상단/하단 영역 구분선 */
     .header-divider {
       height: 1px;
       width: 100%;
-      background: linear-gradient(90deg, rgba(99, 102, 241, 0.3) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(99, 102, 241, 0.05) 100%);
-      margin: 1px 0;
+      background: var(--line);
     }
 
-    /* 하단 상태 바 (서버 연결 상태, 날개, 무게) */
+    /* 하단 상태 바: :: 메이븐 (Lv.100) :: 날개 7,647 :: 무게 1108/1870 [■■■□□] :: */
     .header-status-bar {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
+      font-size: var(--fs-md);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      padding: 2px 0;
     }
-    .status-pills { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .status-pills { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .status-delim {
+      color: var(--text-dim);
+      font-weight: 700;
+      user-select: none;
+    }
     .pill {
-      padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
-      display: flex; align-items: center; gap: 6px; transition: all 0.3s;
+      padding: 0;
+      border: none;
+      background: transparent;
+      font-size: var(--fs-md);
+      font-weight: 600;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       white-space: nowrap;
     }
-    .pill.online { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
-    .pill.offline { background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3); }
-    .pill.wings { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
-    .pill.weight { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .pill.online { color: var(--text-bright); }
+    .pill.offline { color: var(--invert-text); background: var(--invert-bg); padding: 1px 6px; border-radius: 2px; font-weight: 700; }
+    .pill.warning { color: var(--text-bright); }
+    .pill.wings { color: var(--text); }
+    .pill.weight { color: var(--text); }
 
-    /* 반응형: 가로폭이 좁아질 때 아이콘만 남겨 공간 확보 */
-    @media (max-width: 860px) {
-      .header-action-btn {
-        padding: 5px 9px;
-      }
-      .header-action-btn .btn-label {
-        display: none;
-      }
-    }
     @media (max-width: 640px) {
       .header-actions {
         width: 100%;
-        justify-content: flex-end;
+        justify-content: flex-start;
       }
     }
 
-    /* Layout */
+    /* Layout & Line-Centric Sections (No Nested Box Cards) */
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     @media (max-width: 1024px) { .grid { grid-template-columns: 1fr; } }
 
     .card {
-      background: var(--card-bg);
-      backdrop-filter: blur(16px);
-      border: 1px solid var(--card-border);
-      border-radius: 18px;
-      padding: 20px;
-      margin-bottom: 24px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      background: transparent;
+      border: none;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      padding: 18px 0 8px 0;
+      margin-bottom: 20px;
+      box-shadow: none;
     }
     .card-title {
-      font-size: 15.5px; font-weight: 700; margin-bottom: 14px;
-      display: flex; justify-content: space-between; align-items: center;
-      flex-wrap: wrap; gap: 10px;
+      font-size: var(--fs-lg);
+      font-weight: 700;
+      color: var(--text-bright);
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
     }
+
+    /* Tier 2: Tight Invert Badges & Subtle Counters */
     .badge {
-      font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: 700;
-      background: rgba(99, 102, 241, 0.2); color: #a5b4fc;
-      white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;
+      font-size: var(--fs-sm);
+      padding: 1px 6px;
+      border-radius: 2px;
+      font-weight: 700;
+      background: var(--invert-bg);
+      color: var(--invert-text);
+      white-space: nowrap;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      line-height: 1.4;
     }
     .badge.delivery {
-      background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(245,158,11,0.3));
-      color: #fbbf24; border: 1px solid rgba(245,158,11,0.4);
+      background: var(--invert-bg);
+      color: var(--invert-text);
+      border: none;
     }
     .badge.manual {
-      background: rgba(56, 189, 248, 0.2); color: #38bdf8;
+      background: #262626;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    .badge-dim {
+      font-size: var(--fs-sm);
+      padding: 1px 6px;
+      border-radius: 2px;
+      font-weight: 600;
+      background: #1E1E1E;
+      color: var(--text-muted);
+      border: 1px solid var(--line);
+      font-family: var(--font-mono);
     }
 
-    /* Buttons */
+    /* Buttons Hierarchy */
+    /* Default .btn -> Tier 3: Auxiliary text button with [ ] hover brackets & zero layout shift */
     .btn {
-      padding: 8px 14px; border-radius: 9px; border: none; cursor: pointer;
-      font-weight: 600; font-size: 12.5px; transition: all 0.2s;
-      display: inline-flex; align-items: center; gap: 6px;
-      background: #1e293b; color: #f1f5f9; border: 1px solid rgba(255,255,255,0.1);
-      white-space: nowrap; flex-shrink: 0; user-select: none;
+      padding: 4px 2px;
+      border-radius: 0;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      font-weight: 400;
+      font-size: var(--fs-md);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: transparent;
+      color: #AAAAAA;
+      white-space: nowrap;
+      flex-shrink: 0;
+      user-select: none;
+      transition: color 0.12s ease;
     }
-    .btn:hover { background: #334155; transform: translateY(-1px); }
-    .btn-sm { padding: 4px 10px; font-size: 11.5px; border-radius: 7px; }
-    .btn-primary { background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; border: none; }
-    .btn-primary:hover { opacity: 0.9; box-shadow: 0 4px 12px var(--accent-glow); }
-    .btn-emerald { background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; }
-    .btn-emerald:hover { opacity: 0.9; box-shadow: 0 4px 12px rgba(16,185,129,0.4); }
+    .btn::before {
+      content: "[ ";
+      font-family: var(--font-mono);
+      opacity: 0;
+      color: var(--text-bright);
+    }
+    .btn::after {
+      content: " ]";
+      font-family: var(--font-mono);
+      opacity: 0;
+      color: var(--text-bright);
+    }
+    .btn:hover:not(:disabled) {
+      background: transparent;
+      color: var(--text-bright);
+      text-shadow: 0 0 0.5px currentColor;
+      transform: none;
+    }
+    .btn:hover:not(:disabled)::before,
+    .btn:hover:not(:disabled)::after {
+      opacity: 1;
+    }
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .btn-sm {
+      padding: 2px 2px;
+      font-size: var(--fs-md);
+    }
 
-    /* Inputs */
-    .form-row { display: flex; gap: 10px; margin-bottom: 12px; }
-    .form-group { display: flex; flex-direction: column; gap: 4px; }
-    .form-group label { font-size: 11.5px; color: var(--text-muted); font-weight: 600; }
-    .input-text, .input-number {
-      background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #fff; padding: 9px 12px; border-radius: 9px; font-size: 13px;
-      outline: none; transition: border-color 0.2s;
+    /* Tier 1: Top-level Core Solid Buttons (주간 납품 일괄 실행, 완료 가공품 수령 등 핵심 액션) */
+    .btn-solid-core,
+    .btn-mcb-start,
+    #btn-collect-all-altering,
+    #btn-batch-execute,
+    #btn-quick-alter-execute,
+    #btn-custom-execute {
+      background: var(--invert-bg) !important;
+      color: var(--invert-text) !important;
+      font-size: var(--fs-md) !important;
+      font-weight: 700 !important;
+      padding: 8px 16px !important;
+      border-radius: 2px !important;
+      border: 1px solid var(--invert-bg) !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
     }
-    .input-text:focus, .input-number:focus { border-color: var(--accent); }
+    .btn-solid-core::before, .btn-solid-core::after,
+    .btn-mcb-start::before, .btn-mcb-start::after,
+    #btn-collect-all-altering::before, #btn-collect-all-altering::after,
+    #btn-batch-execute::before, #btn-batch-execute::after,
+    #btn-quick-alter-execute::before, #btn-quick-alter-execute::after,
+    #btn-custom-execute::before, #btn-custom-execute::after {
+      content: none !important;
+      display: none !important;
+    }
+    .btn-solid-core:hover:not(:disabled),
+    .btn-mcb-start:hover:not(:disabled),
+    #btn-collect-all-altering:hover:not(:disabled),
+    #btn-batch-execute:hover:not(:disabled),
+    #btn-quick-alter-execute:hover:not(:disabled),
+    #btn-custom-execute:hover:not(:disabled) {
+      background: #FFFFFF !important;
+      color: #000000 !important;
+      border-color: #FFFFFF !important;
+      transform: none !important;
+    }
+
+    /*Inputs */
+    .form-row { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; }
+    .input-text, .input-number {
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      color: var(--text-bright);
+      padding: 7px 10px;
+      border-radius: 2px;
+      font-size: var(--fs-md);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .input-text:focus, .input-number:focus { border-color: var(--invert-bg); }
 
     /* Console */
     .console {
-      background: #050810; border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 12px; padding: 14px; height: 350px; overflow-y: auto;
-      font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
-      display: flex; flex-direction: column; gap: 6px;
+      background: #141414;
+      border: none;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      padding: 12px 10px;
+      height: 340px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: var(--fs-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
     .log-line { line-height: 1.5; word-break: break-all; }
-    .log-time { color: #64748b; margin-right: 6px; }
-    .log-info { color: #cbd5e1; }
-    .log-success { color: #34d399; font-weight: 600; }
-    .log-warn { color: #fbbf24; }
-    .log-error { color: #f43f5e; font-weight: 600; }
-    .log-action { color: #38bdf8; font-weight: 600; }
+    .log-time { color: var(--text-dim); margin-right: 6px; font-family: var(--font-mono); }
+    .log-info { color: var(--text); }
+    .log-success { color: var(--text-bright); font-weight: 700; }
+    .log-warn { color: #CCCCCC; }
+    .log-error { color: var(--invert-text); background: var(--invert-bg); padding: 0 4px; font-weight: 700; }
+    .log-action { color: var(--text-bright); font-weight: 600; }
 
     .busy-indicator {
-      display: inline-flex; align-items: center; gap: 8px;
-      font-size: 13px; color: #fbbf24; font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: var(--fs-md);
+      color: var(--text-bright);
+      font-weight: 600;
+      font-family: var(--font-mono);
     }
-    .spinner {
-      width: 14px; height: 14px; border: 2px solid rgba(251, 191, 36, 0.3);
-      border-top-color: #fbbf24; border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* Facility 3x2 Grid */
     .facility-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
+      gap: 16px;
     }
     @media(max-width: 960px) { .facility-grid { grid-template-columns: repeat(2, 1fr); } }
     @media(max-width: 600px) { .facility-grid { grid-template-columns: 1fr; } }
 
     .facility-card {
-      background: rgba(0, 0, 0, 0.28);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      padding: 12px 14px;
+      background: transparent;
+      border: none;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      padding: 10px 4px;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      min-height: 125px;
-      transition: all 0.2s ease;
+      justify-content: flex-start;
+      min-height: 110px;
     }
-    .facility-card:hover { border-color: rgba(99, 102, 241, 0.4); }
     .facility-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 8px;
       padding-bottom: 6px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid var(--line-subtle);
     }
     .facility-title {
       font-weight: 700;
-      font-size: 13.5px;
-      color: #e0e7ff;
+      font-size: var(--fs-md);
+      color: var(--text-bright);
       display: flex;
       align-items: center;
       gap: 6px;
@@ -1802,303 +1966,334 @@ HTML_PAGE = """<!DOCTYPE html>
       display: flex;
       flex-direction: column;
       gap: 4px;
-      max-height: 100px;
+      max-height: 110px;
       overflow-y: auto;
     }
     .facility-item-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 12px;
+      font-size: var(--fs-sm);
       padding: 3px 0;
-      border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+      border-bottom: 1px dashed var(--line-subtle);
     }
     .facility-item-row:last-child { border-bottom: none; }
     .item-name-text {
-      color: #cbd5e1;
-      font-weight: 500;
-      max-width: 130px;
+      color: var(--text);
+      font-weight: 400;
+      max-width: 145px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .btn-manual-bell {
-      background: none; border: none; color: #64748b; cursor: pointer;
-      font-size: 11px; margin-left: 4px; padding: 1px 3px; border-radius: 4px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: var(--fs-sm);
+      margin-left: 6px;
+      padding: 0 2px;
     }
-    .btn-manual-bell:hover { color: #fbbf24; background: rgba(251, 191, 36, 0.1); }
+    .btn-manual-bell:hover { color: var(--text-bright); font-weight: 700; }
 
-    /* BOM Table */
+    /* BOM Table & Group Separators */
     .bom-table {
-      width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--fs-md);
+      margin-top: 8px;
     }
     .bom-table th {
-      background: rgba(0,0,0,0.3); color: var(--text-muted); text-align: left;
-      padding: 9px 12px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: transparent;
+      color: var(--text-muted);
+      text-align: left;
+      padding: 8px 10px;
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
       white-space: nowrap;
     }
     .bom-table td {
-      padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.04);
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line-subtle);
+      color: var(--text);
+      font-size: var(--fs-md);
       white-space: nowrap;
+      background: transparent !important;
     }
-    .bom-table tr:hover { background: rgba(255,255,255,0.02); }
+    .bom-table tr:hover td { background: #1A1A1A !important; }
+    .bom-table tr.row-alter td:first-child {
+      border-left: 3px solid var(--bar-alter);
+      padding-left: 10px;
+    }
+    .bom-table tr.row-gather td:first-child {
+      border-left: 3px solid var(--bar-gather);
+      padding-left: 10px;
+    }
+    .bom-table tr.row-special td:first-child {
+      border-left: 3px solid var(--bar-special);
+      padding-left: 10px;
+    }
+    .bom-table tr.table-group-row td {
+      padding: 6px 10px;
+      font-family: var(--font-mono);
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--line);
+      letter-spacing: 0.5px;
+    }
 
     /* 7-Slot Quick Alter Styling */
     .quick-tab {
-      background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #94a3b8; font-weight: 600;
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--text-muted);
+      font-size: var(--fs-md);
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 2px;
     }
-    .quick-tab:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+    .quick-tab::before, .quick-tab::after { content: none !important; display: none !important; }
+    .quick-tab:hover { color: var(--text-bright); border-color: var(--text-muted); }
     .quick-tab.active {
-      background: linear-gradient(135deg, #0284c7, #2563eb);
-      color: #fff;
-      border-color: transparent;
-      box-shadow: 0 2px 12px rgba(2, 132, 199, 0.4);
+      background: var(--invert-bg) !important;
+      color: var(--invert-text) !important;
+      border-color: var(--invert-bg) !important;
+      font-weight: 700;
+      box-shadow: none;
     }
     .quick-cat-card {
-      background: rgba(0, 0, 0, 0.28);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      padding: 14px;
+      background: transparent;
+      border: none;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      padding: 12px 0;
     }
     .quick-tier-table {
-      width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--fs-md);
+      margin-top: 8px;
     }
     .quick-tier-table th {
-      background: rgba(0,0,0,0.3); color: var(--text-muted); text-align: left;
-      padding: 6px 8px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: transparent;
+      color: var(--text-muted);
+      text-align: left;
+      padding: 6px 8px;
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
     }
     .quick-tier-table td {
-      padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04);
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line-subtle);
+      font-size: var(--fs-md);
     }
 
-    /* Master Command Bar Mode Switcher Tabs */
+    /* Master Command Bar Mode Switcher Tabs (Tier 2: Tight Invert Box when Active) */
     .mcb-mode-tabs {
       display: flex;
       align-items: center;
       gap: 8px;
       margin-bottom: 12px;
       padding-bottom: 10px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid var(--line);
       flex-wrap: wrap;
     }
     .mcb-mode-tab {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
-      padding: 6px 14px;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      padding: 4px 10px;
       display: inline-flex;
       align-items: center;
       gap: 8px;
       cursor: pointer;
-      color: #94a3b8;
-      font-size: 13.5px;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--fs-md);
       font-weight: 600;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       user-select: none;
       outline: none;
+      transition: all 0.12s ease;
     }
     .mcb-mode-tab:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.22);
-      color: #f1f5f9;
-      transform: translateY(-1px);
+      border-color: var(--text-muted);
+      color: var(--text-bright);
     }
     .mcb-mode-tab .mcb-tab-pill {
-      font-size: 11px;
+      font-family: var(--font-mono);
+      font-size: var(--fs-sm);
       font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.08);
-      color: #cbd5e1;
-      transition: all 0.2s ease;
+      padding: 0 5px;
+      border-radius: 2px;
+      background: #222222;
+      color: var(--text-muted);
     }
-    /* Active Tabs */
-    .mcb-mode-tab.active#btn-mode-delivery {
-      background: linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(99, 102, 241, 0.2) 100%);
-      border-color: rgba(168, 85, 247, 0.6);
-      color: #f3e8ff;
-      box-shadow: 0 2px 10px rgba(168, 85, 247, 0.25);
-    }
-    .mcb-mode-tab.active#btn-mode-delivery .mcb-tab-pill {
-      background: rgba(168, 85, 247, 0.35);
-      color: #f5d0fe;
-    }
-    .mcb-mode-tab.active#btn-mode-quick-alter {
-      background: linear-gradient(135deg, rgba(2, 132, 199, 0.25) 0%, rgba(37, 99, 235, 0.2) 100%);
-      border-color: rgba(56, 189, 248, 0.6);
-      color: #e0f2fe;
-      box-shadow: 0 2px 10px rgba(2, 132, 199, 0.25);
-    }
-    .mcb-mode-tab.active#btn-mode-quick-alter .mcb-tab-pill {
-      background: rgba(56, 189, 248, 0.35);
-      color: #bae6fd;
-    }
+    /* Active Mode Tab -> Tight Invert Box (#DFDFDF bg + #121212 text) */
+    .mcb-mode-tab.active,
+    .mcb-mode-tab.active#btn-mode-delivery,
+    .mcb-mode-tab.active#btn-mode-quick-alter,
     .mcb-mode-tab.active#btn-mode-custom-craft {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.2) 100%);
-      border-color: rgba(16, 185, 129, 0.6);
-      color: #a7f3d0;
-      box-shadow: 0 2px 10px rgba(16, 185, 129, 0.25);
+      background: var(--invert-bg) !important;
+      border-color: var(--invert-bg) !important;
+      color: var(--invert-text) !important;
+      font-weight: 700;
+      box-shadow: none !important;
     }
+    .mcb-mode-tab.active .mcb-tab-pill,
+    .mcb-mode-tab.active#btn-mode-delivery .mcb-tab-pill,
+    .mcb-mode-tab.active#btn-mode-quick-alter .mcb-tab-pill,
     .mcb-mode-tab.active#btn-mode-custom-craft .mcb-tab-pill {
-      background: rgba(16, 185, 129, 0.35);
-      color: #6ee7b7;
+      background: var(--invert-text) !important;
+      color: var(--invert-bg) !important;
     }
 
-    /* Alteration Order Segmented Control */
+    /* Alteration Order Segmented Control (Tight Invert Active Filter) */
     .alter-order-container {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      background: rgba(15, 23, 42, 0.65);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      padding: 4px 6px;
-      border-radius: 10px;
+      gap: 6px;
+      background: transparent;
+      border: none;
+      padding: 0;
     }
     .alter-order-label {
-      font-size: 11.5px;
-      font-weight: 700;
-      color: #94a3b8;
+      font-size: var(--fs-sm);
+      font-weight: 600;
+      color: var(--text-muted);
       display: flex;
       align-items: center;
       gap: 4px;
-      padding-left: 4px;
     }
     .segmented-control {
       display: inline-flex;
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 8px;
-      padding: 2px;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      padding: 1px;
       gap: 2px;
     }
     .seg-btn {
       background: transparent;
-      border: 1px solid transparent;
-      color: #94a3b8;
-      font-size: 11.5px;
+      border: none;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--fs-sm);
       font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 6px;
+      padding: 2px 8px;
+      border-radius: 1px;
       cursor: pointer;
-      transition: all 0.2s ease;
       white-space: nowrap;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
+      gap: 4px;
     }
     .seg-btn:hover {
-      color: #f1f5f9;
-      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-bright);
     }
     .seg-btn.active {
-      background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.25));
-      color: #38bdf8;
-      border-color: rgba(56, 189, 248, 0.45);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      background: var(--invert-bg);
+      color: var(--invert-text);
       font-weight: 700;
+      box-shadow: none;
     }
 
-    /* Tab Content Animation */
+    /* Tab Content */
     .mode-tab-content {
-      animation: tabFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    @keyframes tabFadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
+      padding-top: 4px;
     }
 
-    /* Execution Summary Modal Overlay */
+    /* Modal Dialogs (Line-Centric Terminal Modal) */
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(4, 7, 15, 0.75);
-      backdrop-filter: blur(8px);
+      background: rgba(0, 0, 0, 0.8);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 9999;
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.25s ease;
+      transition: opacity 0.15s ease;
     }
     .modal-overlay.active {
       opacity: 1;
       pointer-events: auto;
     }
     .modal-dialog {
-      background: #0f172a;
-      border: 1px solid rgba(99, 102, 241, 0.35);
-      border-radius: 20px;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 35px rgba(99, 102, 241, 0.2);
+      background: var(--bg-panel);
+      border: 1px solid var(--invert-bg);
+      border-radius: 2px;
       width: 90%;
       max-width: 680px;
       max-height: 85vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      transform: scale(0.95);
-      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .modal-overlay.active .modal-dialog {
-      transform: scale(1);
     }
     .modal-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 18px 24px;
-      background: rgba(30, 41, 59, 0.6);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 14px 20px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--line);
     }
     .modal-body {
-      padding: 20px 24px;
+      padding: 18px 20px;
       overflow-y: auto;
-      font-size: 13.5px;
+      font-size: var(--fs-md);
       color: var(--text);
     }
     .modal-footer {
       display: flex;
       justify-content: flex-end;
       gap: 10px;
-      padding: 14px 24px;
-      background: rgba(30, 41, 59, 0.6);
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 12px 20px;
+      background: var(--bg-elevated);
+      border-top: 1px solid var(--line);
     }
     .summary-stat-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
+      gap: 10px;
+      margin-bottom: 16px;
     }
     .summary-stat-card {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      padding: 12px;
-      text-align: center;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      padding: 10px;
+      text-align: left;
     }
     .summary-stat-card .label {
-      font-size: 11.5px;
+      font-size: var(--fs-sm);
       color: var(--text-muted);
       margin-bottom: 4px;
     }
     .summary-stat-card .val {
-      font-size: 17px;
-      font-weight: 800;
-      color: #fff;
+      font-size: var(--fs-lg);
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-bright);
     }
     .summary-section {
-      background: rgba(0, 0, 0, 0.25);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 12px;
-      padding: 14px;
-      margin-bottom: 14px;
+      background: transparent;
+      border-top: 1px solid var(--line);
+      padding: 12px 0;
+      margin-bottom: 8px;
     }
     .summary-section-title {
-      font-size: 13px;
+      font-size: var(--fs-md);
       font-weight: 700;
-      margin-bottom: 10px;
+      color: var(--text-bright);
+      margin-bottom: 8px;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -2107,135 +2302,104 @@ HTML_PAGE = """<!DOCTYPE html>
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 6px 0;
-      border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
-      font-size: 12.5px;
+      padding: 5px 0;
+      border-bottom: 1px dashed var(--line-subtle);
+      font-size: var(--fs-md);
     }
-    .summary-item-row:last-child {
-      border-bottom: none;
-    }
+    .summary-item-row:last-child { border-bottom: none; }
 
-    /* Master Command Bar (Sticky Header Control Panel) */
+    /* Master Command Bar (Sticky Terminal Control Deck) */
     .master-command-bar {
       position: sticky;
-      top: 10px;
+      top: 72px;
       z-index: 850;
-      margin-bottom: 22px;
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-      border: 1px solid rgba(99, 102, 241, 0.45);
-      border-radius: 16px;
-      padding: 14px 22px;
-      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.2);
-      backdrop-filter: blur(14px);
-      transition: all 0.25s ease;
+      margin-bottom: 20px;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      padding: 12px 14px;
     }
     .master-command-bar.running {
-      border-color: rgba(239, 68, 68, 0.5);
-      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 25px rgba(239, 68, 68, 0.25);
+      border-color: var(--invert-bg);
     }
     .mcb-inner {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 18px;
+      gap: 16px;
       flex-wrap: wrap;
     }
     .mcb-left {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
       flex: 1;
       min-width: 260px;
     }
     .mcb-title-row {
       display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
     }
     .mcb-briefing {
-      font-size: 14px;
-      font-weight: 700;
-      color: #f1f5f9;
+      font-size: var(--fs-md);
+      font-weight: 600;
+      color: var(--text-bright);
     }
     .mcb-eta-badge {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      background: rgba(56, 189, 248, 0.16);
-      border: 1px solid rgba(56, 189, 248, 0.45);
-      color: #38bdf8;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 3px 11px;
-      border-radius: 20px;
+      gap: 6px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--fs-sm);
+      font-weight: 600;
+      padding: 0;
       white-space: nowrap;
-      letter-spacing: -0.2px;
-      box-shadow: 0 2px 10px rgba(56, 189, 248, 0.15);
-      transition: all 0.2s ease;
-      cursor: default;
-    }
-    .mcb-eta-badge:hover {
-      background: rgba(56, 189, 248, 0.25);
-      border-color: rgba(56, 189, 248, 0.65);
-      color: #e0f2fe;
     }
     .mcb-options-row {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 16px;
       flex-wrap: wrap;
+      margin-top: 2px;
     }
-    .mcb-option-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      background: rgba(99, 102, 241, 0.15);
-      border: 1px solid rgba(99, 102, 241, 0.4);
-      padding: 5px 12px;
-      border-radius: 20px;
-      font-size: 12.5px;
-      font-weight: 700;
-      color: #c7d2fe;
-      user-select: none;
-      transition: all 0.2s;
-    }
-    .mcb-option-toggle:hover {
-      background: rgba(99, 102, 241, 0.25);
-      border-color: rgba(99, 102, 241, 0.6);
-    }
-    .mcb-option-toggle input[type="checkbox"] {
-      accent-color: #6366f1;
-      cursor: pointer;
-      width: 15px;
-      height: 15px;
-      margin: 0;
-    }
+    /* Tier 3: Text Checkbox ([x] / [ ]) */
+    .mcb-option-toggle,
     .mcb-pill-btn {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      color: #e2e8f0;
-      font-size: 12px;
-      padding: 5px 12px;
-      border-radius: 20px;
-      cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-weight: 600;
-      transition: all 0.2s;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      padding: 2px 0;
+      font-family: var(--font-sans);
+      font-size: var(--fs-md);
+      font-weight: 400;
+      color: var(--text-muted);
+      user-select: none;
       outline: none;
     }
+    .mcb-option-toggle:hover,
     .mcb-pill-btn:hover {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: rgba(255, 255, 255, 0.3);
-      color: #fff;
+      color: var(--text-bright);
+      text-shadow: 0 0 0.5px currentColor;
     }
-    .mcb-pill-btn.active {
-      background: rgba(16, 185, 129, 0.2);
-      border-color: rgba(16, 185, 129, 0.45);
-      color: #6ee7b7;
+    .mcb-option-toggle input[type="checkbox"] {
+      display: none;
+    }
+    .cli-check-box {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--text-bright);
+      display: inline-block;
+      width: 3ch;
+      text-align: center;
     }
     .mcb-right {
       display: flex;
@@ -2245,64 +2409,25 @@ HTML_PAGE = """<!DOCTYPE html>
       min-width: 0;
       max-width: 100%;
     }
-    .btn-mcb-start {
-      background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-      color: #ffffff;
-      font-size: 14.5px;
-      font-weight: 800;
-      padding: 12px 24px;
-      border-radius: 12px;
-      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      white-space: nowrap;
-      transition: all 0.2s ease;
-      box-sizing: border-box;
-    }
-    .btn-mcb-start:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 22px rgba(168, 85, 247, 0.55);
-      filter: brightness(1.1);
-    }
-    .btn-mcb-start:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none !important;
-      box-shadow: none !important;
-    }
     .btn-danger-abort {
-      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-      color: white;
-      font-size: 14px;
-      font-weight: 800;
-      padding: 11px 22px;
-      border-radius: 12px;
-      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
-      border: none;
+      background: var(--invert-bg) !important;
+      color: var(--invert-text) !important;
+      font-size: var(--fs-md) !important;
+      font-weight: 700 !important;
+      padding: 8px 16px !important;
+      border-radius: 2px !important;
+      border: 1px solid var(--invert-bg) !important;
       cursor: pointer;
       white-space: nowrap;
-      animation: abortPulse 2s infinite ease-in-out;
-      flex-shrink: 0;
-      box-sizing: border-box;
-    }
-    @keyframes abortPulse {
-      0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
-      50% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.7); }
-    }
-    .mcb-running-spinner {
-      width: 22px;
-      height: 22px;
-      border: 3px solid rgba(239, 68, 68, 0.25);
-      border-top-color: #f87171;
-      border-radius: 50%;
-      animation: mcbSpin 0.9s linear infinite;
       flex-shrink: 0;
     }
-    @keyframes mcbSpin {
-      to { transform: rotate(360deg); }
+    .btn-danger-abort::before, .btn-danger-abort::after {
+      content: none !important;
+      display: none !important;
+    }
+    .btn-danger-abort:hover {
+      background: #FFFFFF !important;
+      color: #000000 !important;
     }
     .mcb-running-info {
       text-align: right;
@@ -2310,15 +2435,15 @@ HTML_PAGE = """<!DOCTYPE html>
       flex: 1;
     }
     .mcb-running-title {
-      font-size: 13.5px;
-      font-weight: 800;
-      color: #fca5a5;
+      font-size: var(--fs-md);
+      font-weight: 700;
+      color: var(--text-bright);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .mcb-running-desc {
-      font-size: 11.5px;
+      font-size: var(--fs-sm);
       color: var(--text-muted);
       max-width: 280px;
       white-space: nowrap;
@@ -2327,80 +2452,51 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     @media (max-width: 820px) {
       .master-command-bar {
-        padding: 12px 14px;
+        padding: 10px 12px;
         top: 6px;
       }
       .mcb-inner {
         flex-direction: column;
         align-items: stretch;
-        gap: 12px;
+        gap: 10px;
       }
-      .mcb-left {
-        min-width: 0;
-      }
-      .mcb-right {
-        width: 100%;
-        justify-content: stretch;
-      }
-      #mcb-box-idle {
-        width: 100%;
-      }
-      #mcb-box-running {
-        width: 100%;
-        justify-content: space-between;
-        box-sizing: border-box;
-      }
-      .btn-mcb-start {
-        width: 100%;
-        justify-content: center;
-        padding: 12px 16px;
-      }
-      .btn-danger-abort {
-        width: auto;
-        flex-shrink: 0;
-        padding: 11px 20px;
-        justify-content: center;
-      }
-      .mcb-running-info {
-        text-align: left;
-        flex: 1;
-        min-width: 0;
-      }
-      .mcb-running-desc {
-        max-width: 100%;
-      }
+      .mcb-left { min-width: 0; }
+      .mcb-right { width: 100%; justify-content: stretch; }
+      #mcb-box-idle { width: 100%; }
+      #mcb-box-running { width: 100%; justify-content: space-between; }
+      .btn-mcb-start { width: 100%; justify-content: center; }
+      .mcb-running-info { text-align: left; }
+      .mcb-running-desc { max-width: 100%; }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <!-- 1층: 좌측(로고, 제목) / 우측(연결설정, 최근 작업 리포트, 서버 종료) -->
+      <!-- 1층: 좌측(타이틀) / 우측(보조 메뉴 - 호버 브래킷) -->
       <div class="header-top">
         <div class="logo-area">
-          <div class="logo-icon" style="padding: 2px; overflow: hidden; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);">
-            <img src="/api/icon" alt="아이콘" style="width: 100%; height: 100%; object-fit: contain; border-radius: 9px;" onerror="this.style.display='none'; this.parentElement.innerText='⚔️';">
-          </div>
+          <div class="logo-icon">&gt;_</div>
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span style="font-size: 11px; background: rgba(99, 102, 241, 0.25); color: #c7d2fe; padding: 2px 7px; border-radius: 6px; font-weight: 700; margin-left: 6px; border: 1px solid rgba(99, 102, 241, 0.4); vertical-align: middle;">v0.6.1</span></h1>
-            <p>마비노기 모바일 AI 커넥터 연동</p>
+            <h1><span class="sym-prefix">//</span>모비노기 생활 지원도구 <span class="badge">v0.7.0</span></h1>
+            <p>&gt; 마비노기 모바일 AI 커넥터 터미널</p>
           </div>
         </div>
         <div class="header-actions">
-          <button class="header-action-btn" onclick="openUserDataFolder()" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #6ee7b7;" title="레시피, 프리셋, 설정이 저장되는 내 문서 폴더 열기 (버전 업데이트 시 자동 유지)">
-            <span class="btn-icon">📂</span><span class="btn-label">데이터 폴더</span>
+          <button class="header-action-btn" onclick="openUserDataFolder()" title="레시피, 프리셋, 설정이 저장되는 내 문서 폴더 열기 (버전 업데이트 시 자동 유지)">
+            <span class="btn-label">데이터 폴더</span>
           </button>
-          <button class="header-action-btn" onclick="openMobileConnectModal()" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #7dd3fc;" title="스마트폰 브라우저로 침대에서 실시간 모니터링 (QR 코드 접속)">
-            <span class="btn-icon">📱</span><span class="btn-label">스마트폰 접속</span>
+          <button class="header-action-btn" onclick="openMobileConnectModal()" title="스마트폰 브라우저로 실시간 모니터링 (QR 코드 접속)">
+            <span class="btn-label">스마트폰 접속</span>
           </button>
           <button class="header-action-btn btn-settings" onclick="openCliModal()" title="게임 CLI 설치 경로 및 연결 설정">
-            <span class="btn-icon">⚙️</span><span class="btn-label">연결 설정</span>
+            <span class="btn-label">연결 설정</span>
           </button>
           <button id="btn-show-summary" class="header-action-btn btn-summary" style="display: none;" onclick="openSummaryModal()" title="최근 완료된 작업의 채집, 가공, 제작, 날개 소모 결과를 확인합니다">
-            <span class="btn-icon">📊</span><span class="btn-label">최근 작업 리포트</span>
+            <span class="btn-label">최근 작업 리포트</span>
           </button>
           <button class="header-action-btn btn-shutdown" onclick="manualServerShutdown()" title="웹 대시보드와 백그라운드 서버를 종료합니다">
-            <span class="btn-icon">🔌</span><span class="btn-label">서버 종료</span>
+            <span class="btn-label">서버 종료</span>
           </button>
         </div>
       </div>
@@ -2408,97 +2504,101 @@ HTML_PAGE = """<!DOCTYPE html>
       <!-- 구분 선 -->
       <div class="header-divider"></div>
 
-      <!-- 2층: 서버 연결 상태, 날개, 무게만 깔끔하게 표시 -->
+      <!-- 2층: :: 메이븐 (Lv.100) :: 날개 7,647 :: 무게 1108/1870 [■■■□□] :: -->
       <div class="header-status-bar status-pills" id="status-pills">
-        <div class="pill online" id="pill-status" onclick="openCliModal()" style="cursor: pointer;" title="클릭하여 연결 상태 및 설정 확인">● 커넥터 연결 확인 중</div>
-        <div class="pill wings" id="pill-wings">🪽 날개: -</div>
-        <div class="pill weight" id="pill-weight">📦 무게: -</div>
+        <span class="status-delim">::</span>
+        <div class="pill online" id="pill-status" onclick="openCliModal()" style="cursor: pointer;" title="클릭하여 연결 상태 및 설정 확인">커넥터 연결 확인 중</div>
+        <span class="status-delim">::</span>
+        <div class="pill wings" id="pill-wings">날개 -</div>
+        <span class="status-delim">::</span>
+        <div class="pill weight" id="pill-weight">무게 -/- [□□□□□]</div>
+        <span class="status-delim">::</span>
       </div>
     </header>
 
     <!-- Connection Alert Banner (shown when disconnected) -->
-    <div id="cli-connection-alert" style="display: none; margin-bottom: 24px; padding: 18px 22px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 14px; backdrop-filter: blur(8px);">
+    <div id="cli-connection-alert" style="display: none; margin-bottom: 20px; padding: 14px 16px; background: var(--bg-panel); border-top: 1px solid var(--invert-bg); border-bottom: 1px solid var(--line);">
       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
-        <div style="display: flex; gap: 14px; align-items: flex-start; flex: 1; min-width: 300px;">
-          <div id="cli-alert-icon" style="font-size: 26px; line-height: 1;">⚠️</div>
+        <div style="display: flex; gap: 10px; align-items: flex-start; flex: 1; min-width: 280px;">
+          <div id="cli-alert-icon" class="mono-num" style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);">[!]</div>
           <div style="flex: 1;">
-            <div id="cli-alert-title" style="font-size: 15px; font-weight: 700; color: #fbbf24; margin-bottom: 6px;">게임 연결 끊김</div>
-            <div id="cli-alert-desc" style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">게임 클라이언트 상태를 확인해주세요.</div>
+            <div id="cli-alert-title" style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">게임 연결 끊김</div>
+            <div id="cli-alert-desc" style="font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.5;">&gt; 게임 클라이언트 상태를 확인해주세요.</div>
             <!-- Quick path setter form inside alert banner -->
-            <div id="cli-alert-path-box" style="display: none; margin-top: 12px; gap: 8px; align-items: center; flex-wrap: wrap;">
-              <input type="text" id="quick-cli-path-input" placeholder="예: D:\\Nexon\\MabinogiMobile 또는 C:\\Nexon\\MabinogiMobile" style="flex: 1; min-width: 280px; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 8px; color: #fff; font-size: 13px;">
-              <button class="btn btn-sm btn-amber" onclick="saveQuickCliPath()">경로 저장 & 연결</button>
-              <button class="btn btn-sm" onclick="triggerCliScan()">🔍 자동 다시 검색</button>
+            <div id="cli-alert-path-box" style="display: none; margin-top: 10px; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <input type="text" id="quick-cli-path-input" class="input-text" placeholder="예: D:\Nexon\MabinogiMobile 또는 C:\Nexon\MabinogiMobile" style="flex: 1; min-width: 260px;">
+              <button class="btn btn-sm" onclick="saveQuickCliPath()">경로 저장 &amp; 연결</button>
+              <button class="btn btn-sm" onclick="triggerCliScan()">자동 다시 검색</button>
             </div>
           </div>
         </div>
         <div>
-          <button class="btn btn-sm" onclick="openCliModal()" style="white-space: nowrap; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);">연결 가이드 열기</button>
+          <button class="btn btn-sm" onclick="openCliModal()">연결 가이드 열기</button>
         </div>
       </div>
     </div>
 
-    <!-- Collapsible 3x2 Facility Altering Queue & Delivery-Only Alarm Card -->
-    <div class="card" id="altering-main-card" style="margin-bottom: 24px;">
+    <!-- Collapsible 3x2 Facility Altering Queue & Delivery-Only Alarm Section -->
+    <div class="card" id="altering-main-card">
       <div class="card-title" style="margin-bottom: 0;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <span>⏳ 가공 시설별 대기열 현황</span>
-          <span id="altering-summary-pill" class="badge" style="background: rgba(99,102,241,0.25); color: #c7d2fe;">확인 중...</span>
+          <span><span class="sym-prefix">//</span>가공 시설별 대기열 현황</span>
+          <span id="altering-summary-pill" class="badge">확인 중...</span>
         </div>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn btn-sm btn-emerald" onclick="collectAllCompletedAltering()" title="모든 시설의 완료된 가공 슬롯을 즉시 순차 수령합니다">🎁 완료 가공품 수령</button>
-          <button class="btn btn-sm" onclick="loadAlteringQueue()">대기열 새로고침</button>
-          <button class="btn btn-sm" id="btn-toggle-altering" onclick="toggleAlteringView()">접어두기 ▲</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button id="btn-collect-all-altering" class="btn btn-sm btn-solid-core" onclick="collectAllCompletedAltering()" title="모든 시설의 완료된 가공 슬롯을 즉시 순차 수령합니다">완료 가공품 수령</button>
+          <button class="btn btn-sm" onclick="loadAlteringQueue()">새로고침</button>
+          <button class="btn btn-sm" id="btn-toggle-altering" onclick="toggleAlteringView()">접어두기 ^</button>
         </div>
       </div>
 
       <!-- Collapsed Compact Bar (shown when collapsed) -->
-      <div id="altering-collapsed-bar" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer;" onclick="toggleAlteringView()">
-        <span id="altering-quick-summary">가공 시설 상태 요약 정보...</span>
-        <span style="float: right; color: #a5b4fc; font-weight: 600;">펼치기 ▼</span>
+      <div id="altering-collapsed-bar" style="display: none; margin-top: 10px; padding: 8px 0; border-top: 1px solid var(--line-subtle); font-size: var(--fs-md); color: var(--text-muted); cursor: pointer; justify-content: space-between; align-items: center;" onclick="toggleAlteringView()">
+        <span><span class="sym-prefix">&gt;</span><span id="altering-quick-summary">가공 시설 상태 요약 정보...</span></span>
+        <span class="mono-num" style="color: var(--text-bright); font-size: var(--fs-sm);">[ 펼치기 v ]</span>
       </div>
 
       <!-- Expanded Content (shown by default) -->
-      <div id="altering-expanded-content" style="margin-top: 16px;">
+      <div id="altering-expanded-content" style="margin-top: 14px;">
         <!-- 3x2 Grid for 6 Facilities -->
         <div class="facility-grid" id="facility-grid-container">
           <!-- Dynamically populated 6 facility cards -->
         </div>
 
         <!-- Delivery-Exclusive Alarm Section -->
-        <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-weight: 700; font-size: 13.5px; color: #a5b4fc;">🔔 주간 납품 전용 가공 알람 목록</span>
-              <span id="alarm-count-badge" class="badge delivery">0개 활성</span>
+              <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-bright);"><span class="sym-prefix">&gt;</span>주간 납품 전용 가공 알람 목록</span>
+              <span id="alarm-count-badge" class="badge">0개 활성</span>
             </div>
-            <div style="display: flex; gap: 6px;">
-              <button class="btn btn-sm" style="padding: 3px 8px; font-size: 11.5px;" onclick="testAlarmSound()">🔔 소리 테스트</button>
-              <button class="btn btn-sm" style="padding: 3px 8px; font-size: 11.5px;" onclick="requestPushPermission()">📢 브라우저 알림 허용</button>
-              <button class="btn btn-sm" style="padding: 3px 8px; font-size: 11.5px;" onclick="clearAllAlarms()">✕ 알람 비우기</button>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button class="btn btn-sm" onclick="testAlarmSound()">소리 테스트</button>
+              <button class="btn btn-sm" onclick="requestPushPermission()">브라우저 알림 허용</button>
+              <button class="btn btn-sm" onclick="clearAllAlarms()">알람 비우기</button>
             </div>
           </div>
-          <div id="alarm-list-container" style="max-height: 120px; overflow-y: auto; font-size: 12px; display: flex; flex-direction: column; gap: 4px;">
-            <p style="color: #64748b; font-size: 12px;">현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>
+          <div id="alarm-list-container" style="max-height: 120px; overflow-y: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px;">
+            <p style="color: var(--text-muted); font-size: var(--fs-sm);">&gt; 현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Global Master Command Bar (가공 시설 현황 바로 밑에 위치: 3개 모드 탭 + 브리핑 & 즉시 실행/중지) -->
+    <!-- Global Master Command Bar (3개 모드 탭 + 브리핑 & 즉시 실행/중지) -->
     <div id="master-command-bar" class="master-command-bar">
       <!-- 3-Mode Compact Segmented Tab Buttons -->
       <div class="mcb-mode-tabs" role="tablist">
         <button class="mcb-mode-tab active" id="btn-mode-delivery" role="tab" aria-selected="true" onclick="switchMainMode('delivery')">
-          <span>🎯 주간 납품</span>
+          <span>주간 납품</span>
           <span id="tab-delivery-pill" class="mcb-tab-pill delivery">0개 등록</span>
         </button>
         <button class="mcb-mode-tab" id="btn-mode-quick-alter" role="tab" aria-selected="false" onclick="switchMainMode('quick_alter')">
-          <span>⚡ 빠른 실행</span>
+          <span>빠른 실행</span>
           <span id="tab-quick-alter-pill" class="mcb-tab-pill quick">7슬롯</span>
         </button>
         <button class="mcb-mode-tab" id="btn-mode-custom-craft" role="tab" aria-selected="false" onclick="switchMainMode('custom_craft')">
-          <span>🔨 지정 제작</span>
+          <span>지정 제작</span>
           <span id="tab-custom-craft-pill" class="mcb-tab-pill custom">0개 등록</span>
         </button>
       </div>
@@ -2508,41 +2608,46 @@ HTML_PAGE = """<!DOCTYPE html>
         <div class="mcb-left">
           <div class="mcb-title-row">
             <span id="mcb-mode-badge" style="display: none;"></span>
-            <span id="mcb-briefing-text" class="mcb-briefing">목표 분석 대기 중...</span>
-            <span id="mcb-eta-badge" class="mcb-eta-badge" style="display: none;">⏱️ 예상 소요: -</span>
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <span class="sym-prefix">&gt;</span>
+              <span id="mcb-briefing-text" class="mcb-briefing">목표 분석 대기 중...</span>
+            </div>
+            <span id="mcb-eta-badge" class="mcb-eta-badge" style="display: none;">&gt; 예상 완수: -</span>
           </div>
           <div class="mcb-options-row">
-            <label class="mcb-option-toggle" title="가공 수령 ➔ 다음 티어 가공 ➔ 완제품 제작까지 멈추지 않고 100% 완수할 때까지 연속 자동 실행">
+            <label class="mcb-option-toggle" id="mcb-goal-toggle-label" title="가공 수령 -> 다음 티어 가공 -> 완제품 제작까지 멈추지 않고 100% 완수할 때까지 연속 자동 실행">
               <input type="checkbox" id="mcb-goal-toggle" onchange="onGoalFulfillmentToggleChanged(this.checked)">
-              <span class="mcb-toggle-label">🎯 목표 완수 모드</span>
+              <span class="cli-check-box" id="mcb-goal-check-sym">[x]</span>
+              <span class="mcb-toggle-label">목표 완수 모드</span>
             </label>
             <button class="mcb-pill-btn" id="mcb-btn-sound" onclick="toggleSoundAlarmSetting()" title="목표 완수/작업 완료 시 효과음 알림 (기본값: 무음)">
-              <span id="mcb-sound-icon">🔕</span> <span id="mcb-sound-text">알림음 꺼짐</span>
+              <span class="cli-check-box" id="mcb-sound-icon">[ ]</span>
+              <span id="mcb-sound-text">알림음 꺼짐</span>
             </button>
-            <button class="mcb-pill-btn" id="mcb-btn-order" onclick="toggleAlterOrderSetting()" title="가공 순서 우선순위 (상위 티어 / 하위 티어 우선)">
-              <span id="mcb-order-text">⚙️ 상위티어 우선</span>
+            <button class="mcb-pill-btn btn" id="mcb-btn-order" onclick="toggleAlterOrderSetting()" title="가공 순서 우선순위 (상위 티어 / 하위 티어 우선)">
+              <span id="mcb-order-text">상위티어 우선</span>
             </button>
           </div>
         </div>
 
         <!-- Right: Master Start / Stop Controls -->
         <div class="mcb-right">
-          <!-- Idle State: Big Start Button -->
+          <!-- Idle State: Core Solid Start Button -->
           <div id="mcb-box-idle" style="display: flex; gap: 8px; align-items: center;">
-            <button class="btn btn-lg btn-mcb-start" id="mcb-btn-start" onclick="triggerMasterStartAction()">
-              <span class="btn-icon" id="mcb-start-icon">🎯</span>
-              <span class="btn-label" id="mcb-start-label">목표 완수 시작</span>
+            <button class="btn btn-mcb-start" id="mcb-btn-start" onclick="triggerMasterStartAction()">
+              <span id="mcb-start-icon" style="display:none;"></span>
+              <span class="btn-label" id="mcb-start-label">주간 납품 일괄 실행</span>
             </button>
           </div>
-          <!-- Running State: Live Countdown & Abort Button -->
+          <!-- Running State: Live Text Spinner & Abort Button -->
           <div id="mcb-box-running" style="display: none; gap: 12px; align-items: center;">
-            <div class="mcb-running-spinner"></div>
+            <span class="cli-spinner">[/]</span>
             <div class="mcb-running-info">
-              <div class="mcb-running-title" id="mcb-running-title">⚡ 작업 진행 중...</div>
+              <div class="mcb-running-title" id="mcb-running-title">작업 진행 중...</div>
               <div class="mcb-running-desc" id="mcb-running-desc">실시간 상태 동기화 중</div>
             </div>
-            <button class="btn btn-lg btn-danger-abort" onclick="abortMasterPipeline()" title="현재 진행 중인 작업을 즉시 안전하게 멈춥니다">
-              <span>🛑 즉시 중지</span>
+            <button class="btn btn-danger-abort" onclick="abortMasterPipeline()" title="현재 진행 중인 작업을 즉시 안전하게 멈춥니다">
+              <span>즉시 중지</span>
             </button>
           </div>
         </div>
@@ -2551,160 +2656,142 @@ HTML_PAGE = """<!DOCTYPE html>
 
     <!-- Mode 1: 주간 납품 관리 & 일괄 실행 탭 컨텐츠 (기본 활성) -->
     <div id="tab-content-delivery" class="mode-tab-content">
-      <!-- Weekly Delivery Targets Manager Card (주간 납품 목표 누적 등록 및 관리) -->
-      <div class="card" id="delivery-targets-main-card" style="margin-bottom: 24px; border-color: rgba(168, 85, 247, 0.45); background: linear-gradient(180deg, rgba(30, 27, 75, 0.35) 0%, rgba(15, 23, 42, 0.6) 100%);">
-        <div class="card-title" style="margin-bottom: 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <!-- Weekly Delivery Targets Manager Section -->
+      <div class="card" id="delivery-targets-main-card">
+        <div class="card-title" style="margin-bottom: 0;">
           <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
-            <span style="font-size: 15.5px; font-weight: 700; color: #f1f5f9; white-space: nowrap;">🎯 주간 납품 목표 등록 & 관리</span>
-            <span id="target-count-badge" class="badge delivery">0개 등록됨</span>
+            <span><span class="sym-prefix">//</span>주간 납품 목표 등록 &amp; 관리</span>
+            <span id="target-count-badge" class="badge delivery">0개 등록</span>
           </div>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-            <button class="btn btn-sm btn-primary" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 읽어 목록에 추가합니다" style="padding: 6px 12px;">
-              ➕ 현재 퀘스트 등록
-            </button>
-            <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" style="color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.1); padding: 6px 12px;" title="새 주간 퀘스트를 시작할 때 모든 등록 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">
-              🔄 수량 0개로 초기화
-            </button>
-            <button class="btn btn-sm" onclick="clearDeliveryTargets()" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 6px 12px;">
-              🗑️ 전체 비우기
-            </button>
-            <button class="btn btn-sm" onclick="loadDeliveryTargets()" style="padding: 6px 12px;">
-              새로고침
-            </button>
-            <button class="btn btn-sm" id="btn-toggle-delivery-targets" onclick="toggleDeliveryTargetsView()" style="background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: #e9d5ff; padding: 6px 12px;">
-              접어두기 ▲
-            </button>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+            <button class="btn btn-sm" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 읽어 목록에 추가합니다">현재 퀘스트 등록</button>
+            <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" title="새 주간 퀘스트를 시작할 때 모든 등록 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">수량 0개로 초기화</button>
+            <button class="btn btn-sm" onclick="clearDeliveryTargets()">전체 비우기</button>
+            <button class="btn btn-sm" onclick="loadDeliveryTargets()">새로고침</button>
+            <button class="btn btn-sm" id="btn-toggle-delivery-targets" onclick="toggleDeliveryTargetsView()">접어두기 ^</button>
           </div>
         </div>
 
         <!-- Collapsed Compact Bar (shown when collapsed) -->
-        <div id="delivery-targets-collapsed-bar" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer; align-items: center; justify-content: space-between; gap: 12px; word-break: keep-all;" onclick="toggleDeliveryTargetsView()">
-          <span id="delivery-targets-quick-summary" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">등록된 주간 납품 목표 요약 정보...</span>
-          <span style="color: #c4b5fd; font-weight: 600; white-space: nowrap; flex-shrink: 0;">펼치기 ▼</span>
+        <div id="delivery-targets-collapsed-bar" style="display: none; margin-top: 10px; padding: 8px 0; border-top: 1px solid var(--line-subtle); font-size: var(--fs-md); color: var(--text-muted); cursor: pointer; align-items: center; justify-content: space-between; gap: 12px;" onclick="toggleDeliveryTargetsView()">
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span class="sym-prefix">&gt;</span><span id="delivery-targets-quick-summary">등록된 주간 납품 목표 요약 정보...</span></span>
+          <span class="mono-num" style="color: var(--text-bright); font-size: var(--fs-sm); flex-shrink: 0;">[ 펼치기 v ]</span>
         </div>
 
         <!-- Expanded Content (shown by default) -->
         <div id="delivery-targets-expanded-content" style="margin-top: 14px;">
           <!-- Quick Manual Add Input Form -->
-          <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+          <div style="padding: 12px 0; margin-bottom: 12px; border-top: 1px solid var(--line-subtle); border-bottom: 1px solid var(--line-subtle); display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
             <div style="flex: 2; min-width: 170px;">
-              <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
-              <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+              <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
+              <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
             </div>
             <div style="flex: 1; min-width: 80px;">
-              <label style="font-size: 11.5px; color: #a5b4fc; font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
-              <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="6" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+              <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
+              <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="6" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
             </div>
             <div style="flex: 1; min-width: 90px;">
-              <label style="font-size: 11.5px; color: #38bdf8; font-weight: 600; margin-bottom: 4px; display: block;">현재 보유 (선택)</label>
-              <input type="number" id="target-input-current" class="input-number" min="0" max="100" placeholder="자동 감지" style="height: 38px; padding: 6px 12px; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualTarget()">
+              <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">현재 보유 (선택)</label>
+              <input type="number" id="target-input-current" class="input-number" min="0" max="100" placeholder="자동 감지" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
             </div>
             <div>
-              <button class="btn btn-emerald" style="height: 38px; padding: 0 18px; font-size: 13px; font-weight: 700;" onclick="addManualTarget()">
-                ➕ 직접 추가
-              </button>
+              <button class="btn" onclick="addManualTarget()">+ 직접 추가</button>
             </div>
-            <div style="width: 100%; font-size: 11.5px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
-              <span>💡 <strong>사용 방법:</strong> 인게임에서 주간 퀘스트를 하나씩 추적하면서 <strong style="color: #c7d2fe;">[➕ 현재 퀘스트 등록]</strong>을 누르거나, 여기서 아이템명과 수량을 직접 입력해 목록에 등록하세요. 아래 통합 플래너가 모든 목표를 한 번에 합산해 최적화 제작합니다!</span>
+            <div style="width: 100%; font-size: var(--fs-sm); color: var(--text-muted); margin-top: 4px;">
+              <span><span class="sym-prefix">&gt;</span>인게임에서 주간 퀘스트를 추적하며 [현재 퀘스트 등록]을 누르거나, 아이템명과 수량을 직접 입력해 목록에 등록하세요.</span>
             </div>
           </div>
 
           <!-- Preset Save/Load Section -->
-          <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <div style="padding: 10px 0; margin-bottom: 14px; border-bottom: 1px solid var(--line-subtle);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-weight: 700; font-size: 13px; color: #c4b5fd;">💾 주간 납품 프리셋 (퀘스트 조합 저장)</span>
-                <span id="preset-count-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c4b5fd;">0개 저장됨</span>
+                <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-bright);"><span class="sym-prefix">&gt;</span>주간 납품 프리셋 (퀘스트 조합 저장)</span>
+                <span id="preset-count-badge" class="badge-dim">0개 저장됨</span>
               </div>
               <div style="display: flex; gap: 6px; align-items: center;">
-                <input type="text" id="preset-save-name" class="input-text" placeholder="프리셋 이름 (예: 대장간 세트)" style="height: 32px; padding: 4px 10px; font-size: 12px; width: 160px;">
-                <button class="btn btn-sm" style="padding: 4px 12px; font-size: 11.5px; background: rgba(168, 85, 247, 0.2); color: #c4b5fd; border: 1px solid rgba(168, 85, 247, 0.35);" onclick="saveCurrentAsPreset()">💾 현재 목록 저장</button>
+                <input type="text" id="preset-save-name" class="input-text" placeholder="프리셋 이름 (예: 대장간 세트)" style="width: 180px; padding: 4px 8px; font-size: var(--fs-sm);">
+                <button class="btn btn-sm" onclick="saveCurrentAsPreset()">현재 목록 저장</button>
               </div>
             </div>
-            <div id="preset-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 28px;">
-              <span style="color: #64748b; font-size: 12px;">저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
+            <div id="preset-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 24px;">
+              <span style="color: var(--text-muted); font-size: var(--fs-sm);">&gt; 저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
             </div>
           </div>
 
           <!-- Registered Delivery Targets Grid / List -->
-          <div id="delivery-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
-            <p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 주간 납품 목표가 없습니다.</p>
+          <div id="delivery-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
+            <p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;">&gt; 등록된 주간 납품 목표가 없습니다.</p>
           </div>
         </div>
       </div>
 
-      <!-- Unified Batch Planner Card (Global MRP for All Delivery Quests) -->
-      <div class="card" style="margin-bottom: 24px; border-color: rgba(99,102,241,0.35);">
+      <!-- Unified Batch Planner Section -->
+      <div class="card">
         <div class="card-title">
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <span>⚡ 주간 납품 통합 플래너 (일괄 자재 소요 분석 & 원스톱 제작)</span>
+            <span><span class="sym-prefix">//</span>주간 납품 통합 플래너</span>
             <span class="badge delivery">최적화 일괄 모드</span>
           </div>
-          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <div class="alter-order-container" title="가공 등록 순서 설정: 장시간 소요 가공부터 먼저 등록하거나, 기초 재료부터 순차 등록합니다">
-              <span class="alter-order-label">가공:</span>
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div class="alter-order-container" title="가공 등록 순서 설정">
+              <span class="alter-order-label">가공 우선순위:</span>
               <div class="segmented-control" id="seg-delivery-alter-order">
                 <button type="button" class="seg-btn active" id="btn-delivery-alter-high" onclick="setAlterOrder('high_tier')" title="오래 걸리는 고티어 가공품(T7~T1)부터 시설 슬롯에 우선 등록합니다">
-                  <span>⏱️ 상위 티어</span>
+                  <span>상위 티어</span>
                 </button>
                 <button type="button" class="seg-btn" id="btn-delivery-alter-low" onclick="setAlterOrder('low_tier')" title="기초 재료(T1~T7)부터 시설 슬롯에 순차 등록합니다">
-                  <span>⚙️ 하위 티어</span>
+                  <span>하위 티어</span>
                 </button>
               </div>
             </div>
-            <button class="btn btn-sm" onclick="loadBatchPlan()">재료 분석 새로고침</button>
+            <button class="btn btn-sm" onclick="loadBatchPlan()">새로고침</button>
           </div>
         </div>
 
         <!-- Full-Width Aggregated Materials Table Container -->
-        <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); overflow-x: auto;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <div style="overflow-x: auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <h4 style="font-size: 14px; font-weight: 700; color: #34d399; margin: 0;">📊 전체 통합 필요 1차 가공품 분석표</h4>
-              <span id="batch-status-text" style="font-size: 12px; color: var(--text-muted);">계산 중...</span>
+              <h4 style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">&gt;</span>전체 통합 필요 1차 가공품 &amp; 채집 분석표</h4>
+              <span id="batch-status-text" style="font-size: var(--fs-sm); color: var(--text-muted);">계산 중...</span>
             </div>
-            <!-- Hidden compatibility container for batch-tasks-container -->
             <div id="batch-tasks-container" style="display: none;"></div>
           </div>
           <table class="bom-table">
             <thead>
               <tr>
-                <th style="min-width: 120px;">재료명</th>
-                <th style="min-width: 65px; text-align: center;">시설</th>
-                <th style="min-width: 75px; text-align: right;">총 소요</th>
-                <th style="min-width: 100px; text-align: center;">가방(창고)</th>
-                <th style="min-width: 130px;">상태</th>
+                <th style="min-width: 140px;">재료명</th>
+                <th style="min-width: 70px; text-align: center;">구분/시설</th>
+                <th style="min-width: 80px; text-align: right;">총 소요</th>
+                <th style="min-width: 110px; text-align: center;">가방(창고)</th>
+                <th style="min-width: 140px;">상태</th>
               </tr>
             </thead>
             <tbody id="bom-table-body">
-              <tr><td colspan="5" style="text-align: center; color: #64748b; padding: 14px;">분석 데이터를 불러오는 중...</td></tr>
+              <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 14px;">분석 데이터를 불러오는 중...</td></tr>
             </tbody>
           </table>
         </div>
 
         <!-- Facility Slot Status & Warning -->
-        <div id="facility-slots-section" style="margin-top: 14px; display: none;">
-          <div style="background: rgba(0,0,0,0.25); border-radius: 10px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.06);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <span style="font-size: 12.5px; font-weight: 700; color: #a5b4fc;">🏭 시설별 가공 슬롯 현황 (시설당 7슬롯)</span>
-              <span id="slot-summary-badge" style="font-size: 11.5px; color: #94a3b8;"></span>
-            </div>
-            <div id="facility-slots-container" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+        <div id="facility-slots-section" style="margin-top: 14px; display: none; border-top: 1px solid var(--line); padding-top: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>시설별 가공 슬롯 현황 (시설당 7슬롯)</span>
+            <span id="slot-summary-badge" style="font-size: var(--fs-sm); color: var(--text-muted);"></span>
           </div>
+          <div id="facility-slots-container" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
         </div>
 
-        <div id="slot-warnings-banner" style="margin-top: 10px; display: none; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 10px; padding: 12px 16px;">
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-            <span style="font-size: 16px;">⚠️</span>
-            <span style="font-size: 13px; font-weight: 700; color: #fbbf24;">가공 슬롯 부족 사전 안내</span>
-          </div>
-          <div id="slot-warnings-list" style="font-size: 12px; color: #fde68a; line-height: 1.7;"></div>
+        <div id="slot-warnings-banner" style="margin-top: 10px; display: none; border-left: 3px solid var(--invert-bg); padding: 8px 12px; background: var(--bg-panel);">
+          <div style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">[!] 가공 슬롯 부족 사전 안내</div>
+          <div id="slot-warnings-list" style="font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.6;"></div>
         </div>
 
         <!-- Action Button for Batch Pipeline -->
         <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 10px;">
-          <button id="btn-batch-execute" class="btn btn-emerald" style="padding: 12px 24px; font-size: 14px; font-weight: 700;" onclick="executeBatchPipeline()">
-            ⚡ 전체 납품 재료 일괄 가공 & 제작 시작
+          <button id="btn-batch-execute" class="btn btn-solid-core" onclick="executeBatchPipeline()">
+            주간 납품 일괄 실행
           </button>
         </div>
       </div>
@@ -2712,67 +2799,66 @@ HTML_PAGE = """<!DOCTYPE html>
 
     <!-- Mode 2: 7슬롯 가공대 빠른 실행 탭 컨텐츠 -->
     <div id="tab-content-quick-alter" class="mode-tab-content" style="display: none;">
-      <!-- 7-Slot Max Level Alteration Bench Quick Run Card -->
-      <div class="card" id="quick-alter-main-card" style="margin-bottom: 24px; border-color: rgba(56, 189, 248, 0.4); background: linear-gradient(180deg, rgba(23, 31, 51, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);">
+      <div class="card" id="quick-alter-main-card">
         <div class="card-title" style="margin-bottom: 0;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <span>⚡ 7슬롯 최고 레벨 가공대 빠른 실행</span>
-            <span class="badge" style="background: rgba(56, 189, 248, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">7슬롯 최적화</span>
+            <span><span class="sym-prefix">//</span>7슬롯 최고 레벨 가공대 빠른 실행</span>
+            <span class="badge">7슬롯 최적화</span>
           </div>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <div class="alter-order-container" title="가공 우선순위 설정">
-              <span class="alter-order-label">가공:</span>
+              <span class="alter-order-label">가공 우선순위:</span>
               <div class="segmented-control" id="seg-quick-alter-order">
-                <button type="button" class="seg-btn active" id="btn-quick-alter-high" onclick="setAlterOrder('high_tier')" title="오래 걸리는 최고 티어(T7 ➔ T1)부터 1슬롯씩 대기열에 등록합니다">
-                  <span>⏱️ 상위 티어</span>
+                <button type="button" class="seg-btn active" id="btn-quick-alter-high" onclick="setAlterOrder('high_tier')" title="오래 걸리는 최고 티어(T7 -> T1)부터 1슬롯씩 대기열에 등록합니다">
+                  <span>상위 티어</span>
                 </button>
-                <button type="button" class="seg-btn" id="btn-quick-alter-low" onclick="setAlterOrder('low_tier')" title="기초 하위 티어(T1 ➔ T7)부터 1슬롯씩 대기열에 등록합니다">
-                  <span>⚙️ 하위 티어</span>
+                <button type="button" class="seg-btn" id="btn-quick-alter-low" onclick="setAlterOrder('low_tier')" title="기초 하위 티어(T1 -> T7)부터 1슬롯씩 대기열에 등록합니다">
+                  <span>하위 티어</span>
                 </button>
               </div>
             </div>
-            <button class="btn btn-sm" onclick="loadQuickAlterPlan()">계획 새로고침</button>
-            <button class="btn btn-sm" id="btn-toggle-quick-alter" onclick="toggleQuickAlterView()">접어두기 ▲</button>
+            <button class="btn btn-sm" onclick="loadQuickAlterPlan()">새로고침</button>
+            <button class="btn btn-sm" id="btn-toggle-quick-alter" onclick="toggleQuickAlterView()">접어두기 ^</button>
           </div>
         </div>
 
         <!-- Collapsed Compact Bar (shown when collapsed) -->
-        <div id="quick-alter-collapsed-bar" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer;" onclick="toggleQuickAlterView()">
-          <span id="quick-alter-quick-summary">7슬롯 가공대 빠른 실행 계획 요약...</span>
-          <span style="float: right; color: #38bdf8; font-weight: 600;">펼치기 ▼</span>
+        <div id="quick-alter-collapsed-bar" style="display: none; margin-top: 10px; padding: 8px 0; border-top: 1px solid var(--line-subtle); font-size: var(--fs-md); color: var(--text-muted); cursor: pointer; justify-content: space-between; align-items: center;" onclick="toggleQuickAlterView()">
+          <span><span class="sym-prefix">&gt;</span><span id="quick-alter-quick-summary">7슬롯 가공대 빠른 실행 계획 요약...</span></span>
+          <span class="mono-num" style="color: var(--text-bright); font-size: var(--fs-sm);">[ 펼치기 v ]</span>
         </div>
 
         <!-- Expanded Content -->
         <div id="quick-alter-expanded-content" style="margin-top: 12px;">
-          <p id="quick-alter-desc-text" style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.6;">
-            완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 최고 티어 재료부터 순서대로 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>
+          <p id="quick-alter-desc-text" style="font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 12px; line-height: 1.6;">
+            &gt; 완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 최고 티어 재료부터 순서대로 1슬롯씩 대기열에 등록합니다. (가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)
           </p>
 
           <!-- Category Filter Tabs -->
-          <div style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
-            <button class="btn btn-sm quick-tab active" id="tab-cat-all" onclick="selectQuickCategory('all')">⚡ 전체 가공대 일괄</button>
-            <button class="btn btn-sm quick-tab" id="tab-cat-금속" onclick="selectQuickCategory('금속')">🪙 금속 (백금강괴 ~ 철괴)</button>
-            <button class="btn btn-sm quick-tab" id="tab-cat-목재" onclick="selectQuickCategory('목재')">🪵 목재 (특급목재 ~ 목재)</button>
-            <button class="btn btn-sm quick-tab" id="tab-cat-가죽" onclick="selectQuickCategory('가죽')">🦊 가죽 (특급가죽 ~ 가죽)</button>
-            <button class="btn btn-sm quick-tab" id="tab-cat-옷감" onclick="selectQuickCategory('옷감')">🧶 옷감 (특급옷감 ~ 옷감)</button>
+          <div style="display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap;">
+            <button class="btn btn-sm quick-tab active" id="tab-cat-all" onclick="selectQuickCategory('all')">전체 가공대 일괄</button>
+            <button class="btn btn-sm quick-tab" id="tab-cat-금속" onclick="selectQuickCategory('금속')">금속 (백금강괴 ~ 철괴)</button>
+            <button class="btn btn-sm quick-tab" id="tab-cat-목재" onclick="selectQuickCategory('목재')">목재 (특급목재 ~ 목재)</button>
+            <button class="btn btn-sm quick-tab" id="tab-cat-가죽" onclick="selectQuickCategory('가죽')">가죽 (특급가죽 ~ 가죽)</button>
+            <button class="btn btn-sm quick-tab" id="tab-cat-옷감" onclick="selectQuickCategory('옷감')">옷감 (특급옷감 ~ 옷감)</button>
           </div>
 
           <!-- Quick Alter Plan Container -->
-          <div id="quick-alter-plan-container" style="display: flex; flex-direction: column; gap: 14px;">
-            <p style="color: #64748b; font-size: 13px;">가공대 상태 및 고티어 계획을 분석 중입니다...</p>
+          <div id="quick-alter-plan-container" style="display: flex; flex-direction: column; gap: 12px;">
+            <p style="color: var(--text-muted); font-size: var(--fs-sm);">&gt; 가공대 상태 및 고티어 계획을 분석 중입니다...</p>
           </div>
 
           <!-- Bottom Action Bar -->
-          <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
-            <div id="quick-gather-summary" style="font-size: 12.5px; color: var(--cyan); display: flex; align-items: center; gap: 6px;">
+          <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
+            <div id="quick-gather-summary" style="font-size: var(--fs-sm); color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
               <!-- Gathering summary populated by JS -->
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
-              <button id="btn-quick-alter-abort" class="btn" style="display: none; padding: 12px 20px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; border-radius: 8px; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); cursor: pointer;" onclick="abortQuickAlter()">
-                🛑 작업 즉시 중지
+              <button id="btn-quick-alter-abort" class="btn btn-danger-abort" style="display: none;" onclick="abortQuickAlter()">
+                즉시 중지
               </button>
-              <button id="btn-quick-alter-execute" class="btn btn-primary" style="padding: 12px 24px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #2563eb); box-shadow: 0 4px 15px rgba(2, 132, 199, 0.4);" onclick="executeQuickAlter()">
-                🚀 7슬롯 빠른 가공 시작 (수령 ➔ 채집 ➔ 가공)
+              <button id="btn-quick-alter-execute" class="btn btn-solid-core" onclick="executeQuickAlter()">
+                7슬롯 빠른 가공 실행
               </button>
             </div>
           </div>
@@ -2782,143 +2868,130 @@ HTML_PAGE = """<!DOCTYPE html>
 
     <!-- Mode 3: 개별 아이템 지정 제작 탭 컨텐츠 -->
     <div id="tab-content-custom-craft" class="mode-tab-content" style="display: none;">
-      <!-- Custom Targets Manager Card (개별 제작 목표 누적 등록 및 관리) -->
-      <div class="card" id="custom-targets-main-card" style="margin-bottom: 24px; border-color: rgba(16, 185, 129, 0.45); background: linear-gradient(180deg, rgba(6, 78, 59, 0.25) 0%, rgba(15, 23, 42, 0.6) 100%);">
-        <div class="card-title" style="margin-bottom: 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <!-- Custom Targets Manager Section -->
+      <div class="card" id="custom-targets-main-card">
+        <div class="card-title" style="margin-bottom: 0;">
           <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
-            <span style="font-size: 15.5px; font-weight: 700; color: #f1f5f9; white-space: nowrap;">🎯 개별 제작 목표 품목 등록 & 관리</span>
-            <span id="custom-target-count-badge" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">0개 등록됨</span>
+            <span><span class="sym-prefix">//</span>개별 제작 목표 품목 등록 &amp; 관리</span>
+            <span id="custom-target-count-badge" class="badge">0개 등록</span>
           </div>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-            <button class="btn btn-sm" onclick="resetAllCustomTargetsCurrent()" style="color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.1); padding: 6px 12px;" title="모든 개별 제작 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">
-              🔄 수량 0개로 초기화
-            </button>
-            <button class="btn btn-sm" onclick="syncCustomTargetsInventory()" style="color: #38bdf8; border-color: rgba(56,189,248,0.35); background: rgba(56,189,248,0.1); padding: 6px 12px;" title="게임 내 인벤토리/창고 실제 보유량으로 수량을 다시 동기화합니다">
-              🎒 인벤 동기화
-            </button>
-            <button class="btn btn-sm" onclick="openRecipeManagerModal()" style="background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.35); color: #6ee7b7; padding: 6px 12px;" title="아이템별 1회 제작 소요 재료를 확인하고 수정합니다">
-              📖 레시피 도감/수정
-            </button>
-            <button class="btn btn-sm" onclick="clearCustomTargets()" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 6px 12px;">
-              🗑️ 전체 비우기
-            </button>
-            <button class="btn btn-sm" onclick="loadCustomTargets()" style="padding: 6px 12px;">
-              새로고침
-            </button>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+            <button class="btn btn-sm" onclick="resetAllCustomTargetsCurrent()" title="모든 개별 제작 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">수량 0개로 초기화</button>
+            <button class="btn btn-sm" onclick="syncCustomTargetsInventory()" title="게임 내 인벤토리/창고 실제 보유량으로 수량을 다시 동기화합니다">인벤 동기화</button>
+            <button class="btn btn-sm" onclick="openRecipeManagerModal()" title="아이템별 1회 제작 소요 재료를 확인하고 수정합니다">레시피 도감/수정</button>
+            <button class="btn btn-sm" onclick="clearCustomTargets()">전체 비우기</button>
+            <button class="btn btn-sm" onclick="loadCustomTargets()">새로고침</button>
           </div>
         </div>
 
         <div style="margin-top: 14px;">
           <!-- Quick Manual Add Input Form -->
-          <div style="background: rgba(0,0,0,0.35); padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 14px;">
-            <div style="font-size: 12px; font-weight: 700; color: #a7f3d0; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-              <span>✍️ 제작할 아이템 직접 등록</span>
-              <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">(원하는 품목과 수량을 등록하면 아래 플래너가 모든 하위 재료를 일괄 계산합니다)</span>
+          <div style="padding: 12px 0; border-top: 1px solid var(--line-subtle); border-bottom: 1px solid var(--line-subtle); margin-bottom: 14px;">
+            <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 8px;">
+              <span><span class="sym-prefix">&gt;</span>제작할 아이템 직접 등록 (원하는 품목과 수량을 등록하면 아래 플래너가 모든 하위 재료를 일괄 계산합니다)</span>
             </div>
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-              <input type="text" id="custom-input-item" placeholder="아이템명 (예: 론 엣지소드S, 은 펜던트, 실크 로브 등)" style="flex: 2; min-width: 200px; padding: 9px 13px; background: rgba(0,0,0,0.4); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px; color: #fff; font-size: 13px;" onkeydown="if(event.key==='Enter') addManualCustomTarget()">
+              <input type="text" id="custom-input-item" class="input-text" placeholder="아이템명 (예: 론 엣지소드S, 은 펜던트, 실크 로브 등)" style="flex: 2; min-width: 200px;" onkeydown="if(event.key==='Enter') addManualCustomTarget()">
               <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 12px; color: #cbd5e1; white-space: nowrap;">목표 수량:</span>
-                <input type="number" id="custom-input-count" value="1" min="1" max="999" style="width: 75px; padding: 9px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px; color: #fff; font-size: 13px; text-align: center;" onkeydown="if(event.key==='Enter') addManualCustomTarget()">
-                <span style="font-size: 12px; color: #cbd5e1;">개</span>
+                <span style="font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap;">목표 수량:</span>
+                <input type="number" id="custom-input-count" class="input-number" value="1" min="1" max="999" style="width: 75px; text-align: center;" onkeydown="if(event.key==='Enter') addManualCustomTarget()">
+                <span style="font-size: var(--fs-sm); color: var(--text-muted);">개</span>
               </div>
-              <button class="btn btn-sm btn-emerald" onclick="addManualCustomTarget()" style="padding: 9px 18px; font-size: 13px; font-weight: 700;">
-                ➕ 목표 추가
-              </button>
+              <button class="btn" onclick="addManualCustomTarget()">+ 목표 추가</button>
             </div>
-            <div style="display: flex; gap: 6px; align-items: center; margin-top: 10px; flex-wrap: wrap;">
-              <span style="font-size: 11.5px; color: var(--text-muted);">빠른 추천:</span>
-              <button type="button" class="btn btn-sm" style="padding: 2px 8px; font-size: 11px; background: rgba(255,255,255,0.06);" onclick="quickAddCustomTarget('론 엣지소드S', 4)">론 엣지소드S x4</button>
-              <button type="button" class="btn btn-sm" style="padding: 2px 8px; font-size: 11px; background: rgba(255,255,255,0.06);" onclick="quickAddCustomTarget('은 펜던트', 4)">은 펜던트 x4</button>
-              <button type="button" class="btn btn-sm" style="padding: 2px 8px; font-size: 11px; background: rgba(255,255,255,0.06);" onclick="quickAddCustomTarget('실크 로브', 2)">실크 로브 x2</button>
-              <button type="button" class="btn btn-sm" style="padding: 2px 8px; font-size: 11px; background: rgba(255,255,255,0.06);" onclick="quickAddCustomTarget('가죽 아머', 2)">가죽 아머 x2</button>
+            <div style="display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
+              <span style="font-size: var(--fs-sm); color: var(--text-muted);">&gt; 빠른 추천:</span>
+              <button type="button" class="btn btn-sm" onclick="quickAddCustomTarget('론 엣지소드S', 4)">론 엣지소드S x4</button>
+              <button type="button" class="btn btn-sm" onclick="quickAddCustomTarget('은 펜던트', 4)">은 펜던트 x4</button>
+              <button type="button" class="btn btn-sm" onclick="quickAddCustomTarget('실크 로브', 2)">실크 로브 x2</button>
+              <button type="button" class="btn btn-sm" onclick="quickAddCustomTarget('가죽 아머', 2)">가죽 아머 x2</button>
             </div>
           </div>
 
           <!-- Registered Custom Targets Grid / List -->
-          <div id="custom-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
-            <p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 개별 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>
+          <div id="custom-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
+            <p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;">&gt; 등록된 개별 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>
           </div>
         </div>
       </div>
 
-      <!-- Unified Custom Batch Planner Card -->
-      <div class="card" id="custom-plan-main-card" style="margin-bottom: 24px; border-color: rgba(16, 185, 129, 0.35);">
+      <!-- Unified Custom Batch Planner Section -->
+      <div class="card" id="custom-plan-main-card">
         <div class="card-title">
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <span>⚡ 개별 지정 제작 통합 플래너 (일괄 자재 소요 분석 & 원스톱 제작)</span>
-            <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">개별 지정 일괄 모드</span>
+            <span><span class="sym-prefix">//</span>개별 지정 제작 통합 플래너</span>
+            <span class="badge">개별 지정 일괄 모드</span>
           </div>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <div class="alter-order-container" title="가공 등록 순서 설정: 장시간 소요 가공부터 먼저 등록하거나, 기초 재료부터 순차 등록합니다">
-              <span class="alter-order-label">가공:</span>
+            <div class="alter-order-container" title="가공 등록 순서 설정">
+              <span class="alter-order-label">가공 우선순위:</span>
               <div class="segmented-control" id="seg-custom-alter-order">
                 <button type="button" class="seg-btn active" id="btn-custom-alter-high" onclick="setAlterOrder('high_tier')" title="오래 걸리는 고티어 가공품(T7~T1)부터 시설 슬롯에 우선 등록합니다">
-                  <span>⏱️ 상위 티어</span>
+                  <span>상위 티어</span>
                 </button>
                 <button type="button" class="seg-btn" id="btn-custom-alter-low" onclick="setAlterOrder('low_tier')" title="기초 재료(T1~T7)부터 시설 슬롯에 순차 등록합니다">
-                  <span>⚙️ 하위 티어</span>
+                  <span>하위 티어</span>
                 </button>
               </div>
             </div>
-            <button class="btn btn-sm" onclick="loadCustomPlan()">재료 분석 새로고침</button>
+            <button class="btn btn-sm" onclick="loadCustomPlan()">새로고침</button>
           </div>
         </div>
 
         <!-- Full-Width Aggregated Materials Table Container -->
-        <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); overflow-x: auto;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <div style="overflow-x: auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <h4 style="font-size: 14px; font-weight: 700; color: #34d399; margin: 0;">📊 개별 제작 통합 필요 1차 가공품 분석표</h4>
-              <span id="custom-batch-status-text" style="font-size: 12px; color: var(--text-muted);">계산 중...</span>
+              <h4 style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">&gt;</span>개별 제작 통합 필요 1차 가공품 &amp; 채집 분석표</h4>
+              <span id="custom-batch-status-text" style="font-size: var(--fs-sm); color: var(--text-muted);">계산 중...</span>
             </div>
           </div>
           <table class="bom-table">
             <thead>
               <tr>
-                <th style="min-width: 120px;">재료명</th>
-                <th style="min-width: 65px; text-align: center;">시설</th>
+                <th style="min-width: 130px;">재료명</th>
+                <th style="min-width: 70px; text-align: center;">구분/시설</th>
                 <th style="min-width: 75px; text-align: right;">총 소요</th>
-                <th style="min-width: 100px; text-align: center;">가방(창고)</th>
+                <th style="min-width: 105px; text-align: center;">가방(창고)</th>
                 <th style="min-width: 80px; text-align: right;">부족 수량</th>
                 <th style="min-width: 90px; text-align: center;">가공 필요</th>
-                <th style="min-width: 130px; text-align: center;">가공 상태</th>
+                <th style="min-width: 130px;">가공 상태</th>
               </tr>
             </thead>
             <tbody id="custom-batch-materials-tbody">
               <tr>
-                <td colspan="7" style="text-align: center; color: #64748b; padding: 24px;">개별 제작 목표를 등록하면 전체 소요 자재가 분석됩니다.</td>
+                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">개별 제작 목표를 등록하면 전체 소요 자재가 분석됩니다.</td>
               </tr>
             </tbody>
           </table>
         </div>
 
         <!-- Facility Slots Status & Overflow Warnings Section -->
-        <div id="custom-facility-slots-section" style="margin-top: 16px; display: none;">
+        <div id="custom-facility-slots-section" style="margin-top: 14px; display: none; border-top: 1px solid var(--line); padding-top: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-size: 12.5px; font-weight: 700; color: #cbd5e1;">🏭 가공 시설별 슬롯 현황 & 수용 가능 여부</span>
-            <span id="custom-slot-summary-badge" style="font-size: 11.5px;"></span>
+            <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>가공 시설별 슬롯 현황 &amp; 수용 가능 여부</span>
+            <span id="custom-slot-summary-badge" style="font-size: var(--fs-sm);"></span>
           </div>
           <div id="custom-facility-slots-container" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
         </div>
 
         <!-- Overflow Warning Banner -->
-        <div id="custom-slot-warnings-banner" style="display: none; margin-top: 12px; padding: 10px 14px; background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; font-size: 12px; color: #fda4af;">
-          <div style="font-weight: 700; margin-bottom: 4px;">⚠️ 시설 슬롯 부족 안내</div>
+        <div id="custom-slot-warnings-banner" style="display: none; margin-top: 10px; padding: 8px 12px; background: var(--bg-panel); border-left: 3px solid var(--invert-bg); font-size: var(--fs-sm); color: var(--text);">
+          <div style="font-weight: 700; margin-bottom: 4px; color: var(--text-bright);">[!] 시설 슬롯 부족 안내</div>
           <div id="custom-slot-warnings-list"></div>
         </div>
 
         <!-- Bottom Execution Action Bar -->
-        <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
-          <div id="custom-plan-summary-text" style="font-size: 12.5px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+        <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
+          <div id="custom-plan-summary-text" style="font-size: var(--fs-sm); color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
             <!-- Summary populated by JS -->
           </div>
           <div style="display: flex; gap: 8px; align-items: center;">
-            <button id="btn-custom-abort" class="btn" style="display: none; padding: 12px 20px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; border-radius: 8px; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); cursor: pointer;" onclick="abortQuickAlter()">
-              🛑 작업 즉시 중지
+            <button id="btn-custom-abort" class="btn btn-danger-abort" style="display: none;" onclick="abortQuickAlter()">
+              즉시 중지
             </button>
-            <button id="btn-custom-execute" class="btn btn-emerald" style="padding: 12px 24px; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg, #059669, #10b981); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);" onclick="executeCustomPipeline()">
-              ⚡ 개별 지정 재료 일괄 가공 & 제작 시작
+            <button id="btn-custom-execute" class="btn btn-solid-core" onclick="executeCustomPipeline()">
+              개별 제작 일괄 실행
             </button>
           </div>
         </div>
@@ -2927,15 +3000,15 @@ HTML_PAGE = """<!DOCTYPE html>
 
     <!-- Bottom 2-Column Grid: Live Console & Recipe Search -->
     <div class="grid">
-      <!-- Left Column: Live Console Card -->
+      <!-- Left Column: Live Console Section -->
       <div>
         <div class="card">
           <div class="card-title">
-            <span>💻 실시간 실행 콘솔</span>
+            <span><span class="sym-prefix">//</span>실시간 실행 콘솔</span>
             <div id="busy-box" style="display: none;" class="busy-indicator">
-              <div class="spinner"></div>
+              <span class="cli-spinner">[/]</span>
               <span id="busy-text">작업 진행 중...</span>
-              <button class="btn btn-sm" style="margin-left: 8px; padding: 2px 8px; font-size: 11px; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="abortQuickAlter()">🛑 중지</button>
+              <button class="btn btn-sm" onclick="abortQuickAlter()">중지</button>
             </div>
           </div>
           <div class="console" id="console-logs">
@@ -2944,17 +3017,17 @@ HTML_PAGE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <!-- Right Column: Recipe Quick Search Card -->
+      <!-- Right Column: Recipe Quick Search Section -->
       <div>
         <div class="card">
           <div class="card-title">
-            <span>🔍 레시피 & 재료 즉시 조회</span>
+            <span><span class="sym-prefix">//</span>레시피 &amp; 재료 즉시 조회</span>
           </div>
           <div class="form-row">
-            <input type="text" id="search-query" class="input-text" placeholder="아이템명 또는 재료명 입력 (예: 목재, 가죽, 론)" onkeydown="if(event.key==='Enter') doSearch()">
+            <input type="text" id="search-query" class="input-text" style="flex: 1;" placeholder="아이템명 또는 재료명 입력 (예: 목재, 가죽, 론)" onkeydown="if(event.key==='Enter') doSearch()">
             <button class="btn btn-sm" onclick="doSearch()">검색</button>
           </div>
-          <div id="search-results" style="margin-top: 14px; max-height: 180px; overflow-y: auto; font-size: 13px;"></div>
+          <div id="search-results" style="margin-top: 12px; max-height: 180px; overflow-y: auto; font-size: var(--fs-md);"></div>
         </div>
       </div>
     </div>
@@ -2964,72 +3037,69 @@ HTML_PAGE = """<!DOCTYPE html>
   <div id="summary-modal-overlay" class="modal-overlay" onclick="handleModalOverlayClick(event)">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-summary-title">
       <div class="modal-header">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 22px;">📊</span>
-          <div>
-            <h3 id="modal-summary-title" style="font-size: 16px; font-weight: 800; color: #fff;">작업 진행 종합 결과</h3>
-            <div id="modal-summary-subtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">소요 시간: -</div>
-          </div>
+        <div>
+          <h3 id="modal-summary-title" style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>작업 진행 종합 결과</h3>
+          <div id="modal-summary-subtitle" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">&gt; 소요 시간: -</div>
         </div>
-        <button class="btn btn-sm" onclick="closeSummaryModal()" style="padding: 4px 10px; background: rgba(255,255,255,0.08); border-radius: 8px;">✕</button>
+        <button class="btn btn-sm" onclick="closeSummaryModal()">닫기</button>
       </div>
       <div class="modal-body" id="modal-summary-body">
         <!-- 4 Metric Cards -->
         <div class="summary-stat-grid">
-          <div class="summary-stat-card" style="border-color: rgba(56, 189, 248, 0.3);">
-            <div class="label">🪽 날개 소모</div>
-            <div class="val" id="sum-card-wings" style="color: #38bdf8;">0개</div>
-            <div id="sum-card-wings-sub" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">(0 ➔ 0)</div>
+          <div class="summary-stat-card">
+            <div class="label">:: 날개 소모</div>
+            <div class="val" id="sum-card-wings">0개</div>
+            <div id="sum-card-wings-sub" class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">(0 -&gt; 0)</div>
           </div>
-          <div class="summary-stat-card" style="border-color: rgba(16, 185, 129, 0.3);">
-            <div class="label">🌿 필드 채집</div>
-            <div class="val" id="sum-card-gather" style="color: #34d399;">0품목</div>
-            <div id="sum-card-gather-sub" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">총 0개 획득</div>
+          <div class="summary-stat-card">
+            <div class="label">:: 필드 채집</div>
+            <div class="val" id="sum-card-gather">0품목</div>
+            <div id="sum-card-gather-sub" class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">총 0개 획득</div>
           </div>
-          <div class="summary-stat-card" style="border-color: rgba(99, 102, 241, 0.3);">
-            <div class="label">⏳ 가공 대기열</div>
-            <div class="val" id="sum-card-alter" style="color: #818cf8;">0슬롯</div>
-            <div id="sum-card-alter-sub" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">0품목 등록</div>
+          <div class="summary-stat-card">
+            <div class="label">:: 가공 대기열</div>
+            <div class="val" id="sum-card-alter">0슬롯</div>
+            <div id="sum-card-alter-sub" class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">0품목 등록</div>
           </div>
-          <div class="summary-stat-card" style="border-color: rgba(245, 158, 11, 0.3);">
-            <div class="label">✨ 최종 제작</div>
-            <div class="val" id="sum-card-craft" style="color: #fbbf24;">0개</div>
-            <div id="sum-card-craft-sub" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">0품목 완료</div>
+          <div class="summary-stat-card">
+            <div class="label">:: 최종 제작</div>
+            <div class="val" id="sum-card-craft">0개</div>
+            <div id="sum-card-craft-sub" class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">0품목 완료</div>
           </div>
         </div>
 
         <!-- Detail Sections -->
         <div id="sum-detail-craft" class="summary-section" style="display: none;">
-          <div class="summary-section-title" style="color: #fbbf24;">
-            <span>✨</span> <span>납품/최종 아이템 제작 내역</span>
+          <div class="summary-section-title">
+            <span class="sym-prefix">&gt;</span><span>납품/최종 아이템 제작 내역</span>
           </div>
           <div id="sum-list-craft"></div>
         </div>
 
         <div id="sum-detail-alter" class="summary-section" style="display: none;">
-          <div class="summary-section-title" style="color: #818cf8;">
-            <span>⏳</span> <span>시설 가공 대기열 등록 내역</span>
+          <div class="summary-section-title">
+            <span class="sym-prefix">&gt;</span><span>시설 가공 대기열 등록 내역</span>
           </div>
           <div id="sum-list-alter"></div>
         </div>
 
         <div id="sum-detail-gather" class="summary-section" style="display: none;">
-          <div class="summary-section-title" style="color: #34d399;">
-            <span>🌿</span> <span>원자재 필드 채집 내역</span>
+          <div class="summary-section-title">
+            <span class="sym-prefix">&gt;</span><span>원자재 필드 채집 내역</span>
           </div>
           <div id="sum-list-gather"></div>
         </div>
 
-        <div id="sum-detail-extras" class="summary-section" style="display: none; background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.2);">
-          <div class="summary-section-title" style="color: #f59e0b;">
-            <span>📌</span> <span>추가 수령 및 알림 사항</span>
+        <div id="sum-detail-extras" class="summary-section" style="display: none;">
+          <div class="summary-section-title">
+            <span class="sym-prefix">&gt;</span><span>추가 수령 및 알림 사항</span>
           </div>
-          <div id="sum-list-extras" style="font-size: 12px; line-height: 1.6; color: #cbd5e1;"></div>
+          <div id="sum-list-extras" style="font-size: var(--fs-sm); line-height: 1.6; color: var(--text-muted);"></div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-sm" onclick="copySummaryText()" style="background: rgba(255,255,255,0.08);">📋 텍스트 복사</button>
-        <button class="btn btn-sm btn-primary" onclick="closeSummaryModal()">확인</button>
+        <button class="btn btn-sm" onclick="copySummaryText()">텍스트 복사</button>
+        <button class="btn btn-sm btn-solid-core" onclick="closeSummaryModal()">확인</button>
       </div>
     </div>
   </div>
@@ -3038,75 +3108,70 @@ HTML_PAGE = """<!DOCTYPE html>
   <div class="modal-overlay" id="cli-modal-overlay" onclick="handleCliModalOverlayClick(event)">
     <div class="modal-dialog" style="max-width: 580px;">
       <div class="modal-header">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 22px;">⚙️</span>
-          <div>
-            <h3 style="font-size: 16px; font-weight: 800; color: #fff;">마비노기 모바일 연동 설정 & 연결 가이드</h3>
-            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">게임 클라이언트 연동 상태 및 설치 폴더 관리</div>
-          </div>
+        <div>
+          <h3 style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>마비노기 모바일 연동 설정 &amp; 연결 가이드</h3>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">&gt; 게임 클라이언트 연동 상태 및 설치 폴더 관리</div>
         </div>
-        <button class="btn btn-sm" onclick="closeCliModal()" style="padding: 4px 10px; background: rgba(255,255,255,0.08); border-radius: 8px;">✕</button>
+        <button class="btn btn-sm" onclick="closeCliModal()">닫기</button>
       </div>
-      <div class="modal-body" style="padding: 20px 24px; font-size: 13.5px; line-height: 1.6;">
+      <div class="modal-body" style="line-height: 1.6;">
         <!-- Status Box -->
-        <div id="cli-modal-status-box" style="margin-bottom: 18px; padding: 14px 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;">
+        <div id="cli-modal-status-box" style="margin-bottom: 16px; padding: 12px 0; border-bottom: 1px solid var(--line);">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span style="font-weight: 700; color: #f8fafc;">연결 상태</span>
-            <span id="cli-modal-status-badge" class="badge" style="background: rgba(239,68,68,0.2); color: #f87171;">연결 확인 중...</span>
+            <span style="font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>연결 상태</span>
+            <span id="cli-modal-status-badge" class="badge">연결 확인 중...</span>
           </div>
-          <div style="font-size: 12px; color: var(--text-muted); word-break: break-all; display: flex; flex-direction: column; gap: 4px;">
-            <div><strong>현재 인식된 경로:</strong> <span id="cli-modal-path-text" style="color: #cbd5e1;">-</span></div>
-            <div><strong>탐색 경로 출처:</strong> <span id="cli-modal-source-text" style="color: #94a3b8;">-</span></div>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); word-break: break-all; display: flex; flex-direction: column; gap: 4px;">
+            <div><strong>현재 인식된 경로:</strong> <span id="cli-modal-path-text" class="mono-num" style="color: var(--text);">-</span></div>
+            <div><strong>탐색 경로 출처:</strong> <span id="cli-modal-source-text" style="color: var(--text-muted);">-</span></div>
           </div>
         </div>
 
         <!-- Path Input Form -->
-        <div style="margin-bottom: 20px;">
-          <label style="display: block; font-weight: 700; color: #e2e8f0; margin-bottom: 6px;">📁 마비노기 모바일 설치 폴더 (또는 CLI 경로)</label>
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-weight: 700; color: var(--text-bright); margin-bottom: 6px; font-size: var(--fs-md);"><span class="sym-prefix">&gt;</span>마비노기 모바일 설치 폴더 (또는 CLI 경로)</label>
           <div style="display: flex; gap: 8px;">
-            <input type="text" id="cli-modal-input" placeholder="예: D:\\Nexon\\MabinogiMobile 또는 C:\\Nexon\\MabinogiMobile" style="flex: 1; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(99,102,241,0.4); border-radius: 8px; color: #fff; font-size: 13px;">
-            <button class="btn btn-primary" onclick="saveCliPathFromModal()" style="white-space: nowrap; padding: 0 16px;">저장 & 연결</button>
+            <input type="text" id="cli-modal-input" class="input-text" placeholder="예: D:\Nexon\MabinogiMobile 또는 C:\Nexon\MabinogiMobile" style="flex: 1;">
+            <button class="btn btn-solid-core" onclick="saveCliPathFromModal()">저장 &amp; 연결</button>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 6px; margin-bottom: 20px;">
-            <span style="font-size: 11.5px; color: var(--text-muted);">* 설치 폴더만 입력하셔도 MabinogiMobile_CLI.exe를 자동 감지합니다.</span>
-            <button class="btn btn-sm" onclick="triggerCliScan()" style="font-size: 11.5px; padding: 3px 10px; background: rgba(255,255,255,0.06);">🔍 자동 다시 검색</button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 6px;">
+            <span style="font-size: var(--fs-sm); color: var(--text-muted);">* 설치 폴더만 입력하셔도 MabinogiMobile_CLI.exe를 자동 감지합니다.</span>
+            <button class="btn btn-sm" onclick="triggerCliScan()">자동 다시 검색</button>
           </div>
         </div>
 
         <!-- 3-Step Setup Checklist -->
-        <div style="padding: 14px 16px; background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 10px;">
-          <div style="font-weight: 700; color: #818cf8; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
-            <span>📋</span> <span>연결 필수 체크리스트 (3단계)</span>
+        <div style="padding: 12px 0; border-top: 1px solid var(--line);">
+          <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 8px; font-size: var(--fs-md);">
+            <span class="sym-prefix">&gt;</span>연결 필수 체크리스트 (3단계)
           </div>
-          <ol style="margin: 0; padding-left: 20px; font-size: 12.5px; color: #cbd5e1; display: flex; flex-direction: column; gap: 8px;">
+          <ol style="margin: 0; padding-left: 20px; font-size: var(--fs-sm); color: var(--text); display: flex; flex-direction: column; gap: 6px;">
             <li><strong>PC 클라이언트 실행:</strong> 마비노기 모바일 PC 클라이언트를 켜고 원하는 캐릭터로 로그인합니다.</li>
-            <li><strong>인게임 AI 옵션 활성화:</strong> 게임 내 [환경설정] → [기타] (또는 게임 설정)에서 <strong>[MM AI 에이전트 활성화]</strong>를 ON으로 켜주세요. (이 옵션을 켜야 넥슨에서 연동 CLI를 자동으로 설치합니다)</li>
+            <li><strong>인게임 AI 옵션 활성화:</strong> 게임 내 [환경설정] -&gt; [기타]에서 <strong>[MM AI 에이전트 활성화]</strong>를 ON으로 켜주세요.</li>
             <li><strong>설치 드라이브 확인:</strong> 게임이 D:, E: 드라이브 등 기본 경로와 다른 곳에 설치된 경우 위의 폴더 경로를 입력해주세요.</li>
           </ol>
         </div>
 
-        <!-- Persistent User Data Folder Card -->
-        <div style="margin-top: 16px; padding: 13px 16px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <!-- Persistent User Data Folder Section -->
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
           <div style="flex: 1; min-width: 240px;">
-            <div style="font-weight: 700; color: #34d399; font-size: 13px; display: flex; align-items: center; gap: 6px;">
-              <span>📂</span> <span>사용자 설정 & 레시피 영구 저장소</span>
+            <div style="font-weight: 700; color: var(--text-bright); font-size: var(--fs-md);">
+              <span class="sym-prefix">&gt;</span>사용자 설정 &amp; 레시피 영구 저장소
             </div>
-            <div style="font-size: 11.5px; color: #cbd5e1; margin-top: 3px; line-height: 1.4;">
-              새 버전을 다운받아도 레시피·프리셋·목표·설정은 <strong style="color: #6ee7b7;">내 문서</strong>에 안전하게 자동 보존됩니다.
+            <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">
+              새 버전을 다운받아도 레시피·프리셋·목표·설정은 내 문서에 안전하게 자동 보존됩니다.
             </div>
-            <div id="cli-modal-data-folder-path" style="font-size: 11px; color: #94a3b8; margin-top: 3px; word-break: break-all;">
+            <div id="cli-modal-data-folder-path" class="mono-num" style="font-size: var(--fs-sm); color: var(--text-dim); margin-top: 2px; word-break: break-all;">
               -
             </div>
           </div>
           <div>
-            <button class="btn btn-sm" onclick="openUserDataFolder()" style="padding: 6px 14px; font-weight: 700; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); white-space: nowrap;">
-              📂 폴더 열기
-            </button>
+            <button class="btn btn-sm" onclick="openUserDataFolder()">폴더 열기</button>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-sm btn-primary" onclick="closeCliModal()">닫기</button>
+        <button class="btn btn-sm btn-solid-core" onclick="closeCliModal()">닫기</button>
       </div>
     </div>
   </div>
@@ -3115,37 +3180,34 @@ HTML_PAGE = """<!DOCTYPE html>
   <div class="modal-overlay" id="mobile-connect-modal" onclick="handleMobileConnectModalOverlayClick(event)">
     <div class="modal-dialog" style="max-width: 480px; text-align: center;">
       <div class="modal-header">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 22px;">📱</span>
-          <div>
-            <h3 style="font-size: 16px; font-weight: 800; color: #7dd3fc; margin: 0;">스마트폰 브라우저 접속 안내</h3>
-            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">동일 Wi-Fi 환경에서 모바일 실시간 모니터링</div>
-          </div>
+        <div style="text-align: left;">
+          <h3 style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">//</span>스마트폰 브라우저 접속 안내</h3>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">&gt; 동일 Wi-Fi 환경에서 모바일 실시간 모니터링</div>
         </div>
-        <button class="btn btn-sm" onclick="closeMobileConnectModal()" style="padding: 4px 10px; background: rgba(255,255,255,0.08); border-radius: 8px;">✕</button>
+        <button class="btn btn-sm" onclick="closeMobileConnectModal()">닫기</button>
       </div>
-      <div class="modal-body" style="padding: 20px 24px;">
-        <div style="padding: 12px 16px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 12px; text-align: left; font-size: 12.5px; color: #e2e8f0; line-height: 1.6;">
-          💡 <strong>이용 방법</strong><br>
+      <div class="modal-body">
+        <div style="padding: 10px 0; border-bottom: 1px solid var(--line); text-align: left; font-size: var(--fs-sm); color: var(--text); line-height: 1.6;">
+          <strong>&gt; 이용 방법</strong><br>
           1. PC와 스마트폰이 <strong>동일한 Wi-Fi(공유기)</strong>에 연결되어 있어야 합니다.<br>
           2. 스마트폰 기본 카메라로 아래 <strong>QR 코드</strong>를 비추면 즉시 대시보드가 열립니다.
         </div>
 
         <!-- QR Code Container -->
-        <div style="margin: 20px auto 14px; width: 190px; height: 190px; padding: 10px; background: #ffffff; border-radius: 14px; box-shadow: 0 8px 25px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
+        <div style="margin: 18px auto 14px; width: 190px; height: 190px; padding: 10px; background: #ffffff; border-radius: 2px; display: flex; align-items: center; justify-content: center;">
           <img id="mobile-qr-img" src="" alt="스마트폰 접속 QR 코드" style="width: 170px; height: 170px; display: block;" onerror="this.style.display='none'; document.getElementById('mobile-qr-fallback').style.display='block';">
-          <div id="mobile-qr-fallback" style="display: none; color: #000; font-size: 12px; font-weight: 600;">QR 생성 중...</div>
+          <div id="mobile-qr-fallback" style="display: none; color: #000; font-size: var(--fs-sm); font-weight: 600;">QR 생성 중...</div>
         </div>
 
         <!-- URL Copy Box -->
         <div style="display: flex; gap: 8px; align-items: center; justify-content: center; margin-bottom: 8px;">
-          <input type="text" id="mobile-connect-url-input" readonly style="padding: 9px 12px; background: rgba(0,0,0,0.5); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; color: #38bdf8; font-weight: 700; font-size: 13.5px; width: 230px; text-align: center;">
-          <button class="btn btn-emerald" onclick="copyMobileUrl()" style="padding: 9px 14px; font-weight: 700;">📋 복사</button>
+          <input type="text" id="mobile-connect-url-input" class="input-text mono-num" readonly style="width: 240px; text-align: center; font-weight: 700;">
+          <button class="btn btn-sm" onclick="copyMobileUrl()">URL 복사</button>
         </div>
-        <div id="mobile-connect-copy-msg" style="font-size: 11px; color: #34d399; height: 16px;"></div>
+        <div id="mobile-connect-copy-msg" style="font-size: var(--fs-sm); color: var(--text-bright); height: 16px;"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-sm btn-secondary" onclick="closeMobileConnectModal()" style="width: 100%; padding: 8px;">닫기</button>
+        <button class="btn btn-sm btn-solid-core" onclick="closeMobileConnectModal()">닫기</button>
       </div>
     </div>
   </div>
@@ -3154,36 +3216,29 @@ HTML_PAGE = """<!DOCTYPE html>
   <div class="modal-overlay" id="recipe-modal-overlay" onclick="handleRecipeModalOverlayClick(event)">
     <div class="modal-dialog" style="max-width: 560px;">
       <div class="modal-header">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 20px;">📖</span>
-          <div>
-            <h3 id="recipe-modal-title" style="font-size: 16px; font-weight: 800; color: #fff; margin: 0;">제작 레시피 설정 / 수정</h3>
-            <div id="recipe-modal-subtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">아이템 1회 제작에 필요한 소요 재료를 설정합니다</div>
-          </div>
+        <div>
+          <h3 id="recipe-modal-title" style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">//</span>제작 레시피 설정 / 수정</h3>
+          <div id="recipe-modal-subtitle" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">&gt; 아이템 1회 제작에 필요한 소요 재료를 설정합니다</div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
-          <button class="btn btn-sm" onclick="openUserDataFolder()" style="padding: 4px 10px; font-size: 11.5px; background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3);" title="내 문서의 레시피 파일(recipes_cache.json) 저장 폴더 열기">
-            📂 저장 폴더
-          </button>
-          <button class="btn btn-sm" onclick="closeRecipeModal()" style="padding: 4px 10px; background: rgba(255,255,255,0.08); border-radius: 8px;">✕</button>
+          <button class="btn btn-sm" onclick="openUserDataFolder()" title="내 문서의 레시피 파일(recipes_cache.json) 저장 폴더 열기">저장 폴더</button>
+          <button class="btn btn-sm" onclick="closeRecipeModal()">닫기</button>
         </div>
       </div>
-      <div class="modal-body" style="padding: 18px 20px;">
-        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #a7f3d0; line-height: 1.5;">
-          💡 <strong>레시피 안내:</strong> 게임 내 인벤토리에 이미 보유 중인 재료는 게임 클라이언트가 누락된 것으로 파악하지 못할 수 있습니다. 여기서 올바른 1회 제작 필요 재료와 수량을 등록해두면 모든 하위 재료/채집이 정확히 계산됩니다.
+      <div class="modal-body">
+        <div style="padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.5;">
+          &gt; <strong>레시피 안내:</strong> 여기서 올바른 1회 제작 필요 재료와 수량을 등록해두면 모든 하위 재료/채집이 정확히 계산됩니다.
         </div>
 
         <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 12.5px; font-weight: 700; color: #e2e8f0; white-space: nowrap;">대상 아이템:</span>
-          <input type="text" id="recipe-modal-item-name" style="flex: 1; padding: 8px 12px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px;" placeholder="예: 삶은 달걀">
-          <button type="button" class="btn btn-sm" onclick="loadRecipeForCurrentInput()" style="padding: 8px 12px; font-size: 12px;">조회</button>
+          <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); white-space: nowrap;">대상 아이템:</span>
+          <input type="text" id="recipe-modal-item-name" class="input-text" style="flex: 1;" placeholder="예: 삶은 달걀">
+          <button type="button" class="btn btn-sm" onclick="loadRecipeForCurrentInput()">조회</button>
         </div>
 
         <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 12.5px; font-weight: 700; color: #cbd5e1;">필요 재료 목록 (1회 제작당)</span>
-          <button type="button" class="btn btn-sm" onclick="addRecipeModalRow('', 1)" style="padding: 4px 10px; font-size: 11.5px; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">
-            ➕ 재료 추가
-          </button>
+          <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>필요 재료 목록 (1회 제작당)</span>
+          <button type="button" class="btn btn-sm" onclick="addRecipeModalRow('', 1)">+ 재료 추가</button>
         </div>
 
         <div id="recipe-modal-rows-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; padding-right: 4px;">
@@ -3191,10 +3246,10 @@ HTML_PAGE = """<!DOCTYPE html>
         </div>
       </div>
       <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-        <span id="recipe-modal-msg" style="font-size: 12px; color: #94a3b8;"></span>
+        <span id="recipe-modal-msg" style="font-size: var(--fs-sm); color: var(--text-muted);"></span>
         <div style="display: flex; gap: 8px;">
           <button class="btn btn-sm" onclick="closeRecipeModal()">취소</button>
-          <button class="btn btn-sm btn-primary" onclick="saveRecipeFromModal()" style="padding: 6px 16px; font-weight: 700; background: linear-gradient(135deg, #059669, #10b981);">💾 레시피 저장</button>
+          <button class="btn btn-sm btn-solid-core" onclick="saveRecipeFromModal()">레시피 저장</button>
         </div>
       </div>
     </div>
@@ -3223,6 +3278,36 @@ HTML_PAGE = """<!DOCTYPE html>
         }).catch(function(){});
       } catch(e) {}
     };
+
+    // ==========================================
+    // Modern CLI Text Helpers (Gauge & Spinner)
+    // ==========================================
+    const CLI_SPINNER_FRAMES = ['[/]', '[-]', '[\\]', '[|]'];
+    let cliSpinnerFrameIdx = 0;
+
+    function getCurrentSpinnerText() {
+      return CLI_SPINNER_FRAMES[cliSpinnerFrameIdx % CLI_SPINNER_FRAMES.length];
+    }
+
+    function makeTextGauge(cur, max, len = 5) {
+      const c = Math.max(0, Number(cur) || 0);
+      const m = Math.max(1, Number(max) || 1);
+      const ratio = Math.min(1, Math.max(0, c / m));
+      let filled = Math.round(ratio * len);
+      if (c > 0 && filled === 0) filled = 1;
+      if (c >= m) filled = len;
+      else if (c < m && filled === len && len > 1) filled = len - 1;
+      return '[' + '■'.repeat(filled) + '□'.repeat(Math.max(0, len - filled)) + ']';
+    }
+
+    setInterval(function() {
+      cliSpinnerFrameIdx = (cliSpinnerFrameIdx + 1) % CLI_SPINNER_FRAMES.length;
+      const frame = CLI_SPINNER_FRAMES[cliSpinnerFrameIdx];
+      const spinners = document.querySelectorAll('.cli-spinner');
+      for (let i = 0; i < spinners.length; i++) {
+        spinners[i].textContent = frame;
+      }
+    }, 250);
 
     // Execution Summary State & Functions
     let cachedLastSummary = null;
@@ -3265,29 +3350,26 @@ HTML_PAGE = """<!DOCTYPE html>
       const subtitleEl = document.getElementById('modal-summary-subtitle');
       if (titleEl) {
         let cleanTitle = sum.title || '작업 완료 리포트';
-        cleanTitle = cleanTitle.replace(/\\s*\\(백그라운드\\s*가공\\s*진행\\s*중\\)/g, '').trim();
+        cleanTitle = cleanTitle.replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)/g, '').trim();
         if (sum.status === 'aborted') {
-          titleEl.innerText = `${cleanTitle} [사용자 중지 🛑]`;
+          titleEl.innerText = `// ${cleanTitle} [사용자 중지]`;
         } else if (sum.status === 'error') {
-          titleEl.innerText = `${cleanTitle} [오류 중단 ❌]`;
+          titleEl.innerText = `// ${cleanTitle} [오류 중단]`;
         } else {
-          titleEl.innerText = cleanTitle;
+          titleEl.innerText = `// ${cleanTitle}`;
         }
       }
       const durText = sum.duration_text || (sum.duration_seconds ? sum.duration_seconds + '초' : '0초');
-      let statText = sum.status_text || '완료 ✅';
-      statText = statText.replace(/\\s*\\(백그라운드\\s*가공\\s*진행\\s*중\\)\\s*⏳?/g, '').trim();
-      if (!statText.includes('✅') && !statText.includes('🛑') && !statText.includes('❌')) {
-        statText += ' ✅';
-      }
-      if (subtitleEl) subtitleEl.innerText = `소요 시간: ${durText} | 상태: ${statText}`;
+      let statText = sum.status_text || '완료';
+      statText = statText.replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)\s*⏳?/g, '').replace(/[✅🛑❌⏳]/g, '').trim() || '완료';
+      if (subtitleEl) subtitleEl.innerText = `> 소요 시간: ${durText} :: 상태: ${statText}`;
 
       // 1. Wings
       const wings = sum.wings || {};
       const cardWings = document.getElementById('sum-card-wings');
       const cardWingsSub = document.getElementById('sum-card-wings-sub');
       if (cardWings) cardWings.innerText = `${(wings.used || 0).toLocaleString()}개 소모`;
-      if (cardWingsSub) cardWingsSub.innerText = `(${wings.initial || 0} ➔ ${wings.final || 0}개)`;
+      if (cardWingsSub) cardWingsSub.innerText = `(${wings.initial || 0} -> ${wings.final || 0}개)`;
 
       // 2. Gather
       const gatherItems = (sum.gather && sum.gather.items) ? sum.gather.items : (sum.gathered || []);
@@ -3327,8 +3409,8 @@ HTML_PAGE = """<!DOCTYPE html>
             const craftCount = it.count !== undefined ? it.count : (it.crafted || 0);
             return `
               <div class="summary-item-row">
-                <span style="font-weight: 600; color: #f1f5f9;">✨ ${itemName}</span>
-                <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24;">${craftCount}개 제작</span>
+                <span style="font-weight: 700; color: var(--text-main);">:: ${itemName}</span>
+                <span class="badge mono-num">${craftCount}개 제작</span>
               </div>
             `;
           }).join('');
@@ -3351,10 +3433,10 @@ HTML_PAGE = """<!DOCTYPE html>
             return `
               <div class="summary-item-row">
                 <div>
-                  <span style="font-weight: 600; color: #f1f5f9;">⏳ ${recipeName}</span>
-                  <span style="font-size: 11px; color: var(--text-muted); margin-left: 6px;">(${facilityName})</span>
+                  <span style="font-weight: 700; color: var(--text-main);">:: ${recipeName}</span>
+                  <span style="font-size: var(--fs-sm); color: var(--text-muted); margin-left: 6px;">(${facilityName})</span>
                 </div>
-                <span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc;">${slotsCount}슬롯 (산출: +${expectedYield}개)</span>
+                <span class="badge-dim mono-num">${slotsCount}슬롯 (산출: +${expectedYield}개)</span>
               </div>
             `;
           }).join('');
@@ -3376,8 +3458,8 @@ HTML_PAGE = """<!DOCTYPE html>
             const reqText = requiredCount > 0 ? ` (목표: ${requiredCount}개)` : '';
             return `
               <div class="summary-item-row">
-                <span style="font-weight: 600; color: #f1f5f9;">🌿 ${itemName}</span>
-                <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">+${gainedCount}개 획득${reqText}</span>
+                <span style="font-weight: 700; color: var(--text-main);">:: ${itemName}</span>
+                <span class="badge-dim mono-num">+${gainedCount}개 획득${reqText}</span>
               </div>
             `;
           }).join('');
@@ -3393,7 +3475,7 @@ HTML_PAGE = """<!DOCTYPE html>
         const extraLines = [];
         const collectedList = sum.collected_facilities || sum.collected || [];
         if (collectedList.length > 0) {
-          extraLines.push(`🎁 <strong>사전 완료 가공품 즉시 수령</strong>: ${collectedList.join(', ')}`);
+          extraLines.push(`> <strong>사전 완료 가공품 즉시 수령</strong>: ${collectedList.join(', ')}`);
         }
         const deferredList = sum.deferred_works || sum.deferred || [];
         if (deferredList.length > 0) {
@@ -3403,11 +3485,11 @@ HTML_PAGE = """<!DOCTYPE html>
             const fac = d.facility ? `[${d.facility}] ` : '';
             return `${fac}${rName} (${reason})`;
           }).join(', ');
-          extraLines.push(`⚠️ <strong>슬롯/재료 대기로 유예된 가공</strong>: ${defNames}`);
+          extraLines.push(`> <strong>슬롯/재료 대기로 유예된 가공</strong>: ${defNames}`);
         }
         if (extraLines.length > 0) {
           secExtras.style.display = 'block';
-          listExtras.innerHTML = extraLines.map(line => `<div style="margin-bottom: 4px;">• ${line}</div>`).join('');
+          listExtras.innerHTML = extraLines.map(line => `<div style="margin-bottom: 4px;">${line}</div>`).join('');
         } else {
           secExtras.style.display = 'none';
         }
@@ -3420,44 +3502,41 @@ HTML_PAGE = """<!DOCTYPE html>
       let text = s.summary_text;
 
       if (!text) {
-        let cleanTitle = (s.title || '작업 진행 종합 리포트').replace(/\\s*\\(백그라운드\\s*가공\\s*진행\\s*중\\)/g, '').trim();
-        let cleanStatus = (s.status_text || '완료 ✅').replace(/\\s*\\(백그라운드\\s*가공\\s*진행\\s*중\\)\\s*⏳?/g, '').trim();
-        if (!cleanStatus.includes('✅') && !cleanStatus.includes('🛑') && !cleanStatus.includes('❌')) {
-          cleanStatus += ' ✅';
-        }
+        let cleanTitle = (s.title || '작업 진행 종합 리포트').replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)/g, '').trim();
+        let cleanStatus = (s.status_text || '완료').replace(/\s*\(백그라운드\s*가공\s*진행\s*중\)\s*⏳?/g, '').replace(/[✅🛑❌⏳]/g, '').trim() || '완료';
         const lines = [
           '============================================================',
-          `📊 ${cleanTitle}`,
+          `// ${cleanTitle}`,
           '============================================================',
-          `• 진행 상태: ${cleanStatus}`,
-          `• 소요 시간: ${s.duration_text || (s.duration_seconds ? s.duration_seconds + '초' : '0초')}`,
-          `• 정령의 날개: ${(s.wings ? s.wings.used : 0)}개 소모 (${s.wings ? s.wings.initial : 0} ➔ ${s.wings ? s.wings.final : 0}개)`,
+          `> 진행 상태: ${cleanStatus}`,
+          `> 소요 시간: ${s.duration_text || (s.duration_seconds ? s.duration_seconds + '초' : '0초')}`,
+          `> 정령의 날개: ${(s.wings ? s.wings.used : 0)}개 소모 (${s.wings ? s.wings.initial : 0} -> ${s.wings ? s.wings.final : 0}개)`,
           ''
         ];
         const gItems = (s.gather && s.gather.items) ? s.gather.items : (s.gathered || []);
-        lines.push(`[🌿 원자재 채집] 총 ${gItems.length}품목`);
+        lines.push(`[원자재 채집] 총 ${gItems.length}품목`);
         gItems.forEach(it => {
           lines.push(`  - ${it.name || it.item}: +${it.gained}개 (목표: ${it.required}개)`);
         });
         lines.push('');
         const aItems = (s.alter && s.alter.items) ? s.alter.items : (s.altered || []);
-        lines.push(`[⏳ 가공 대기열 등록] 총 ${(s.alter ? s.alter.count : s.total_altered_slots || 0)}슬롯`);
+        lines.push(`[가공 대기열 등록] 총 ${(s.alter ? s.alter.count : s.total_altered_slots || 0)}슬롯`);
         aItems.forEach(it => {
           lines.push(`  - ${it.recipe || it.item} (${it.facility}): ${it.slots || it.registered}슬롯 (예상: +${it.expected_yield || it.yield_est}개)`);
         });
         lines.push('');
         const cItems = (s.craft && s.craft.items) ? s.craft.items : (s.crafted || []);
-        lines.push(`[✨ 최종 제작 완료] 총 ${(s.craft ? s.craft.count : s.total_crafted_count || 0)}개`);
+        lines.push(`[최종 제작 완료] 총 ${(s.craft ? s.craft.count : s.total_crafted_count || 0)}개`);
         cItems.forEach(it => {
           lines.push(`  - ${it.item || it.name}: ${it.count !== undefined ? it.count : it.crafted}개`);
         });
         const coll = s.collected_facilities || s.collected;
         if (coll && coll.length > 0) {
           lines.push('');
-          lines.push(`[🎁 사전 수령] ${coll.join(', ')}`);
+          lines.push(`[사전 수령] ${coll.join(', ')}`);
         }
         lines.push('============================================================');
-        text = lines.join('\\n');
+        text = lines.join('\n');
       }
 
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -3536,19 +3615,19 @@ HTML_PAGE = """<!DOCTYPE html>
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(input.value).then(() => {
-            if (msg) msg.innerText = '✅ 접속 URL이 클립보드에 복사되었습니다!';
+            if (msg) msg.innerText = '> [완료] 접속 URL이 클립보드에 복사되었습니다.';
             setTimeout(() => { if (msg) msg.innerText = ''; }, 3000);
           }).catch(() => {
             document.execCommand('copy');
-            if (msg) msg.innerText = '✅ 접속 URL이 복사되었습니다!';
+            if (msg) msg.innerText = '> [완료] 접속 URL이 복사되었습니다.';
           });
         } else {
           document.execCommand('copy');
-          if (msg) msg.innerText = '✅ 접속 URL이 복사되었습니다!';
+          if (msg) msg.innerText = '> [완료] 접속 URL이 복사되었습니다.';
         }
       } catch (e) {
         document.execCommand('copy');
-        if (msg) msg.innerText = '✅ 접속 URL이 복사되었습니다!';
+        if (msg) msg.innerText = '> [완료] 접속 URL이 복사되었습니다.';
       }
     }
 
@@ -3593,12 +3672,10 @@ HTML_PAGE = """<!DOCTYPE html>
 
         if (badge) {
           if (data.exists) {
-            badge.style.background = 'rgba(16,185,129,0.2)';
-            badge.style.color = '#34d399';
+            badge.className = 'badge';
             badge.innerText = 'CLI 파일 정상 확인';
           } else {
-            badge.style.background = 'rgba(239,68,68,0.2)';
-            badge.style.color = '#f87171';
+            badge.className = 'badge-dim';
             badge.innerText = 'CLI 파일 미발견';
           }
         }
@@ -3622,11 +3699,11 @@ HTML_PAGE = """<!DOCTYPE html>
         });
         const data = await res.json();
         if (res.ok) {
-          alert('✅ CLI 경로가 성공적으로 저장되었습니다! 즉시 재연결을 시도합니다.');
+          alert('[완료] CLI 경로가 성공적으로 저장되었습니다. 즉시 재연결을 시도합니다.');
           fetchCliConfig();
           updateStatus();
         } else {
-          alert('❌ ' + (data.error || '경로가 올바르지 않습니다.'));
+          alert('[오류] ' + (data.error || '경로가 올바르지 않습니다.'));
         }
       } catch (e) {
         alert('요청 중 오류가 발생했습니다: ' + e);
@@ -3648,10 +3725,10 @@ HTML_PAGE = """<!DOCTYPE html>
         });
         const data = await res.json();
         if (res.ok) {
-          alert('✅ 경로가 저장되었습니다! 잠시 후 서버 상태가 갱신됩니다.');
+          alert('[완료] 경로가 저장되었습니다. 잠시 후 서버 상태가 갱신됩니다.');
           updateStatus();
         } else {
-          alert('❌ ' + (data.error || '경로가 올바르지 않습니다.'));
+          alert('[오류] ' + (data.error || '경로가 올바르지 않습니다.'));
         }
       } catch (e) {
         alert('요청 중 오류가 발생했습니다: ' + e);
@@ -3663,11 +3740,11 @@ HTML_PAGE = """<!DOCTYPE html>
         const res = await fetch('/api/scan_cli_path', { method: 'POST' });
         const data = await res.json();
         if (data.status === 'found') {
-          alert('🎉 CLI 실행 파일을 성공적으로 찾았습니다!\\n경로: ' + data.cli_path + '\\n(' + data.source + ')');
+          alert('[완료] CLI 실행 파일을 성공적으로 찾았습니다.\n경로: ' + data.cli_path + '\n(' + data.source + ')');
           fetchCliConfig();
           updateStatus();
         } else {
-          alert('⚠️ 자동 검색으로 찾지 못했습니다.\\n게임이 켜져 있는지 확인하거나 직접 폴더 경로를 입력해주세요.');
+          alert('[안내] 자동 검색으로 찾지 못했습니다.\n게임이 켜져 있는지 확인하거나 직접 폴더 경로를 입력해주세요.');
         }
       } catch (e) {
         alert('검색 중 오류 발생: ' + e);
@@ -3746,9 +3823,9 @@ HTML_PAGE = """<!DOCTYPE html>
       const descText = document.getElementById('quick-alter-desc-text');
       if (descText) {
         if (isHigh) {
-          descText.innerHTML = `완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: #38bdf8;">오래 걸리는 최고 티어 재료(T7 ➔ T1)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
+          descText.innerHTML = `> 완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: var(--text-main);">오래 걸리는 최고 티어 재료(T7 -> T1)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: var(--text-muted);">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
         } else {
-          descText.innerHTML = `완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: #38bdf8;">기초 하위 티어 재료(T1 ➔ T7)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: #fbbf24;">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
+          descText.innerHTML = `> 완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: var(--text-main);">기초 하위 티어 재료(T1 -> T7)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: var(--text-muted);">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
         }
       }
     }
@@ -3879,9 +3956,7 @@ HTML_PAGE = """<!DOCTYPE html>
           durStr,
           timeStr,
           isGoalMode,
-          badgeText: isGoalMode
-            ? `⏱️ 예상 소요: ${durStr} (${timeStr}경 완수 예정)`
-            : `⏱️ 예상 완수: ${durStr} (${timeStr}경 완료 예정)`
+          badgeText: `> 예상 완수: ${durStr} (${timeStr}경 완수 예정)`
         };
       } catch (err) {
         console.warn('getPipelineEtaInfo error:', err);
@@ -3896,6 +3971,7 @@ HTML_PAGE = """<!DOCTYPE html>
       const badgeMode = document.getElementById('mcb-mode-badge');
       const briefing = document.getElementById('mcb-briefing-text');
       const goalToggle = document.getElementById('mcb-goal-toggle');
+      const goalCheckSym = document.getElementById('mcb-goal-check-sym');
       const soundIcon = document.getElementById('mcb-sound-icon');
       const soundText = document.getElementById('mcb-sound-text');
       const orderText = document.getElementById('mcb-order-text');
@@ -3904,24 +3980,23 @@ HTML_PAGE = """<!DOCTYPE html>
       const btnStart = document.getElementById('mcb-btn-start');
 
       if (goalToggle) goalToggle.checked = currentGoalFulfillmentMode;
-      if (soundIcon) soundIcon.innerText = currentSoundAlarmEnabled ? '🔔' : '🔕';
+      if (goalCheckSym) goalCheckSym.innerText = currentGoalFulfillmentMode ? '[x]' : '[ ]';
+      if (soundIcon) soundIcon.innerText = currentSoundAlarmEnabled ? '[x]' : '[ ]';
       if (soundText) soundText.innerText = currentSoundAlarmEnabled ? '알림음 켜짐' : '알림음 꺼짐';
-      if (orderText) orderText.innerText = currentAlterOrder === 'low_tier' ? '⚙️ 하위티어 우선' : '⚙️ 상위티어 우선';
+      if (orderText) orderText.innerText = currentAlterOrder === 'low_tier' ? '가공: 하위티어 우선' : '가공: 상위티어 우선';
+      if (startIcon) startIcon.innerText = '';
 
       if (currentMainMode === 'delivery') {
         if (badgeMode) {
-          badgeMode.className = 'badge delivery';
-          badgeMode.innerText = '🎯 주간 납품';
-          badgeMode.style.background = 'rgba(99, 102, 241, 0.2)';
-          badgeMode.style.color = '#a5b4fc';
+          badgeMode.className = 'badge';
+          badgeMode.innerText = '주간 납품';
         }
-        if (startIcon) startIcon.innerText = currentGoalFulfillmentMode ? '🎯' : '⚡';
-        if (startLabel) startLabel.innerText = currentGoalFulfillmentMode ? '주간 납품 완주 시작' : '주간 납품 일괄 실행';
+        if (startLabel) startLabel.innerText = currentGoalFulfillmentMode ? '주간 납품 일괄 실행 (완주)' : '주간 납품 일괄 실행';
 
         if (briefing) {
           if (cachedBatchPlan) {
             if (cachedBatchPlan.all_completed) {
-              briefing.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 주간 납품 목표 100% 달성 완료! 🎉</span>';
+              briefing.innerHTML = '<span style="color:var(--text-main); font-weight:700;">모든 주간 납품 목표 100% 달성 완료</span>';
               if (btnStart) btnStart.disabled = true;
             } else {
               const taskCount = (cachedBatchPlan.tasks || []).length;
@@ -3929,11 +4004,11 @@ HTML_PAGE = """<!DOCTYPE html>
               const neededRaw = (cachedBatchPlan.raw_materials || []).filter(r => r.deficit > 0 && r.is_gatherable);
               const craftableCount = cachedBatchPlan.craftable_tasks_count || 0;
               let parts = [];
-              if (taskCount > 0) parts.push(`납품 목표 ${taskCount}건`);
-              if (craftableCount > 0) parts.push(`<strong style="color:#34d399;">즉시 제작 가능 ${craftableCount}건</strong>`);
-              if (alterCount > 0) parts.push(`가공 등록 ${alterCount}슬롯`);
-              if (neededRaw.length > 0) parts.push(`채집 필요 ${neededRaw.length}종`);
-              briefing.innerHTML = parts.join(' · ') || '주간 납품 계획 준비 완료';
+              if (taskCount > 0) parts.push(`납품 목표 <span class="mono-num">${taskCount}</span>건`);
+              if (craftableCount > 0) parts.push(`<strong style="color:var(--text-main);">즉시 제작 가능 <span class="mono-num">${craftableCount}</span>건</strong>`);
+              if (alterCount > 0) parts.push(`가공 등록 <span class="mono-num">${alterCount}</span>슬롯`);
+              if (neededRaw.length > 0) parts.push(`채집 필요 <span class="mono-num">${neededRaw.length}</span>종`);
+              briefing.innerHTML = parts.join(' :: ') || '주간 납품 계획 준비 완료';
               if (btnStart) btnStart.disabled = isCurrentlyBusy || (taskCount === 0);
             }
           } else {
@@ -3942,18 +4017,15 @@ HTML_PAGE = """<!DOCTYPE html>
         }
       } else if (currentMainMode === 'custom_craft') {
         if (badgeMode) {
-          badgeMode.className = 'badge delivery';
-          badgeMode.innerText = '🔨 개별 제작';
-          badgeMode.style.background = 'rgba(16, 185, 129, 0.2)';
-          badgeMode.style.color = '#34d399';
+          badgeMode.className = 'badge';
+          badgeMode.innerText = '지정 제작';
         }
-        if (startIcon) startIcon.innerText = currentGoalFulfillmentMode ? '🎯' : '🔨';
-        if (startLabel) startLabel.innerText = currentGoalFulfillmentMode ? '개별 목표 완주 시작' : '개별 제작 일괄 실행';
+        if (startLabel) startLabel.innerText = currentGoalFulfillmentMode ? '지정 제작 일괄 실행 (완주)' : '지정 제작 일괄 실행';
 
         if (briefing) {
           if (cachedCustomPlan) {
             if (cachedCustomPlan.all_completed) {
-              briefing.innerHTML = '<span style="color:#34d399; font-weight:700;">등록된 모든 개별 제작 목표 달성 완료! 🎉</span>';
+              briefing.innerHTML = '<span style="color:var(--text-main); font-weight:700;">등록된 모든 지정 제작 목표 달성 완료</span>';
               if (btnStart) btnStart.disabled = true;
             } else {
               const targetCount = (cachedCustomPlan.tasks || cachedCustomPlan.targets || cachedCustomPlan.custom_tasks || []).length;
@@ -3961,31 +4033,28 @@ HTML_PAGE = """<!DOCTYPE html>
               const neededRaw = (cachedCustomPlan.raw_materials || []).filter(r => r.deficit > 0 && r.is_gatherable);
               const craftableCount = cachedCustomPlan.craftable_tasks_count || 0;
               let parts = [];
-              if (targetCount > 0) parts.push(`등록 목표 ${targetCount}개`);
-              if (craftableCount > 0) parts.push(`<strong style="color:#34d399;">즉시 제작 가능 ${craftableCount}건</strong>`);
-              if (alterCount > 0) parts.push(`가공 등록 ${alterCount}슬롯`);
-              if (neededRaw.length > 0) parts.push(`채집 필요 ${neededRaw.length}종`);
-              briefing.innerHTML = parts.join(' · ') || '개별 제작 계획 준비 완료';
+              if (targetCount > 0) parts.push(`등록 목표 <span class="mono-num">${targetCount}</span>개`);
+              if (craftableCount > 0) parts.push(`<strong style="color:var(--text-main);">즉시 제작 가능 <span class="mono-num">${craftableCount}</span>건</strong>`);
+              if (alterCount > 0) parts.push(`가공 등록 <span class="mono-num">${alterCount}</span>슬롯`);
+              if (neededRaw.length > 0) parts.push(`채집 필요 <span class="mono-num">${neededRaw.length}</span>종`);
+              briefing.innerHTML = parts.join(' :: ') || '지정 제작 계획 준비 완료';
               if (btnStart) btnStart.disabled = isCurrentlyBusy || (targetCount === 0);
             }
           } else {
-            briefing.innerText = '개별 제작 목표 계획 분석 대기 중...';
+            briefing.innerText = '지정 제작 목표 계획 분석 대기 중...';
           }
         }
       } else if (currentMainMode === 'quick_alter') {
         if (badgeMode) {
-          badgeMode.className = 'badge manual';
-          badgeMode.innerText = '⚡ 빠른 가공';
-          badgeMode.style.background = 'rgba(2, 132, 199, 0.2)';
-          badgeMode.style.color = '#38bdf8';
+          badgeMode.className = 'badge';
+          badgeMode.innerText = '빠른 실행';
         }
-        if (startIcon) startIcon.innerText = '⚡';
-        if (startLabel) startLabel.innerText = '7슬롯 빠른 가공 실행';
+        if (startLabel) startLabel.innerText = '7슬롯 빠른 가공 일괄 실행';
 
         if (briefing) {
           const catName = currentQuickCategory === 'all' ? '전체 가공대' : `'${currentQuickCategory}'`;
           if (cachedQuickPlan) {
-            briefing.innerText = `7슬롯 최고 레벨 가공 루틴 (${catName}) - 수령 ➔ 원자재 채집 ➔ 가공 순차 등록`;
+            briefing.innerText = `7슬롯 최고 레벨 가공 루틴 (${catName}) :: 수령 -> 원자재 채집 -> 가공 순차 등록`;
             if (btnStart) btnStart.disabled = isCurrentlyBusy || !cachedQuickPlan.can_start;
           } else {
             briefing.innerText = `7슬롯 최고 레벨 가공 루틴 (${catName}) 분석 중...`;
@@ -3993,17 +4062,19 @@ HTML_PAGE = """<!DOCTYPE html>
         }
       }
 
-      // Live ETA Badge Update
+      const goalToggleLabel = document.getElementById('mcb-goal-toggle-label');
+      if (goalToggleLabel) {
+        goalToggleLabel.style.display = (currentMainMode === 'quick_alter') ? 'none' : 'inline-flex';
+      }
+
       const etaBadge = document.getElementById('mcb-eta-badge');
       if (etaBadge) {
-        if (!isCurrentlyBusy) {
+        if (!isCurrentlyBusy && currentGoalFulfillmentMode && (currentMainMode === 'delivery' || currentMainMode === 'custom_craft')) {
           const etaInfo = getPipelineEtaInfo(currentMainMode);
           if (etaInfo) {
             etaBadge.style.display = 'inline-flex';
             etaBadge.innerText = etaInfo.badgeText;
-            etaBadge.title = etaInfo.isGoalMode 
-              ? `목표 100% 달성까지 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr} 완수 예정)` 
-              : `가공 및 제작 완료 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr} 완료 예정)`;
+            etaBadge.title = `[목표 완수 모드] 100% 달성까지 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr} 완수 예정)`;
           } else {
             etaBadge.style.display = 'none';
           }
@@ -4064,8 +4135,8 @@ HTML_PAGE = """<!DOCTYPE html>
       }
       const titleEl = document.getElementById('mcb-running-title');
       const descEl = document.getElementById('mcb-running-desc');
-      if (titleEl) titleEl.innerText = '🛑 중지 요청 전송 중...';
-      if (descEl) descEl.innerText = '진행 중인 동작을 안전하게 정리하고 중지합니다';
+      if (titleEl) titleEl.innerText = '[중지 요청 전송 중...]';
+      if (descEl) descEl.innerText = '> 진행 중인 동작을 안전하게 정리하고 중지합니다';
       try {
         await fetch('/api/abort_pipeline', { method: 'POST' });
         pollLogs();
@@ -4079,18 +4150,18 @@ HTML_PAGE = """<!DOCTYPE html>
     let activeAlarms = {}; // Synchronized strictly from /api/alarms
 
     const ALL_FACILITIES = [
-      { name: '목재 가공 시설', icon: '🪵' },
-      { name: '금속 가공 시설', icon: '⚒️' },
-      { name: '옷감 가공 시설', icon: '🧵' },
-      { name: '가죽 가공 시설', icon: '🛡️' },
-      { name: '약품 가공 시설', icon: '🧪' },
-      { name: '식품 가공 시설', icon: '🍖' }
+      { name: '목재 가공 시설', icon: '::' },
+      { name: '금속 가공 시설', icon: '::' },
+      { name: '옷감 가공 시설', icon: '::' },
+      { name: '가죽 가공 시설', icon: '::' },
+      { name: '약품 가공 시설', icon: '::' },
+      { name: '식품 가공 시설', icon: '::' }
     ];
 
     function formatFacilityShort(fac) {
       if (!fac) return '-';
       if (fac.includes('채집')) return '채집';
-      return fac.replace(/\\s*가공\\s*시설|\\s*시설/g, '').trim();
+      return fac.replace(/\s*가공\s*시설|\s*시설/g, '').trim();
     }
 
     function toggleAlteringView() {
@@ -4103,12 +4174,12 @@ HTML_PAGE = """<!DOCTYPE html>
       if (isExpanded) {
         exp.style.display = 'none';
         bar.style.display = 'flex';
-        btn.innerText = '펼치기 ▼';
+        btn.innerText = '펼치기 v';
         safeSetStorage('mabi_altering_collapsed', 'true');
       } else {
         exp.style.display = 'block';
         bar.style.display = 'none';
-        btn.innerText = '접어두기 ▲';
+        btn.innerText = '접어두기 ^';
         safeSetStorage('mabi_altering_collapsed', 'false');
       }
     }
@@ -4122,11 +4193,11 @@ HTML_PAGE = """<!DOCTYPE html>
       if (isCollapsed) {
         exp.style.display = 'none';
         bar.style.display = 'flex';
-        btn.innerText = '펼치기 ▼';
+        btn.innerText = '펼치기 v';
       } else {
         exp.style.display = 'block';
         bar.style.display = 'none';
-        btn.innerText = '접어두기 ▲';
+        btn.innerText = '접어두기 ^';
       }
     }
 
@@ -4166,7 +4237,7 @@ HTML_PAGE = """<!DOCTYPE html>
         if (exp && bar && btn && exp.style.display === 'none') {
           exp.style.display = 'block';
           bar.style.display = 'none';
-          btn.innerText = '접어두기 ▲';
+          btn.innerText = '접어두기 ^';
           safeSetStorage('mabi_quick_alter_collapsed', 'false');
         }
 
@@ -4230,12 +4301,12 @@ HTML_PAGE = """<!DOCTYPE html>
       if (isExpanded) {
         exp.style.display = 'none';
         bar.style.display = 'flex';
-        btn.innerText = '펼치기 ▼';
+        btn.innerText = '펼치기 v';
         safeSetStorage('mabi_quick_alter_collapsed', 'true');
       } else {
         exp.style.display = 'block';
         bar.style.display = 'none';
-        btn.innerText = '접어두기 ▲';
+        btn.innerText = '접어두기 ^';
         safeSetStorage('mabi_quick_alter_collapsed', 'false');
       }
     }
@@ -4249,11 +4320,11 @@ HTML_PAGE = """<!DOCTYPE html>
       if (isCollapsed) {
         exp.style.display = 'none';
         bar.style.display = 'flex';
-        btn.innerText = '펼치기 ▼';
+        btn.innerText = '펼치기 v';
       } else {
         exp.style.display = 'block';
         bar.style.display = 'none';
-        btn.innerText = '접어두기 ▲';
+        btn.innerText = '접어두기 ^';
       }
     }
 
@@ -4267,12 +4338,12 @@ HTML_PAGE = """<!DOCTYPE html>
       if (isExpanded) {
         exp.style.display = 'none';
         bar.style.display = 'flex';
-        btn.innerText = '펼치기 ▼';
+        btn.innerText = '펼치기 v';
         safeSetStorage('mabi_delivery_targets_collapsed', 'true');
       } else {
         exp.style.display = 'block';
         bar.style.display = 'none';
-        btn.innerText = '접어두기 ▲';
+        btn.innerText = '접어두기 ^';
         safeSetStorage('mabi_delivery_targets_collapsed', 'false');
       }
     }
@@ -4286,11 +4357,11 @@ HTML_PAGE = """<!DOCTYPE html>
       if (isCollapsed) {
         exp.style.display = 'none';
         bar.style.display = 'flex';
-        btn.innerText = '펼치기 ▼';
+        btn.innerText = '펼치기 v';
       } else {
         exp.style.display = 'block';
         bar.style.display = 'none';
-        btn.innerText = '접어두기 ▲';
+        btn.innerText = '접어두기 ^';
       }
     }
 
@@ -4341,7 +4412,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     function testAlarmSound() {
       playChime(true);
-      alert('🔔 주간 납품 알람음 테스트가 정상 작동합니다!');
+      alert('[안내] 주간 납품 알람음 테스트가 정상 작동합니다.');
     }
 
     function requestPushPermission() {
@@ -4351,8 +4422,8 @@ HTML_PAGE = """<!DOCTYPE html>
       }
       Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
-          alert('📢 브라우저 푸시 알림이 허용되었습니다! 가공이 완료되면 알림창이 뜹니다.');
-          new Notification('모비노기 생활 지원도구', { body: '주간 납품 가공 완료 알림이 활성화되었습니다!' });
+          alert('[완료] 브라우저 푸시 알림이 허용되었습니다. 가공이 완료되면 알림창이 뜹니다.');
+          new Notification('모비노기 생활 지원도구', { body: '주간 납품 가공 완료 알림이 활성화되었습니다.' });
         } else {
           alert('알림 권한이 거부되었거나 설정되지 않았습니다.');
         }
@@ -4361,7 +4432,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     function showPushNotification(title, body) {
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, { body: body, icon: '⚔️' });
+        new Notification(title, { body: body });
       }
     }
 
@@ -4420,7 +4491,13 @@ HTML_PAGE = """<!DOCTYPE html>
       // Summary Pill & Quick Bar
       const inProgressTotal = works.filter(w => !w.IsCompleted && getWorkRemainingSeconds(w) > 0).length;
       const sumPill = document.getElementById('altering-summary-pill');
-      if (sumPill) sumPill.innerText = `진행 ${inProgressTotal}건 | 완료 ${completedTotal}건`;
+      if (sumPill) {
+        if (inProgressTotal > 0) {
+          sumPill.innerHTML = `진행 <span class="mono-num">${inProgressTotal}</span>건 <span class="cli-spinner">${getCurrentSpinnerText()}</span> | 완료 <span class="mono-num">${completedTotal}</span>건`;
+        } else {
+          sumPill.innerHTML = `진행 <span class="mono-num">0</span>건 | 완료 <span class="mono-num">${completedTotal}</span>건`;
+        }
+      }
       
       let quickSummaryParts = [];
       ALL_FACILITIES.forEach(f => {
@@ -4432,17 +4509,17 @@ HTML_PAGE = """<!DOCTYPE html>
           const facShort = f.name.replace(' 가공 시설', '');
 
           if (totalSec > 0) {
-            const compTag = hasComp ? ' <span style="color:#34d399;font-size:11px;">(일부완료)</span>' : '';
-            quickSummaryParts.push(`${f.icon} ${facShort}: <span style="color:#fbbf24;font-weight:600;">${formatRemaining(totalSec)}</span>${compTag}`);
+            const compTag = hasComp ? ' <span style="color:var(--text-main);font-size:var(--fs-sm);">(일부완료)</span>' : '';
+            quickSummaryParts.push(`${facShort}: <span class="mono-num" style="color:var(--text-main);font-weight:700;">${formatRemaining(totalSec)}</span> <span class="cli-spinner">${getCurrentSpinnerText()}</span>${compTag}`);
           } else if (hasComp) {
-            quickSummaryParts.push(`${f.icon} ${facShort}: <span style="color:#34d399;font-weight:700;">완료!</span>`);
+            quickSummaryParts.push(`${facShort}: <span style="color:var(--text-main);font-weight:700;">[완료]</span>`);
           }
         }
       });
       const quickSummaryEl = document.getElementById('altering-quick-summary');
       if (quickSummaryEl) {
         quickSummaryEl.innerHTML = quickSummaryParts.length > 0 
-          ? quickSummaryParts.join(' &nbsp;|&nbsp; ') 
+          ? quickSummaryParts.join(' &nbsp;::&nbsp; ') 
           : '현재 대기 중인 가공 작업이 없습니다.';
       }
 
@@ -4457,26 +4534,26 @@ HTML_PAGE = """<!DOCTYPE html>
         const firstCompletedName = hasCompleted ? completedAtFac[0].DisplayName : '';
 
         const collectBtn = hasCompleted
-          ? `<button class="btn btn-sm btn-emerald" style="padding: 3px 8px; font-size: 11.5px;" onclick="collectAltering('${firstCompletedName}')">🎁 수령(${completedAtFac.length})</button>`
-          : `<button class="btn btn-sm" disabled style="opacity: 0.25; padding: 3px 8px; font-size: 11.5px;">수령</button>`;
+          ? `<button class="btn-solid-core" style="padding: 3px 10px; font-size: var(--fs-sm);" onclick="collectAltering('${firstCompletedName}')">완료 가공품 수령 (<span class="mono-num">${completedAtFac.length}</span>)</button>`
+          : `<button class="btn btn-sm" disabled style="opacity: 0.3; font-size: var(--fs-sm);">수령 대기</button>`;
 
         let itemsHtml = '';
         if (itemsAtFac.length === 0) {
-          itemsHtml = '<div style="color: #64748b; font-size: 12px; padding: 8px 0; text-align: center;">작업 없음</div>';
+          itemsHtml = '<div style="color: var(--text-dim); font-size: var(--fs-sm); padding: 8px 0; text-align: center;">작업 없음</div>';
         } else {
           itemsAtFac.forEach(w => {
             const remSec = getWorkRemainingSeconds(w);
             let timeStr = '';
             if (w.IsCompleted || remSec === 0) {
-              timeStr = '<span style="color: #34d399; font-weight: 700;">완료</span>';
+              timeStr = '<span class="badge mono-num">완료</span>';
             } else if (w.State === 'InProgress' || remSec > 0) {
-              timeStr = `<span style="color: #fbbf24; font-weight: 600;">⏳ ${formatRemaining(remSec)}</span>`;
+              timeStr = `<span class="mono-num" style="color: var(--text-main); font-weight: 700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> ${formatRemaining(remSec)}</span>`;
             } else {
-              timeStr = `<span style="color: #94a3b8; font-size: 11px;">대기 (${formatRemaining(remSec)})</span>`;
+              timeStr = `<span class="mono-num" style="color: var(--text-muted); font-size: var(--fs-sm);">대기 (${formatRemaining(remSec)})</span>`;
             }
 
             const bellBtn = (!w.IsCompleted && remSec > 0)
-              ? `<button class="btn-manual-bell" title="이 작업에 알람 추가" onclick="addManualAlarm('${fac.name}', '${w.DisplayName}', ${remSec})">+🔔</button>`
+              ? `<button class="btn-manual-bell" title="이 작업에 알람 추가" onclick="addManualAlarm('${fac.name}', '${w.DisplayName}', ${remSec})">[+알람]</button>`
               : '';
 
             itemsHtml += `
@@ -4494,7 +4571,7 @@ HTML_PAGE = """<!DOCTYPE html>
         gridHtml += `
           <div class="facility-card">
             <div class="facility-header">
-              <span class="facility-title">${fac.icon} ${formatFacilityShort(fac.name)}</span>
+              <span class="facility-title">:: ${formatFacilityShort(fac.name)}</span>
               ${collectBtn}
             </div>
             <div class="facility-items">
@@ -4541,7 +4618,7 @@ HTML_PAGE = """<!DOCTYPE html>
       countBadge.innerText = `${activeCount}개 활성`;
 
       if (keys.length === 0) {
-        container.innerHTML = '<p style="color: #64748b; font-size: 12px;">현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>';
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm);">> 현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>';
         return;
       }
 
@@ -4551,21 +4628,20 @@ HTML_PAGE = """<!DOCTYPE html>
         const remMs = al.targetTimestamp - Date.now();
         const remSec = Math.max(0, Math.ceil(remMs / 1000));
         const statusHtml = al.notified 
-          ? '<span style="color:#34d399; font-weight:700;">🔔 전체 가공 완료! (수령 가능)</span>'
-          : `<span style="color:#fbbf24; font-weight:600;">⏳ ${formatRemaining(remSec)} 남음 <small style="color:#94a3b8; font-size:10px;">(마지막 가공 완료)</small></span>`;
+          ? '<span style="color:var(--text-main); font-weight:700;">[전체 가공 완료 :: 수령 가능]</span>'
+          : `<span class="mono-num" style="color:var(--text-main); font-weight:700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> ${formatRemaining(remSec)} 남음 <small style="color:var(--text-muted); font-size:var(--fs-sm);">(마지막 가공 완료)</small></span>`;
 
-        const badgeClass = al.isDeliveryTarget ? 'badge delivery' : 'badge manual';
-        const badgeText = al.source || (al.isDeliveryTarget ? '주간 납품' : '가공 시설');
+        const badgeClass = al.isDeliveryTarget ? 'badge' : 'badge-dim';
 
         html += `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:1px solid var(--border-line);">
             <div style="display:flex; align-items:center; gap:8px;">
-              <span class="${badgeClass}">🏭 ${formatFacilityShort(al.facility)}</span>
-              <span style="font-weight:700; color:#e0e7ff; font-size:13px;">${al.item}</span>
+              <span class="${badgeClass}">${formatFacilityShort(al.facility)}</span>
+              <span style="font-weight:700; color:var(--text-main); font-size:var(--fs-md);">${al.item}</span>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
               ${statusHtml}
-              <button onclick="deleteAlarmServer('${k}')" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:12px; font-weight:bold;" title="알람 삭제">✕</button>
+              <button class="btn btn-sm" onclick="deleteAlarmServer('${k}')" title="알람 삭제">삭제</button>
             </div>
           </div>
         `;
@@ -4622,8 +4698,8 @@ HTML_PAGE = """<!DOCTYPE html>
           al.notified = true;
           changed = true;
           playChime();
-          showPushNotification(`🔔 [${al.facility}] 마지막 가공 완료!`, `[${al.facility}] 모든 가공 작업이 완료되었습니다! (${al.item}) 지금 바로 수령하세요.`);
-          document.title = `🔔 [${al.facility} 가공 완료!] 모비노기 생활 지원도구`;
+          showPushNotification(`[${al.facility}] 마지막 가공 완료`, `[${al.facility}] 모든 가공 작업이 완료되었습니다. (${al.item}) 지금 바로 수령하세요.`);
+          document.title = `[${al.facility} 가공 완료] 모비노기 생활 지원도구`;
           setTimeout(() => { document.title = '모비노기 생활 지원도구'; }, 8000);
         }
       });
@@ -4657,7 +4733,7 @@ HTML_PAGE = """<!DOCTYPE html>
         cachedQuickPlan = data;
 
         if (data.error) {
-          container.innerHTML = `<p style="color: #f87171; font-size: 13px;">⚠️ 계획 분석 오류: ${data.error}</p>`;
+          container.innerHTML = `<p style="color: var(--text-main); font-size: var(--fs-md);">[오류] 계획 분석 오류: ${data.error}</p>`;
           if (execBtn) execBtn.disabled = true;
           return;
         }
@@ -4665,7 +4741,7 @@ HTML_PAGE = """<!DOCTYPE html>
         const categories = data.categories || {};
         const catKeys = Object.keys(categories);
         if (catKeys.length === 0) {
-          container.innerHTML = '<p style="color: #64748b; font-size: 13px;">선택된 가공대 정보가 없습니다.</p>';
+          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-md);">> 선택된 가공대 정보가 없습니다.</p>';
           if (execBtn) execBtn.disabled = true;
           return;
         }
@@ -4674,21 +4750,21 @@ HTML_PAGE = """<!DOCTYPE html>
         catKeys.forEach(catName => {
           const c = categories[catName];
           const hasCompleted = c.completed_count > 0;
-          const slotsBadge = `<span class="badge" style="background: rgba(99,102,241,0.2); color: #c7d2fe;">가용 슬롯: ${c.available_slots}/7</span>`;
+          const slotsBadge = `<span class="badge-dim mono-num">가용 슬롯: ${c.available_slots}/7</span>`;
           const completedBadge = hasCompleted 
-            ? `<span class="badge" style="background: rgba(16,185,129,0.25); color: #34d399; border: 1px solid rgba(16,185,129,0.4);">🎁 완료 ${c.completed_count}건 수령 대기</span>`
+            ? `<span class="badge mono-num">완료 ${c.completed_count}건 수령 대기</span>`
             : '';
 
           html += `
             <div class="quick-cat-card">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <strong style="font-size: 14px; color: #e0e7ff;">${catName} (${c.facility})</strong>
+                  <strong style="font-size: var(--fs-md); color: var(--text-title);">// ${catName} (${c.facility})</strong>
                   ${slotsBadge}
                   ${completedBadge}
                 </div>
-                <span style="font-size: 11.5px; color: var(--text-muted);">
-                  고티어 가공 예정: <strong style="color: #38bdf8;">${c.planned_tiers.length}건</strong> / 건너뜀: ${c.skipped_tiers.length}건
+                <span style="font-size: var(--fs-sm); color: var(--text-muted);">
+                  가공 예정: <strong class="mono-num" style="color: var(--text-main);">${c.planned_tiers.length}건</strong> :: 건너뜀: <span class="mono-num">${c.skipped_tiers.length}건</span>
                 </span>
               </div>
 
@@ -4696,8 +4772,8 @@ HTML_PAGE = """<!DOCTYPE html>
                 <thead>
                   <tr>
                     <th style="width: 55px;">티어</th>
-                    <th style="width: 130px;">아이템명</th>
-                    <th style="width: 140px;">레시피</th>
+                    <th style="width: 140px;">아이템명</th>
+                    <th style="width: 150px;">레시피</th>
                     <th>상태 및 사전 소요 재료</th>
                   </tr>
                 </thead>
@@ -4710,16 +4786,16 @@ HTML_PAGE = """<!DOCTYPE html>
             let statusHtml = '';
             if (isGather) {
               const reqs = Object.entries(p.gather_reqs || {}).map(([k, v]) => `${k} ${v}개`).join(', ');
-              statusHtml = `<span class="badge" style="background: rgba(56,189,248,0.2); color: #38bdf8;">🌿 사전 채집 후 가공 [${reqs}]</span>`;
+              statusHtml = `<span class="badge-dim mono-num">사전 채집 후 가공 [${reqs}]</span>`;
             } else {
-              statusHtml = `<span class="badge" style="background: rgba(16,185,129,0.2); color: #34d399;">✅ 즉시 가공 가능</span>`;
+              statusHtml = `<span class="badge">즉시 가공 가능</span>`;
             }
 
             html += `
               <tr>
-                <td><span class="badge" style="background: rgba(99,102,241,0.25); color: #a5b4fc;">T${p.tier}</span></td>
-                <td><strong style="color: #f1f5f9;">${p.item_name}</strong></td>
-                <td><span style="color: #94a3b8; font-size: 11.5px;">${p.recipe_name}</span></td>
+                <td><span class="badge-dim mono-num">T${p.tier}</span></td>
+                <td><strong style="color: var(--text-main);">${p.item_name}</strong></td>
+                <td><span style="color: var(--text-muted); font-size: var(--fs-sm);">${p.recipe_name}</span></td>
                 <td>${statusHtml}</td>
               </tr>
             `;
@@ -4728,11 +4804,11 @@ HTML_PAGE = """<!DOCTYPE html>
           // Skipped items
           c.skipped_tiers.forEach(s => {
             html += `
-              <tr style="opacity: 0.65;">
-                <td><span class="badge" style="background: rgba(100,116,139,0.2); color: #94a3b8;">T${s.tier}</span></td>
-                <td><span style="color: #94a3b8;">${s.item_name}</span></td>
-                <td><span style="color: #64748b; font-size: 11.5px;">-</span></td>
-                <td><span style="color: #f59e0b; font-size: 11.5px;">⏭️ 건너뜀 (${s.reason})</span></td>
+              <tr style="opacity: 0.55;">
+                <td><span class="badge-dim mono-num">T${s.tier}</span></td>
+                <td><span style="color: var(--text-muted);">${s.item_name}</span></td>
+                <td><span style="color: var(--text-dim); font-size: var(--fs-sm);">-</span></td>
+                <td><span style="color: var(--text-muted); font-size: var(--fs-sm);">> 건너뜀 (${s.reason})</span></td>
               </tr>
             `;
           });
@@ -4750,10 +4826,10 @@ HTML_PAGE = """<!DOCTYPE html>
         const totalRaw = data.total_raw_needed || {};
         const rawEntries = Object.entries(totalRaw);
         if (rawEntries.length > 0) {
-          const rawText = rawEntries.map(([k, v]) => `<strong>${k}</strong> ${v}개`).join(', ');
-          if (gatherSum) gatherSum.innerHTML = `🌿 <span>사전 부족분 맞춤 채집: ${rawText} <span style="color: #38bdf8; font-size: 11.5px;">(부족한 수량만 채집 후 즉시 자동 중단)</span></span>`;
+          const rawText = rawEntries.map(([k, v]) => `<strong style="color: var(--text-main);">${k}</strong> <span class="mono-num">${v}</span>개`).join(', ');
+          if (gatherSum) gatherSum.innerHTML = `> <span>사전 부족분 맞춤 채집: ${rawText} <span style="color: var(--text-muted); font-size: var(--fs-sm);">(부족한 수량만 채집 후 즉시 자동 중단)</span></span>`;
         } else {
-          if (gatherSum) gatherSum.innerHTML = `✨ <span style="color: #34d399;">사전 채집이 필요한 원자재 없음 (보유량 충분)</span>`;
+          if (gatherSum) gatherSum.innerHTML = `> <span style="color: var(--text-main);">사전 채집이 필요한 원자재 없음 (보유량 충분)</span>`;
         }
 
         if (execBtn) {
@@ -4772,27 +4848,21 @@ HTML_PAGE = """<!DOCTYPE html>
         if (quickTabPill) {
           if (data.can_start) {
             quickTabPill.innerText = `${totalPlanned}건 계획`;
-            quickTabPill.style.background = 'rgba(16, 185, 129, 0.2)';
-            quickTabPill.style.color = '#34d399';
-            quickTabPill.style.borderColor = 'rgba(16, 185, 129, 0.4)';
           } else {
             quickTabPill.innerText = '7슬롯 최적화';
-            quickTabPill.style.background = 'rgba(56, 189, 248, 0.2)';
-            quickTabPill.style.color = '#38bdf8';
-            quickTabPill.style.borderColor = 'rgba(56, 189, 248, 0.35)';
           }
         }
 
         // Update collapsed summary bar
         const quickSummaryEl = document.getElementById('quick-alter-quick-summary');
         if (quickSummaryEl) {
-          const canStartTag = data.can_start ? '<span style="color:#34d399; font-weight:600;">실행 가능</span>' : '<span style="color:#94a3b8;">가공 예정 없음</span>';
-          quickSummaryEl.innerHTML = `⚡ <strong>7슬롯 가공 빠른 실행:</strong> 가공 예정 <span style="color: #38bdf8; font-weight:600;">${totalPlanned}건</span> | 완료 수령 대기 <span style="color: #34d399; font-weight:600;">${totalCompleted}건</span> | 상태: ${canStartTag}`;
+          const canStartTag = data.can_start ? '<span style="color:var(--text-main); font-weight:700;">실행 가능</span>' : '<span style="color:var(--text-muted);">가공 예정 없음</span>';
+          quickSummaryEl.innerHTML = `> <strong>7슬롯 가공 빠른 실행:</strong> 가공 예정 <span class="mono-num" style="color: var(--text-main); font-weight:700;">${totalPlanned}건</span> :: 완료 수령 대기 <span class="mono-num" style="color: var(--text-main); font-weight:700;">${totalCompleted}건</span> :: 상태: ${canStartTag}`;
         }
         updateMasterCommandBar();
       } catch (e) {
         console.error('loadQuickAlterPlan error:', e);
-        if (container) container.innerHTML = `<p style="color: #f43f5e; font-size: 13px;">계획 불러오기 실패: ${e}</p>`;
+        if (container) container.innerHTML = `<p style="color: var(--text-main); font-size: var(--fs-md);">[오류] 계획 불러오기 실패: ${e}</p>`;
       }
     }
 
@@ -4800,13 +4870,13 @@ HTML_PAGE = """<!DOCTYPE html>
       const catText = currentQuickCategory === 'all' ? '전체 가공대' : `'${currentQuickCategory}' 가공대`;
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어(T1~T7)부터 순차 가공 등록' : '최고 티어(T7~T1)부터 순차 가공 등록 (오래 걸리는 가공 우선)';
       const etaInfo = getPipelineEtaInfo('quick_alter');
-      const etaLine = etaInfo ? `\\n• 예상 완수 시각: ${etaInfo.durStr} (${etaInfo.timeStr}경 완료 예정)` : '';
-      if (!confirm(`[7슬롯 빠른 가공]\\n${catText} 7슬롯 빠른 가공 루틴을 실행할까요?${etaLine}\\n\\n1. 완료 가공품 일괄 수령 (슬롯 확보)\\n2. 부족한 원자재 사전 일괄 채집\\n3. ${orderDesc}`)) {
+      const etaLine = etaInfo ? `\n• 예상 완수 시각: ${etaInfo.durStr} (${etaInfo.timeStr}경 완료 예정)` : '';
+      if (!confirm(`[7슬롯 빠른 가공]\n${catText} 7슬롯 빠른 가공 루틴을 실행할까요?${etaLine}\n\n1. 완료 가공품 일괄 수령 (슬롯 확보)\n2. 부족한 원자재 사전 일괄 채집\n3. ${orderDesc}`)) {
         return;
       }
 
       isCurrentlyBusy = true;
-      if (typeof applyBusyUI === 'function') applyBusyUI(true, `⚡ 7슬롯 최고 레벨 ${catText} 빠른 실행 준비 중...`);
+      if (typeof applyBusyUI === 'function') applyBusyUI(true, `7슬롯 최고 레벨 ${catText} 빠른 실행 준비 중...`);
       try {
         const res = await fetch('/api/execute_quick_alter', {
           method: 'POST',
@@ -4850,7 +4920,7 @@ HTML_PAGE = """<!DOCTYPE html>
       } finally {
         const btn = document.getElementById('btn-quick-alter-abort');
         if (btn) {
-          btn.innerText = '🛑 작업 즉시 중지';
+          btn.innerText = '작업 즉시 중지';
           btn.disabled = false;
         }
       }
@@ -4878,32 +4948,32 @@ HTML_PAGE = """<!DOCTYPE html>
         const quickSummaryEl = document.getElementById('delivery-targets-quick-summary');
         if (quickSummaryEl) {
           if (targets.length === 0) {
-            quickSummaryEl.innerHTML = '<span style="color: #64748b;">등록된 주간 납품 목표가 없습니다. 클릭하여 펼친 뒤 등록하세요.</span>';
+            quickSummaryEl.innerHTML = '<span style="color: var(--text-muted);">> 등록된 주간 납품 목표가 없습니다. 클릭하여 펼친 뒤 등록하세요.</span>';
           } else {
             const completedCount = targets.filter(t => t.is_completed || t.current >= t.goal).length;
             const itemTexts = targets.slice(0, 5).map(t => {
               const done = t.is_completed || t.current >= t.goal;
-              const color = done ? '#34d399' : '#fbbf24';
-              return `<span style="color:#f1f5f9;">${t.item_name}</span> (<span style="color:${color};font-weight:600;">${t.current}/${t.goal}</span>)`;
+              const styleStr = done ? 'color:var(--text-main);font-weight:700;' : 'color:var(--text-muted);';
+              return `<span style="color:var(--text-main);">${t.item_name}</span> (<span class="mono-num" style="${styleStr}">${t.current}/${t.goal}</span>)`;
             });
-            const more = targets.length > 5 ? ` <span style="color:#94a3b8;">외 ${targets.length - 5}건</span>` : '';
+            const more = targets.length > 5 ? ` <span style="color:var(--text-muted);">외 ${targets.length - 5}건</span>` : '';
             const statusBadge = completedCount === targets.length
-              ? '<span style="color:#34d399;font-weight:700;">[전체 달성]</span>'
-              : `<span style="color:#c4b5fd;font-weight:600;">[${completedCount}/${targets.length} 완료]</span>`;
-            quickSummaryEl.innerHTML = `${statusBadge} ${itemTexts.join(', ')}${more}`;
+              ? '<span class="badge">[전체 달성]</span>'
+              : `<span class="badge-dim mono-num">[${completedCount}/${targets.length} 완료]</span>`;
+            quickSummaryEl.innerHTML = `${statusBadge} ${itemTexts.join(' :: ')}${more}`;
           }
         }
 
         if (!container) return;
         if (targets.length === 0) {
-          container.innerHTML = '<p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 주간 납품 목표가 없습니다. 인게임에서 퀘스트를 선택하고 [➕ 현재 퀘스트 등록]을 누르거나 직접 추가하세요.</p>';
+          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;">> 등록된 주간 납품 목표가 없습니다. 인게임에서 퀘스트를 선택하고 [현재 퀘스트 등록]을 누르거나 직접 추가하세요.</p>';
           return;
         }
 
         let html = '';
         targets.forEach(t => {
           const isDone = t.is_completed || (t.current >= t.goal);
-          const percent = Math.min(100, Math.round((t.current / (t.goal || 1)) * 100));
+          const gaugeStr = makeTextGauge(t.current, t.goal, 5);
           const safeName = (t.item_name || '').replace(/'/g, "\\'");
 
           let recHtml = '';
@@ -4912,49 +4982,43 @@ HTML_PAGE = """<!DOCTYPE html>
           if (ingKeys.length > 0) {
             const ingListStr = ingKeys.map(k => `${k} ${rec[k]}개`).join(', ');
             recHtml = `
-              <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 6px; padding: 4px 8px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-                <span style="color: #e9d5ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="1회 제작 재료: ${ingListStr}">
-                  📦 1회 재료: <strong>${ingListStr}</strong>
+              <div style="border-top: 1px solid var(--border-line); border-bottom: 1px solid var(--border-line); padding: 4px 0; font-size: var(--fs-sm); display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <span style="color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="1회 제작 재료: ${ingListStr}">
+                  > 1회 재료: <strong style="color: var(--text-main);">${ingListStr}</strong>
                 </span>
-                <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')" style="padding: 1px 6px; font-size: 10px; white-space: nowrap; background: rgba(168, 85, 247, 0.2); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.35);">
-                  ✏️ 레시피
-                </button>
+                <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')">레시피</button>
               </div>
             `;
           }
 
           html += `
-            <div style="background: rgba(0,0,0,0.3); border: 1px solid ${isDone ? 'rgba(52,211,153,0.35)' : 'rgba(255,255,255,0.08)'}; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px;">
+            <div style="border-bottom: 1px solid var(--border-line); padding: 10px 4px; display: flex; flex-direction: column; justify-content: space-between; gap: 6px;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                  <div style="font-weight: 700; font-size: 13.5px; color: #f1f5f9;">${t.item_name}</div>
-                  <div style="font-size: 11px; color: #94a3b8;">${t.quest_title || '주간 납품'}</div>
+                  <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">:: ${t.item_name}</div>
+                  <div style="font-size: var(--fs-sm); color: var(--text-muted);">> ${t.quest_title || '주간 납품'}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                  <span class="badge ${isDone ? '' : 'delivery'}" style="${isDone ? 'background: rgba(52,211,153,0.2); color: #34d399;' : ''}">${isDone ? '완료' : '진행 중'}</span>
-                  <button class="btn btn-sm" style="padding: 2px 6px; font-size: 11px; color: #f87171; border-color: rgba(248,113,113,0.3);" onclick="deleteDeliveryTarget('${safeName}')" title="삭제">✕</button>
+                  <span class="${isDone ? 'badge' : 'badge-dim'}">${isDone ? '완료' : '진행 중'}</span>
+                  <button class="btn btn-sm" onclick="deleteDeliveryTarget('${safeName}')" title="삭제">삭제</button>
                 </div>
               </div>
 
               ${recHtml}
 
-              <!-- Progress bar -->
-              <div style="background: rgba(255,255,255,0.08); border-radius: 4px; height: 6px; overflow: hidden; width: 100%;">
-                <div style="background: ${isDone ? '#34d399' : '#fbbf24'}; height: 100%; width: ${percent}%;"></div>
-              </div>
-
-              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; flex-wrap: wrap; gap: 6px;">
-                <div style="display: flex; align-items: center; gap: 4px;">
-                  <span style="color: #cbd5e1;">보유:</span>
-                  <button class="btn btn-sm" style="padding: 1px 6px; font-size: 11px; min-height: 20px; line-height: 18px;" onclick="adjustTargetCurrent('${safeName}', ${t.current}, -1)" title="1개 감소">-</button>
-                  <strong style="color: ${isDone ? '#34d399' : '#fbbf24'}; cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 입력">${t.current}</strong>
-                  <button class="btn btn-sm" style="padding: 1px 6px; font-size: 11px; min-height: 20px; line-height: 18px;" onclick="adjustTargetCurrent('${safeName}', ${t.current}, 1)" title="1개 증가">+</button>
-                  <span style="color: #94a3b8;">/ ${t.goal}개</span>
-                  <button class="btn btn-sm" style="padding: 1px 5px; font-size: 10px; min-height: 20px; line-height: 18px; color: #a5b4fc; border-color: rgba(165,180,252,0.3);" onclick="promptEditCurrent('${safeName}', ${t.current})" title="보유 수량 직접 수정">✏️</button>
-                  <button class="btn btn-sm" style="padding: 1px 5px; font-size: 10px; min-height: 20px; line-height: 18px; color: #fbbf24; border-color: rgba(251,191,36,0.3);" onclick="updateTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">🔄 0개로</button>
-                  ${t.storage_count > 0 ? `<small style="color: #38bdf8; font-size: 10.5px; margin-left: 2px;">(가방 ${t.inventory_count || 0} + 창고 ${t.storage_count})</small>` : ''}
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-sm); flex-wrap: wrap; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                  <span class="cli-gauge">${gaugeStr}</span>
+                  <span style="color: var(--text-muted);">보유:</span>
+                  <button class="btn btn-sm" onclick="adjustTargetCurrent('${safeName}', ${t.current}, -1)" title="1개 감소">-</button>
+                  <strong class="mono-num" style="color: var(--text-main); cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 입력">${t.current}</strong>
+                  <button class="btn btn-sm" onclick="adjustTargetCurrent('${safeName}', ${t.current}, 1)" title="1개 증가">+</button>
+                  <span class="mono-num" style="color: var(--text-muted);">/ ${t.goal}개</span>
+                  <button class="btn btn-sm" onclick="promptEditCurrent('${safeName}', ${t.current})" title="보유 수량 직접 수정">수정</button>
+                  <button class="btn btn-sm" onclick="updateTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">0개로</button>
+                  ${t.storage_count > 0 ? `<small class="mono-num" style="color: var(--text-muted); font-size: var(--fs-sm);">(가방 ${t.inventory_count || 0} + 창고 ${t.storage_count})</small>` : ''}
                 </div>
-                <span style="color: ${isDone ? '#34d399' : '#f43f5e'}; font-weight: 600;">${isDone ? '납품 준비 완료' : `${t.needed}개 부족`}</span>
+                <span class="mono-num" style="color: ${isDone ? 'var(--text-main)' : 'var(--text-muted)'}; font-weight: 700;">${isDone ? '[납품 준비 완료]' : `[${t.needed}개 부족]`}</span>
               </div>
             </div>
           `;
@@ -5103,7 +5167,7 @@ HTML_PAGE = """<!DOCTYPE html>
         }
         if (!container) return;
         if (presets.length === 0) {
-          container.innerHTML = '<span style="color: #64748b; font-size: 12px;">저장된 프리셋이 없습니다. 원하는 납품 목표를 등록한 뒤 이름을 입력하여 저장하세요.</span>';
+          container.innerHTML = '<span style="color: var(--text-muted); font-size: var(--fs-sm);">> 저장된 프리셋이 없습니다. 원하는 납품 목표를 등록한 뒤 이름을 입력하여 저장하세요.</span>';
           return;
         }
 
@@ -5112,11 +5176,11 @@ HTML_PAGE = """<!DOCTYPE html>
           const itemCount = (p.items || []).length;
           const escapedName = (p.name || '').replace(/'/g, "\\'");
           html += `
-            <div style="background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px;">
-              <span style="font-weight: 600; font-size: 12.5px; color: #e9d5ff;">${p.name}</span>
-              <span class="badge" style="background: rgba(168, 85, 247, 0.25); color: #c4b5fd; font-size: 11px;">${itemCount}개 항목</span>
-              <button class="btn btn-sm" style="padding: 2px 8px; font-size: 11px; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);" onclick="loadPreset('${escapedName}')" title="이 프리셋으로 목표 등록">📂 불러오기</button>
-              <button class="btn btn-sm" style="padding: 2px 6px; font-size: 11px; color: #f87171; border-color: rgba(248,113,113,0.3);" onclick="deletePreset('${escapedName}')" title="프리셋 삭제">✕</button>
+            <div style="border: 1px solid var(--border-line); padding: 4px 10px; display: inline-flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-main);">:: ${p.name}</span>
+              <span class="badge-dim mono-num">${itemCount}개 항목</span>
+              <button class="btn btn-sm" onclick="loadPreset('${escapedName}')" title="이 프리셋으로 목표 등록">불러오기</button>
+              <button class="btn btn-sm" onclick="deletePreset('${escapedName}')" title="프리셋 삭제">삭제</button>
             </div>
           `;
         });
@@ -5156,7 +5220,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     async function resetAllTargetsCurrent() {
-      if (!confirm('등록된 모든 주간 납품 목표의 현재 보유 수량을 0개로 초기화할까요?\\n\\n(새로운 주간 퀘스트를 시작하거나 목표 품목들을 처음부터 제작하고자 할 때 유용합니다)')) return;
+      if (!confirm('등록된 모든 주간 납품 목표의 현재 보유 수량을 0개로 초기화할까요?\n\n(새로운 주간 퀘스트를 시작하거나 목표 품목들을 처음부터 제작하고자 할 때 유용합니다)')) return;
       try {
         const res = await fetch('/api/reset_delivery_targets_current', { method: 'POST' });
         const d = await res.json();
@@ -5174,8 +5238,8 @@ HTML_PAGE = """<!DOCTYPE html>
 
     async function loadPreset(name) {
       const resetCurrent = confirm(
-        "'" + name + "' 프리셋의 납품 목표를 불러옵니다.\\n\\n" +
-        "• [확인] 누름: 보유 수량을 0개로 초기화하여 새로 시작 (추천: 새 주간 퀘스트)\\n" +
+        "'" + name + "' 프리셋의 납품 목표를 불러옵니다.\n\n" +
+        "• [확인] 누름: 보유 수량을 0개로 초기화하여 새로 시작 (추천: 새 주간 퀘스트)\n" +
         "• [취소] 누름: 기존에 등록/제작된 보유 수량을 유지하며 불러오기"
       );
       try {
@@ -5220,7 +5284,7 @@ HTML_PAGE = """<!DOCTYPE html>
     async function collectAllCompletedAltering() {
       if (!confirm('모든 시설의 완료된 가공품을 즉시 순차 수령할까요? (슬롯이 비워지고 결과물이 가방에 들어옵니다)')) return;
       isCurrentlyBusy = true;
-      if (typeof applyBusyUI === 'function') applyBusyUI(true, '🎁 모든 시설 완료 가공품 순차 수령 중...');
+      if (typeof applyBusyUI === 'function') applyBusyUI(true, '모든 시설 완료 가공품 순차 수령 중...');
       try {
         const res = await fetch('/api/collect_all_completed_altering', { method: 'POST' });
         const d = await res.json();
@@ -5250,19 +5314,21 @@ HTML_PAGE = """<!DOCTYPE html>
         const tasks = plan.tasks || [];
         if (tasksContainer) {
           if (tasks.length === 0) {
-            tasksContainer.innerHTML = '<p style="color: #64748b; font-size: 12px;">등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</p>';
+            tasksContainer.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm);">> 등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</p>';
           } else {
             let tasksHtml = '';
             tasks.forEach(t => {
               const isDone = t.is_completed || (t.needed === 0) || (t.current >= t.goal);
+              const gaugeStr = makeTextGauge(t.current, t.goal, 5);
               const badge = isDone 
-                ? '<span style="color:#34d399; font-weight:700; font-size:11.5px;">✓ 달성 완료</span>' 
-                : `<span style="color:#fbbf24; font-weight:700; font-size:11.5px;">${t.needed}개 필요</span>`;
+                ? '<span class="badge">달성 완료</span>' 
+                : `<span class="badge-dim mono-num">${t.needed}개 필요</span>`;
               tasksHtml += `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 8px; background: rgba(255,255,255,0.04); border-radius: 6px; border: 1px solid ${isDone ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.05)'};">
-                  <div>
-                    <span style="font-weight:600; font-size:12.5px; color:${isDone ? '#34d399' : '#e0e7ff'};">${t.item_name}</span>
-                    <span style="font-size:11px; color:#94a3b8; margin-left:6px;">(${t.current}/${t.goal}개)</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 4px; border-bottom: 1px solid var(--border-line);">
+                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <span class="cli-gauge">${gaugeStr}</span>
+                    <span style="font-weight:700; font-size:var(--fs-md); color:${isDone ? 'var(--text-main)' : 'var(--text-title)'};">${t.item_name}</span>
+                    <span class="mono-num" style="font-size:var(--fs-sm); color:var(--text-muted);">(${t.current}/${t.goal}개)</span>
                   </div>
                   <div>${badge}</div>
                 </div>
@@ -5280,31 +5346,32 @@ HTML_PAGE = """<!DOCTYPE html>
         if (tbody) {
           let rowsHtml = '';
           if (reqs.length > 0) {
+            rowsHtml += `<tr class="table-group-row"><td colspan="5">--- :: 가공 목록 :: ---</td></tr>`;
             reqs.forEach(r => {
-              const queuedBadge = r.queued_works_count > 0 ? `<span style="color:#818cf8; font-size:11px; margin-left:4px;">(대기 ${r.queued_works_count}회)</span>` : '';
-              const completedBadge = r.completed_works_count > 0 ? `<span style="color:#38bdf8; font-size:11px; margin-left:4px;">(수령가능 ${r.completed_works_count}회)</span>` : '';
+              const queuedBadge = r.queued_works_count > 0 ? `<span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm); margin-left:4px;">(대기 ${r.queued_works_count}회)</span>` : '';
+              const completedBadge = r.completed_works_count > 0 ? `<span class="mono-num" style="color:var(--text-main); font-size:var(--fs-sm); margin-left:4px;">(수령가능 ${r.completed_works_count}회)</span>` : '';
 
               let statusBadge = '';
               if (r.status === 'satisfied') {
-                statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>' + completedBadge;
+                statusBadge = '<span style="color:var(--text-main); font-weight:700; white-space:nowrap;">[준비 완료]</span>' + completedBadge;
               } else if (r.status === 'needs_alter') {
-                statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">▲ ${r.works_needed}회 가공 필요</span>` + queuedBadge + completedBadge;
+                statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">> ${r.works_needed}회 가공 필요</span>` + queuedBadge + completedBadge;
               } else if (r.status === 'in_queue') {
-                statusBadge = `<span style="color:#fbbf24; font-weight:700; white-space:nowrap;">⏳ 대기열 (${r.queued_works_count}회)</span>` + completedBadge;
+                statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> 대기열 (${r.queued_works_count}회)</span>` + completedBadge;
               } else if (r.status === 'ready_to_collect') {
-                statusBadge = `<span style="color:#38bdf8; font-weight:700; white-space:nowrap;">🎁 수령 가능 (${r.completed_works_count}회)</span>`;
+                statusBadge = `<span class="badge mono-num" style="white-space:nowrap;">수령 가능 (${r.completed_works_count}회)</span>`;
               }
 
               const invCnt = r.inventory_count || 0;
               const storeCnt = r.storage_count || 0;
-              const bagStorageText = `${invCnt}개<span style="color:${storeCnt > 0 ? '#38bdf8' : '#64748b'};">(${storeCnt}개)</span>`;
+              const bagStorageText = `<span class="mono-num">${invCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm);">(${storeCnt}개)</span>`;
               const facShort = formatFacilityShort(r.facility);
 
               rowsHtml += `
-                <tr>
-                  <td style="font-weight:700; color:#e0e7ff; white-space:nowrap;">${r.item_name}</td>
-                  <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(255,255,255,0.06); color:#cbd5e1; padding:2px 7px; font-size:11px;">${facShort}</span></td>
-                  <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${r.total_needed}개</td>
+                <tr class="row-alter">
+                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${r.item_name}</td>
+                  <td style="text-align:center; white-space:nowrap;"><span class="badge-dim">${facShort}</span></td>
+                  <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${r.total_needed}개</td>
                   <td style="text-align:center; white-space:nowrap;">${bagStorageText}</td>
                   <td style="white-space:nowrap;">${statusBadge}</td>
                 </tr>
@@ -5312,46 +5379,41 @@ HTML_PAGE = """<!DOCTYPE html>
             });
           } else if (tasks.length > 0 && !plan.all_completed) {
             rowsHtml += `
-              <tr>
-                <td colspan="5" style="text-align: center; color: #34d399; padding: 10px; background: rgba(52, 211, 153, 0.05); font-weight: 600; font-size: 12.5px;">
-                  ✨ 1차 가공품 준비 완료 (추가 가공 불필요)
-                </td>
+              <tr class="table-group-row">
+                <td colspan="5">--- :: 1차 가공품 준비 완료 (추가 가공 불필요) :: ---</td>
               </tr>
             `;
           }
 
           if (plan.raw_materials && plan.raw_materials.length > 0) {
+            rowsHtml += `<tr class="table-group-row"><td colspan="5">--- :: 채집 목록 :: ---</td></tr>`;
             plan.raw_materials.forEach(rm => {
               let statusBadge = '';
               const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
               if (rm.deficit === 0) {
-                statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>';
+                statusBadge = '<span style="color:var(--text-main); font-weight:700; white-space:nowrap;">[준비 완료]</span>';
               } else if (isSpecial) {
-                statusBadge = `<span style="color:#fbbf24; font-weight:700; white-space:nowrap;">🛒 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
+                statusBadge = `<span class="mono-num" style="color:var(--text-muted); font-weight:700; white-space:nowrap;">> 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
               } else if (rm.tool_ok) {
-                statusBadge = `<span style="color:#34d399; font-weight:700; white-space:nowrap;">🌿 ${rm.deficit}개 자동 채집</span>`;
+                statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">> ${rm.deficit}개 자동 채집</span>`;
               } else {
-                statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">⚠️ 도구 필요 (${rm.deficit}개 부족)</span>`;
+                statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">[!] 도구 필요 (${rm.deficit}개 부족)</span>`;
               }
 
               const rmInvCnt = rm.inventory_count || 0;
               const rmStoreCnt = rm.storage_count || 0;
-              const rmBagStorageText = `${rmInvCnt}개<span style="color:${rmStoreCnt > 0 ? '#38bdf8' : '#64748b'};">(${rmStoreCnt}개)</span>`;
+              const rmBagStorageText = `<span class="mono-num">${rmInvCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm);">(${rmStoreCnt}개)</span>`;
 
               const typeBadge = isSpecial
-                ? '<span class="badge" style="background:rgba(251,191,36,0.15); color:#fbbf24; padding:2px 7px; font-size:11px;">상점/드랍</span>'
-                : '<span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; padding:2px 7px; font-size:11px;">채집</span>';
-              const rowIcon = isSpecial ? '🛒' : '🌿';
-              const rowBg = isSpecial
-                ? 'background: rgba(251, 191, 36, 0.05); border-left: 2px solid #fbbf24;'
-                : 'background: rgba(16, 185, 129, 0.05); border-left: 2px solid #34d399;';
-              const titleColor = isSpecial ? '#fef08a' : '#a7f3d0';
+                ? '<span class="badge-dim">상점/드랍</span>'
+                : '<span class="badge-dim">채집</span>';
+              const rowClass = isSpecial ? 'row-special' : 'row-gather';
 
               rowsHtml += `
-                <tr style="${rowBg}">
-                  <td style="font-weight:700; color:${titleColor}; white-space:nowrap;">${rowIcon} ${rm.item_name}</td>
+                <tr class="${rowClass}">
+                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${rm.item_name}</td>
                   <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
-                  <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
+                  <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
                   <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
                   <td style="white-space:nowrap;">${statusBadge}</td>
                 </tr>
@@ -5361,11 +5423,11 @@ HTML_PAGE = """<!DOCTYPE html>
 
           if (reqs.length === 0 && (!plan.raw_materials || plan.raw_materials.length === 0)) {
             if (plan.all_completed) {
-              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: #34d399; padding: 16px; font-weight: 700;">🎉 모든 주간 납품 목표가 달성 완료되었습니다!</td></tr>';
+              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-main); padding: 16px; font-weight: 700;">:: 모든 주간 납품 목표가 달성 완료되었습니다 ::</td></tr>';
             } else if (tasks.length === 0) {
-              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 16px;">등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</td></tr>';
+              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 16px;">> 등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</td></tr>';
             } else {
-              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: #38bdf8; padding: 16px; font-weight: 600;">✨ 모든 원자재 및 가공품 준비 완료! 아래 버튼을 눌러 즉시 완제품을 제작하세요.</td></tr>';
+              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-main); padding: 16px; font-weight: 700;">:: 모든 원자재 및 가공품 준비 완료! 아래 버튼을 눌러 즉시 완제품을 제작하세요 ::</td></tr>';
             }
           }
 
@@ -5379,44 +5441,38 @@ HTML_PAGE = """<!DOCTYPE html>
           const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0 && r.is_gatherable);
           const neededSpecial = (plan.raw_materials || []).filter(r => r.deficit > 0 && (r.is_special_obtain || !r.is_gatherable));
           const gatherNote = (neededRawGather.length > 0) ? ` / 채집 ${neededRawGather.length}종` : '';
-          const specialNote = (neededSpecial.length > 0) ? ` (🛒 별도 확보 ${neededSpecial.length}종 필요)` : '';
+          const specialNote = (neededSpecial.length > 0) ? ` (별도 확보 ${neededSpecial.length}종 필요)` : '';
           const alterCount = plan.total_works_to_queue || 0;
 
+          btnExec.className = 'btn-solid-core';
           if (tasks.length === 0) {
-            btnExec.innerText = '⚡ 전체 납품 재료 일괄 가공 & 제작 시작';
-            btnExec.className = 'btn';
+            btnExec.innerText = '주간 납품 일괄 실행';
             btnExec.disabled = true;
             statusText.innerText = '납품 퀘스트 없음';
           } else if (plan.all_completed) {
-            btnExec.innerText = '🎉 모든 납품 목표 달성 완료!';
-            btnExec.className = 'btn';
+            btnExec.innerText = '모든 납품 목표 달성 완료';
             btnExec.disabled = true;
-            statusText.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 목표 달성 완료</span>';
+            statusText.innerHTML = '<span style="color:var(--text-main); font-weight:700;">모든 목표 달성 완료</span>';
           } else if (plan.can_craft_immediately || (alterCount === 0 && neededRawGather.length === 0 && craftableCount > 0)) {
-            btnExec.innerText = craftableCount > 0 ? `🚀 준비된 완제품 (${craftableCount}건) 즉시 제작` : '🚀 재료 준비 완료! 즉시 일괄 최종 제작';
-            btnExec.className = 'btn btn-emerald';
+            btnExec.innerText = craftableCount > 0 ? `주간 납품 일괄 실행 (즉시 제작 ${craftableCount}건)` : '주간 납품 일괄 실행 (최종 제작)';
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">${craftableCount > 0 ? `${craftableCount}건 완제품 즉시 제작 가능` : '모든 재료 준비 완료'}${specialNote}</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-main); font-weight:700;">${craftableCount > 0 ? `${craftableCount}건 완제품 즉시 제작 가능` : '모든 재료 준비 완료'}${specialNote}</span>`;
           } else if (alterCount > 0) {
-            btnExec.innerText = `⚡ 일괄 가공(${alterCount}회)${gatherNote} & 즉시 제작${craftableNote}`;
-            btnExec.className = 'btn btn-primary';
+            btnExec.innerText = `주간 납품 일괄 실행 (가공 ${alterCount}회${gatherNote})`;
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#fbbf24; font-weight:700;">가공 ${alterCount}회 등록 필요${gatherNote}${craftableNote}${specialNote}</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-main); font-weight:700;">가공 ${alterCount}회 등록 필요${gatherNote}${craftableNote}${specialNote}</span>`;
           } else if (neededRawGather.length > 0) {
-            btnExec.innerText = `🌿 부족 채집물 (${neededRawGather.length}종) 맞춤 채집 & 납품 준비${craftableNote}`;
-            btnExec.className = 'btn btn-emerald';
+            btnExec.innerText = `주간 납품 일괄 실행 (채집 ${neededRawGather.length}종)`;
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">필드 채집 ${neededRawGather.length}종 필요${craftableNote}${specialNote}</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-main); font-weight:700;">필드 채집 ${neededRawGather.length}종 필요${craftableNote}${specialNote}</span>`;
           } else if (craftableCount > 0) {
-            btnExec.innerText = `🔨 준비된 완제품 (${craftableCount}건) 즉시 제작`;
-            btnExec.className = 'btn btn-emerald';
+            btnExec.innerText = `주간 납품 일괄 실행 (즉시 제작 ${craftableCount}건)`;
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">${craftableCount}건 즉시 제작 가능</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-main); font-weight:700;">${craftableCount}건 즉시 제작 가능</span>`;
           } else {
-            btnExec.innerText = '⏳ 가공 진행 중 (완료 시 제작 가능)';
-            btnExec.className = 'btn';
+            btnExec.innerText = '주간 납품 일괄 실행 (대기열 진행 중)';
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = '<span style="color:#38bdf8; font-weight:700;">대기열 가공 완료 대기 중</span>';
+            statusText.innerHTML = `<span style="color:var(--text-muted); font-weight:700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> 대기열 가공 완료 대기 중</span>`;
           }
         }
 
@@ -5435,38 +5491,35 @@ HTML_PAGE = """<!DOCTYPE html>
             slotsSec.style.display = 'block';
             let html = '';
             facList.forEach(f => {
-              const used = f.in_progress + f.completed;
               const max = f.max_slots || 7;
               const avail = f.available_now;
               const needed = f.new_works_needed || 0;
               const isOver = f.overflow > 0;
-              const cardBorder = isOver ? 'rgba(244, 63, 94, 0.4)' : (needed > 0 ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255, 255, 255, 0.06)');
-              const cardBg = isOver ? 'rgba(244, 63, 94, 0.08)' : 'rgba(255, 255, 255, 0.03)';
               
               const progDetail = f.in_progress_detail ? ` (${f.in_progress_detail})` : '';
               const compDetail = f.completed_detail ? ` (${f.completed_detail})` : '';
 
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 8px 10px;">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--border-line)'}; padding: 8px 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <span style="font-weight: 700; font-size: 12px; color: #e2e8f0;">${f.facility}</span>
-                    <span style="font-size: 11px; font-weight: 600; color: ${avail > 0 ? '#34d399' : '#f43f5e'};">
-                      여유 ${avail} / ${max}
+                    <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">:: ${f.facility}</span>
+                    <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
+                      여유 ${avail}/${max}
                     </span>
                   </div>
-                  <div style="font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                    <span>진행: ${f.in_progress}${progDetail ? `<span style="color:#c7d2fe; font-size:10px;">${progDetail}</span>` : ''} | 완료: ${f.completed}${compDetail ? `<span style="color:#6ee7b7; font-size:10px;">${compDetail}</span>` : ''}</span>
-                    ${needed > 0 ? `<span style="font-weight: 700; color: ${isOver ? '#f43f5e' : '#fbbf24'};">필요 +${needed}</span>` : '<span style="color: #64748b;">필요 없음</span>'}
+                  <div class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                    <span>진행:${f.in_progress}${progDetail} | 완료:${f.completed}${compDetail}</span>
+                    ${needed > 0 ? `<span style="font-weight: 700; color: var(--text-main);">필요 +${needed}</span>` : `<span style="color: var(--text-dim);">필요 없음</span>`}
                   </div>
-                  ${f.overflow > 0 ? `<div style="font-size: 10.5px; color: #fb7185; margin-top: 3px; font-weight: 600;">⚠️ ${f.overflow}회 초과 (단계적 진행)</div>` : ''}
+                  ${f.overflow > 0 ? `<div class="mono-num" style="font-size: var(--fs-sm); color: var(--text-main); margin-top: 3px; font-weight: 700;">> [!] ${f.overflow}회 초과 (단계적 진행)</div>` : ''}
                 </div>
               `;
             });
             slotsContainer.innerHTML = html;
             if (summaryBadge) {
               summaryBadge.innerHTML = plan.has_slot_issue 
-                ? '<span style="color: #fbbf24; font-weight: 700;">⚠️ 일부 시설 슬롯 초과 예상</span>' 
-                : '<span style="color: #34d399; font-weight: 600;">✓ 전 시설 슬롯 여유 충분</span>';
+                ? '<span style="color: var(--text-main); font-weight: 700;">[!] 일부 시설 슬롯 초과 예상</span>' 
+                : '<span style="color: var(--text-muted); font-weight: 600;">[전 시설 슬롯 여유 충분]</span>';
             }
           } else {
             slotsSec.style.display = 'none';
@@ -5476,7 +5529,7 @@ HTML_PAGE = """<!DOCTYPE html>
         if (warnBanner && warnList) {
           if (warnings.length > 0) {
             warnBanner.style.display = 'block';
-            warnList.innerHTML = warnings.map(w => `<div style="margin-bottom: 3px;">• ${w}</div>`).join('');
+            warnList.innerHTML = warnings.map(w => `<div style="margin-bottom: 3px;">> ${w}</div>`).join('');
           } else {
             warnBanner.style.display = 'none';
           }
@@ -5488,16 +5541,16 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     async function executeBatchPipeline() {
-      const modeTitle = currentGoalFulfillmentMode ? '🎯 목표 완수 모드' : '⚡ 주간 납품 일괄 제작';
+      const modeTitle = currentGoalFulfillmentMode ? '목표 완수 모드' : '주간 납품 일괄 제작';
       const modeExpl = currentGoalFulfillmentMode 
-        ? '가공품 완료 시 즉시 수령 ➔ 다음 티어 가공 ➔ 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
+        ? '가공품 완료 시 즉시 수령 -> 다음 티어 가공 -> 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
         : '부족한 가공품이 해당 시설에 일괄 등록되며 주간 납품 전용 알람이 설정됩니다.';
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
-      const etaInfo = getPipelineEtaInfo('delivery');
-      const etaLine = etaInfo ? `\n• 예상 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr}경 ${currentGoalFulfillmentMode ? '완수' : '완료'} 예정)` : '';
+      const etaInfo = currentGoalFulfillmentMode ? getPipelineEtaInfo('delivery') : null;
+      const etaLine = etaInfo ? `\n• 예상 완수 시각: ${etaInfo.durStr} (${etaInfo.timeStr}경 완수 예정)` : '';
       if (confirm(`[${modeTitle}]\n${modeExpl}${etaLine}\n\n• 가공 우선순위: ${orderDesc}\n\n실행하시겠습니까?`)) {
         isCurrentlyBusy = true;
-        if (typeof applyBusyUI === 'function') applyBusyUI(true, `⚡ 전체 주간 납품 일괄 최적화 제작 준비 중... [${currentGoalFulfillmentMode ? '목표 완수 모드' : '1회차 실행'}]`);
+        if (typeof applyBusyUI === 'function') applyBusyUI(true, `전체 주간 납품 일괄 최적화 제작 준비 중... [${currentGoalFulfillmentMode ? '목표 완수 모드' : '1회차 실행'}]`);
         try {
           const res = await fetch('/api/execute_batch', {
             method: 'POST',
@@ -5524,7 +5577,7 @@ HTML_PAGE = """<!DOCTYPE html>
     async function collectAltering(displayName) {
       if (confirm(`'${displayName}' 가공품을 수령하러 이동할까요?`)) {
         isCurrentlyBusy = true;
-        if (typeof applyBusyUI === 'function') applyBusyUI(true, `🎁 '${displayName}' 가공품 수령 이동 중...`);
+        if (typeof applyBusyUI === 'function') applyBusyUI(true, `'${displayName}' 가공품 수령 이동 중...`);
         try {
           const res = await fetch('/api/collect_altering', {
             method: 'POST',
@@ -5571,7 +5624,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
         if (!container) return;
         if (targets.length === 0) {
-          container.innerHTML = '<p style="color: #64748b; font-size: 12.5px; grid-column: 1/-1;">등록된 개별 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>';
+          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;">> 등록된 지정 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>';
           return;
         }
 
@@ -5579,6 +5632,7 @@ HTML_PAGE = """<!DOCTYPE html>
         targets.forEach(t => {
           const isDone = t.is_completed || (t.current >= t.goal);
           const percent = Math.min(100, Math.round((t.current / (t.goal || 1)) * 100));
+          const gaugeStr = makeTextGauge(t.current, t.goal, 5);
           const safeName = (t.item_name || '').replace(/'/g, "\\'");
 
           let recHtml = '';
@@ -5587,67 +5641,58 @@ HTML_PAGE = """<!DOCTYPE html>
           if (ingKeys.length > 0) {
             const ingListStr = ingKeys.map(k => `${k} ${rec[k]}개`).join(', ');
             recHtml = `
-              <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px; padding: 4px 8px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-                <span style="color: #a7f3d0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="1회 제작 재료: ${ingListStr}">
-                  📦 1회 재료: <strong>${ingListStr}</strong>
+              <div style="border-top: 1px solid var(--border-line); border-bottom: 1px solid var(--border-line); padding: 4px 0; font-size: var(--fs-sm); display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <span style="color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="1회 제작 재료: ${ingListStr}">
+                  > 1회 재료: <strong style="color: var(--text-main);">${ingListStr}</strong>
                 </span>
-                <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')" style="padding: 1px 6px; font-size: 10.5px; white-space: nowrap; background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.35);">
-                  ✏️ 레시피
-                </button>
+                <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')">레시피</button>
               </div>
             `;
           } else {
             recHtml = `
-              <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 4px 8px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-                <span style="color: #fcd34d;">⚠️ 재료 미확인 (클릭하여 직접 입력)</span>
-                <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')" style="padding: 1px 6px; font-size: 10.5px; white-space: nowrap; background: rgba(245, 158, 11, 0.2); color: #fbbf24; border-color: rgba(245, 158, 11, 0.35);">
-                  ➕ 재료 등록
-                </button>
+              <div style="border-top: 1px solid var(--border-line); border-bottom: 1px solid var(--border-line); padding: 4px 0; font-size: var(--fs-sm); display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <span style="color: var(--text-main);">> [!] 재료 미확인 (클릭하여 직접 입력)</span>
+                <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')">재료 등록</button>
               </div>
             `;
           }
 
           html += `
-            <div style="background: rgba(0,0,0,0.3); border: 1px solid ${isDone ? 'rgba(52,211,153,0.35)' : 'rgba(255,255,255,0.08)'}; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px;">
+            <div style="border-bottom: 1px solid var(--border-line); padding: 10px 4px; display: flex; flex-direction: column; justify-content: space-between; gap: 6px;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                  <div style="font-weight: 700; font-size: 13.5px; color: #f1f5f9;">${t.item_name}</div>
-                  <div style="font-size: 11px; color: #94a3b8;">가방: ${t.inventory_count || 0}개 | 개인창고: ${t.char_storage_count || 0}개 | 공용창고: ${t.account_storage_count || 0}개 (총 ${t.current || 0}개)</div>
+                  <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">:: ${t.item_name}</div>
+                  <div class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted);">> 가방: ${t.inventory_count || 0}개 | 개인창고: ${t.char_storage_count || 0}개 | 공용창고: ${t.account_storage_count || 0}개 (총 ${t.current || 0}개)</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                  <span class="badge" style="background: ${isDone ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}; color: ${isDone ? '#34d399' : '#fbbf24'}; font-size: 11px;">
+                  <span class="${isDone ? 'badge' : 'badge-dim'} mono-num">
                     ${isDone ? '달성 완료' : (t.needed || 0) + '개 부족'}
                   </span>
-                  <button class="btn btn-sm" onclick="deleteCustomTarget('${safeName}')" style="padding: 2px 6px; font-size: 11px; color: #f87171; background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.2);" title="삭제">✕</button>
+                  <button class="btn btn-sm" onclick="deleteCustomTarget('${safeName}')" title="삭제">삭제</button>
                 </div>
               </div>
 
               ${recHtml}
 
-              <div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 4px;">
-                  <span style="color: #94a3b8;">진행도</span>
-                  <span style="font-weight: 700; color: ${isDone ? '#34d399' : '#e2e8f0'};">${t.current} / ${t.goal}개 (${percent}%)</span>
-                </div>
-                <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
-                  <div style="width: ${percent}%; height: 100%; background: ${isDone ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, #f59e0b, #fbbf24)'}; border-radius: 3px;"></div>
-                </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-sm);">
+                <span style="color: var(--text-muted);">진행도: <span class="cli-gauge">${gaugeStr}</span></span>
+                <span class="mono-num" style="font-weight: 700; color: var(--text-main);">${t.current} / ${t.goal}개 (${percent}%)</span>
               </div>
 
-              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; flex-wrap: wrap; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.04);">
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-sm); flex-wrap: wrap; gap: 6px; padding-top: 4px;">
                 <div style="display: flex; align-items: center; gap: 4px;">
-                  <span style="color: #cbd5e1;">보유:</span>
-                  <button class="btn btn-sm" style="padding: 1px 6px; font-size: 11px; min-height: 20px; line-height: 18px;" onclick="adjustCustomTargetCurrent('${safeName}', ${t.current}, -1)" title="1개 감소">-</button>
-                  <strong style="color: ${isDone ? '#34d399' : '#fbbf24'}; cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCustomCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 입력">${t.current}</strong>
-                  <button class="btn btn-sm" style="padding: 1px 6px; font-size: 11px; min-height: 20px; line-height: 18px;" onclick="adjustCustomTargetCurrent('${safeName}', ${t.current}, 1)" title="1개 증가">+</button>
-                  <button class="btn btn-sm" style="padding: 1px 5px; font-size: 10px; min-height: 20px; line-height: 18px; color: #a5b4fc; border-color: rgba(165,180,252,0.3);" onclick="promptEditCustomCurrent('${safeName}', ${t.current})" title="보유 수량 직접 수정">✏️</button>
-                  <button class="btn btn-sm" style="padding: 1px 5px; font-size: 10px; min-height: 20px; line-height: 18px; color: #fbbf24; border-color: rgba(251,191,36,0.3);" onclick="updateCustomTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">🔄 0개로</button>
+                  <span style="color: var(--text-muted);">보유:</span>
+                  <button class="btn btn-sm" onclick="adjustCustomTargetCurrent('${safeName}', ${t.current}, -1)" title="1개 감소">-</button>
+                  <strong class="mono-num" style="color: var(--text-main); cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCustomCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 입력">${t.current}</strong>
+                  <button class="btn btn-sm" onclick="adjustCustomTargetCurrent('${safeName}', ${t.current}, 1)" title="1개 증가">+</button>
+                  <button class="btn btn-sm" onclick="promptEditCustomCurrent('${safeName}', ${t.current})" title="보유 수량 직접 수정">수정</button>
+                  <button class="btn btn-sm" onclick="updateCustomTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">0개로</button>
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px;">
-                  <span style="color: #94a3b8;">목표:</span>
-                  <strong style="color: #e2e8f0;">${t.goal}개</strong>
-                  <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', -1)" style="padding: 1px 7px; font-size: 11px; background: rgba(255,255,255,0.06);">-1</button>
-                  <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', 1)" style="padding: 1px 7px; font-size: 11px; background: rgba(255,255,255,0.06);">+1</button>
+                  <span style="color: var(--text-muted);">목표:</span>
+                  <strong class="mono-num" style="color: var(--text-main);">${t.goal}개</strong>
+                  <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', -1)">-1</button>
+                  <button class="btn btn-sm" onclick="updateCustomTargetGoal('${safeName}', 1)">+1</button>
                 </div>
               </div>
             </div>
@@ -5772,7 +5817,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     async function resetAllCustomTargetsCurrent() {
-      if (!confirm('등록된 모든 개별 제작 목표의 현재 보유 수량을 0개로 초기화할까요?\\n\\n(모든 목표 아이템을 처음부터 다시 제작하고자 할 때 유용합니다)')) return;
+      if (!confirm('등록된 모든 지정 제작 목표의 현재 보유 수량을 0개로 초기화할까요?\n\n(모든 목표 아이템을 처음부터 다시 제작하고자 할 때 유용합니다)')) return;
       try {
         const res = await fetch('/api/reset_custom_targets_current', { method: 'POST' });
         const d = await res.json();
@@ -5820,7 +5865,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     async function clearCustomTargets() {
-      if (!confirm('등록된 모든 개별 제작 목표를 비우시겠습니까?')) return;
+      if (!confirm('등록된 모든 지정 제작 목표를 비우시겠습니까?')) return;
       try {
         await fetch('/api/clear_custom_targets', { method: 'POST' });
         loadCustomTargets();
@@ -5845,7 +5890,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (msgEl) msgEl.innerText = '';
 
       if (inputEl) inputEl.value = currentRecipeModalItem;
-      if (titleEl) titleEl.innerText = currentRecipeModalItem ? `📖 제작 레시피 설정: '${currentRecipeModalItem}'` : '📖 제작 레시피 설정 / 수정';
+      if (titleEl) titleEl.innerText = currentRecipeModalItem ? `// 제작 레시피 설정: '${currentRecipeModalItem}'` : '// 제작 레시피 설정 / 수정';
       if (overlay) overlay.classList.add('active');
 
       if (currentRecipeModalItem) {
@@ -5879,7 +5924,7 @@ HTML_PAGE = """<!DOCTYPE html>
       const itemName = inputEl.value.trim();
       if (!itemName) return;
 
-      container.innerHTML = '<div style="color:#94a3b8; font-size:12px; padding:8px;">레시피 조회 중...</div>';
+      container.innerHTML = '<div style="color:var(--text-muted); font-size:var(--fs-sm); padding:8px;">> 레시피 조회 중...</div>';
       try {
         const res = await fetch(`/api/recipe?name=${encodeURIComponent(itemName)}`);
         const data = await res.json();
@@ -5887,16 +5932,16 @@ HTML_PAGE = """<!DOCTYPE html>
         const ings = data.ingredients || {};
         const keys = Object.keys(ings);
         if (keys.length === 0) {
-          if (msgEl) msgEl.innerText = '⚠️ 등록된 레시피가 없습니다. 아래에 재료를 추가해주세요.';
+          if (msgEl) msgEl.innerText = '> 등록된 레시피가 없습니다. 아래에 재료를 추가해주세요.';
           addRecipeModalRow('', 1);
         } else {
-          if (msgEl) msgEl.innerText = `총 ${keys.length}개 재료 로드됨`;
+          if (msgEl) msgEl.innerText = `> 총 ${keys.length}개 재료 로드됨`;
           keys.forEach(k => {
             addRecipeModalRow(k, ings[k]);
           });
         }
       } catch (e) {
-        container.innerHTML = `<div style="color:#f87171; font-size:12px; padding:8px;">조회 실패: ${e}</div>`;
+        container.innerHTML = `<div style="color:var(--text-main); font-size:var(--fs-sm); padding:8px;">[오류] 조회 실패: ${e}</div>`;
       }
     }
 
@@ -5905,14 +5950,14 @@ HTML_PAGE = """<!DOCTYPE html>
       if (!container) return;
       const row = document.createElement('div');
       row.className = 'recipe-modal-row';
-      row.style.cssText = 'display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);';
+      row.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border-line);';
       row.innerHTML = `
-        <input type="text" class="recipe-row-name" value="${(name || '').replace(/"/g, '&quot;')}" placeholder="재료명 (예: 달걀, 물이 든 병)" style="flex: 2; padding: 7px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #fff; font-size: 12.5px;">
+        <input type="text" class="recipe-row-name" value="${(name || '').replace(/"/g, '&quot;')}" placeholder="재료명 (예: 달걀, 물이 든 병)" style="flex: 2; padding: 6px 10px;">
         <div style="display: flex; align-items: center; gap: 4px;">
-          <input type="number" class="recipe-row-qty" value="${count || 1}" min="1" max="999" style="width: 65px; padding: 7px 8px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #fff; font-size: 12.5px; text-align: center;">
-          <span style="font-size: 11.5px; color: #94a3b8;">개</span>
+          <input type="number" class="recipe-row-qty mono-num" value="${count || 1}" min="1" max="999" style="width: 65px; padding: 6px 8px; text-align: center;">
+          <span style="font-size: var(--fs-sm); color: var(--text-muted);">개</span>
         </div>
-        <button type="button" class="btn btn-sm" onclick="this.closest('.recipe-modal-row').remove()" style="padding: 4px 8px; font-size: 11px; color: #f87171; border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.1);" title="이 재료 삭제">✕</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('.recipe-modal-row').remove()" title="이 재료 삭제">삭제</button>
       `;
       container.appendChild(row);
     }
@@ -5955,7 +6000,7 @@ HTML_PAGE = """<!DOCTYPE html>
         });
         const d = await res.json();
         if (d.status === 'success') {
-          if (msgEl) msgEl.innerText = '✅ 저장 완료!';
+          if (msgEl) msgEl.innerText = '> [저장 완료]';
           closeRecipeModal();
           pollLogs();
           loadCustomTargets();
@@ -5984,7 +6029,7 @@ HTML_PAGE = """<!DOCTYPE html>
         if (!tbody) return;
 
         if (plan.error) {
-          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f43f5e; padding: 20px;">오류: ${plan.error}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-main); padding: 20px;">[오류] ${plan.error}</td></tr>`;
           if (statusText) statusText.innerText = '계획 로드 실패';
           return;
         }
@@ -5993,18 +6038,21 @@ HTML_PAGE = """<!DOCTYPE html>
         const rawMaterials = plan.raw_materials || [];
 
         if (materials.length === 0 && rawMaterials.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 24px;">등록된 개별 제작 목표가 없습니다. 위에서 목표를 추가하세요.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">> 등록된 지정 제작 목표가 없습니다. 위에서 목표를 추가하세요.</td></tr>`;
           if (statusText) statusText.innerText = '등록된 목표 없음';
           if (btnExec) {
             btnExec.disabled = true;
-            btnExec.innerText = '⚡ 개별 지정 재료 일괄 가공 & 제작 시작';
-            btnExec.className = 'btn';
+            btnExec.innerText = '지정 제작 일괄 실행';
+            btnExec.className = 'btn-solid-core';
           }
           if (summaryText) summaryText.innerHTML = '';
           return;
         }
 
         let rowsHtml = '';
+        if (materials.length > 0) {
+          rowsHtml += `<tr class="table-group-row"><td colspan="7">--- :: 가공 목록 :: ---</td></tr>`;
+        }
         materials.forEach(m => {
           const shortFac = formatFacilityShort(m.facility);
           const worksNeeded = (m.works_to_queue !== undefined) ? m.works_to_queue : (m.works_needed || 0);
@@ -6012,36 +6060,36 @@ HTML_PAGE = """<!DOCTYPE html>
           const queuedCnt = m.queued_works_count || m.in_progress_count || 0;
           const compCnt = m.completed_works_count || 0;
 
-          const queuedBadge = queuedCnt > 0 ? `<span style="color:#818cf8; font-size:11px; margin-left:4px;">(대기 ${queuedCnt}회)</span>` : '';
-          const compBadge = compCnt > 0 ? `<span style="color:#38bdf8; font-size:11px; margin-left:4px;">(수령가능 ${compCnt}회)</span>` : '';
+          const queuedBadge = queuedCnt > 0 ? `<span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm); margin-left:4px;">(대기 ${queuedCnt}회)</span>` : '';
+          const compBadge = compCnt > 0 ? `<span class="mono-num" style="color:var(--text-main); font-size:var(--fs-sm); margin-left:4px;">(수령가능 ${compCnt}회)</span>` : '';
 
           let statusBadge = '';
           if (m.status === 'satisfied' || (deficit === 0 && worksNeeded === 0)) {
-            statusBadge = '<span style="color:#34d399; font-weight:700;">● 재료 준비 완료</span>' + compBadge;
+            statusBadge = '<span style="color:var(--text-main); font-weight:700;">[재료 준비 완료]</span>' + compBadge;
           } else if (m.status === 'ready_to_collect' || (compCnt > 0 && worksNeeded === 0)) {
-            statusBadge = `<span style="color:#38bdf8; font-weight:700;">🎁 수령 가능 (${compCnt}회)</span>`;
+            statusBadge = `<span class="badge mono-num">수령 가능 (${compCnt}회)</span>`;
           } else if (m.status === 'in_queue' || (queuedCnt > 0 && worksNeeded === 0)) {
-            statusBadge = `<span style="color:#fbbf24; font-weight:700;">⏳ 대기열 (${queuedCnt}회)</span>` + compBadge;
+            statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> 대기열 (${queuedCnt}회)</span>` + compBadge;
           } else if (worksNeeded > 0) {
-            statusBadge = `<span style="color:#fbbf24; font-weight:700;">⚙️ ${shortFac} ${worksNeeded}회 등록 필요</span>` + queuedBadge + compBadge;
+            statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700;">> ${shortFac} ${worksNeeded}회 등록 필요</span>` + queuedBadge + compBadge;
           } else {
-            statusBadge = '<span style="color:#34d399; font-weight:700;">● 준비 완료</span>';
+            statusBadge = '<span style="color:var(--text-main); font-weight:700;">[준비 완료]</span>';
           }
 
           const invCnt = m.inventory_count || 0;
           const storeCnt = m.storage_count || 0;
-          const bagStorageText = `${invCnt}개<span style="color:${storeCnt > 0 ? '#38bdf8' : '#64748b'};">(${storeCnt}개)</span>`;
+          const bagStorageText = `<span class="mono-num">${invCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm);">(${storeCnt}개)</span>`;
 
           rowsHtml += `
-            <tr style="${deficit > 0 ? 'background: rgba(245, 158, 11, 0.05);' : ''}">
-              <td style="font-weight:700; color:#f1f5f9; white-space:nowrap;">${m.item_name}</td>
-              <td style="text-align:center; white-space:nowrap;"><span class="badge" style="background:rgba(99,102,241,0.15); color:#a5b4fc; padding:2px 7px; font-size:11px;">${shortFac}</span></td>
-              <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${m.total_needed}개</td>
+            <tr class="row-alter">
+              <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${m.item_name}</td>
+              <td style="text-align:center; white-space:nowrap;"><span class="badge-dim">${shortFac}</span></td>
+              <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${m.total_needed}개</td>
               <td style="text-align:center; white-space:nowrap;">${bagStorageText}</td>
-              <td style="font-weight:700; color:${deficit > 0 ? '#f43f5e' : '#34d399'}; text-align:right; white-space:nowrap;">
+              <td class="mono-num" style="font-weight:700; color:${deficit > 0 ? 'var(--text-main)' : 'var(--text-muted)'}; text-align:right; white-space:nowrap;">
                 ${deficit > 0 ? `-${deficit}개` : '0개'}
               </td>
-              <td style="text-align:center; font-weight:700; color:${worksNeeded > 0 ? '#fbbf24' : '#64748b'}; white-space:nowrap;">
+              <td class="mono-num" style="text-align:center; font-weight:700; color:${worksNeeded > 0 ? 'var(--text-main)' : 'var(--text-dim)'}; white-space:nowrap;">
                 ${worksNeeded > 0 ? `+${worksNeeded}회` : '-'}
               </td>
               <td style="white-space:nowrap;">${statusBadge}</td>
@@ -6051,42 +6099,39 @@ HTML_PAGE = """<!DOCTYPE html>
 
         // Raw materials
         if (rawMaterials.length > 0) {
+          rowsHtml += `<tr class="table-group-row"><td colspan="7">--- :: 채집 목록 :: ---</td></tr>`;
           rawMaterials.forEach(rm => {
             let statusBadge = '';
             const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
             if (rm.deficit === 0) {
-              statusBadge = '<span style="color:#34d399; font-weight:700; white-space:nowrap;">● 준비 완료</span>';
+              statusBadge = '<span style="color:var(--text-main); font-weight:700; white-space:nowrap;">[준비 완료]</span>';
             } else if (isSpecial) {
-              statusBadge = `<span style="color:#fbbf24; font-weight:700; white-space:nowrap;">🛒 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
+              statusBadge = `<span class="mono-num" style="color:var(--text-muted); font-weight:700; white-space:nowrap;">> 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
             } else if (rm.tool_ok) {
-              statusBadge = `<span style="color:#34d399; font-weight:700; white-space:nowrap;">🌿 ${rm.deficit}개 자동 채집</span>`;
+              statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">> ${rm.deficit}개 자동 채집</span>`;
             } else {
-              statusBadge = `<span style="color:#f43f5e; font-weight:700; white-space:nowrap;">⚠️ 도구 필요 (${rm.deficit}개 부족)</span>`;
+              statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">[!] 도구 필요 (${rm.deficit}개 부족)</span>`;
             }
 
             const rmInvCnt = rm.inventory_count || 0;
             const rmStoreCnt = rm.storage_count || 0;
-            const rmBagStorageText = `${rmInvCnt}개<span style="color:${rmStoreCnt > 0 ? '#38bdf8' : '#64748b'};">(${rmStoreCnt}개)</span>`;
+            const rmBagStorageText = `<span class="mono-num">${rmInvCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:var(--fs-sm);">(${rmStoreCnt}개)</span>`;
 
             const typeBadge = isSpecial
-              ? '<span class="badge" style="background:rgba(251,191,36,0.15); color:#fbbf24; padding:2px 7px; font-size:11px;">상점/드랍</span>'
-              : '<span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; padding:2px 7px; font-size:11px;">채집</span>';
-            const rowIcon = isSpecial ? '🛒' : '🌿';
-            const rowBg = isSpecial
-              ? 'background: rgba(251, 191, 36, 0.05); border-left: 2px solid #fbbf24;'
-              : 'background: rgba(16, 185, 129, 0.05); border-left: 2px solid #34d399;';
-            const titleColor = isSpecial ? '#fef08a' : '#a7f3d0';
+              ? '<span class="badge-dim">상점/드랍</span>'
+              : '<span class="badge-dim">채집</span>';
+            const rowClass = isSpecial ? 'row-special' : 'row-gather';
 
             rowsHtml += `
-              <tr style="${rowBg}">
-                <td style="font-weight:700; color:${titleColor}; white-space:nowrap;">${rowIcon} ${rm.item_name}</td>
+              <tr class="${rowClass}">
+                <td style="font-weight:700; color:var(--text-main); white-space:nowrap;">${rm.item_name}</td>
                 <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
-                <td style="font-weight:700; color:#fbbf24; text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
+                <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
                 <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
-                <td style="font-weight:700; color:${rm.deficit > 0 ? '#f43f5e' : '#34d399'}; text-align:right; white-space:nowrap;">
+                <td class="mono-num" style="font-weight:700; color:${rm.deficit > 0 ? 'var(--text-main)' : 'var(--text-muted)'}; text-align:right; white-space:nowrap;">
                   ${rm.deficit > 0 ? `-${rm.deficit}개` : '0개'}
                 </td>
-                <td style="text-align:center; color:#64748b; white-space:nowrap;">-</td>
+                <td style="text-align:center; color:var(--text-dim); white-space:nowrap;">-</td>
                 <td style="white-space:nowrap;">${statusBadge}</td>
               </tr>
             `;
@@ -6101,47 +6146,42 @@ HTML_PAGE = """<!DOCTYPE html>
           const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0 && r.is_gatherable);
           const neededSpecial = (plan.raw_materials || []).filter(r => r.deficit > 0 && (r.is_special_obtain || !r.is_gatherable));
           const gatherNote = (neededRawGather.length > 0) ? ` / 채집 ${neededRawGather.length}종` : '';
-          const specialNote = (neededSpecial.length > 0) ? ` (🛒 별도 확보 ${neededSpecial.length}종 필요)` : '';
+          const specialNote = (neededSpecial.length > 0) ? ` (별도 확보 ${neededSpecial.length}종 필요)` : '';
 
+          btnExec.className = 'btn-solid-core';
           if (plan.all_completed) {
-            btnExec.innerText = '🎉 모든 개별 목표 제작 완료!';
-            btnExec.className = 'btn';
+            btnExec.innerText = '모든 지정 목표 제작 완료';
             btnExec.disabled = true;
-            statusText.innerHTML = '<span style="color:#34d399; font-weight:700;">모든 목표 달성 완료</span>';
+            statusText.innerHTML = '<span style="color:var(--text-main); font-weight:700;">모든 목표 달성 완료</span>';
           } else if (plan.can_craft_immediately) {
-            btnExec.innerText = '🚀 재료 준비 완료! 즉시 일괄 최종 제작';
-            btnExec.className = 'btn btn-emerald';
+            btnExec.innerText = '지정 제작 일괄 실행 (최종 제작)';
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">모든 재료 준비 완료${specialNote}</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-main); font-weight:700;">모든 재료 준비 완료${specialNote}</span>`;
           } else if (plan.total_works_to_queue > 0) {
-            btnExec.innerText = `⚡ 일괄 가공(${plan.total_works_to_queue}회)${gatherNote} & 즉시 제작${craftableNote}`;
-            btnExec.className = 'btn btn-primary';
+            btnExec.innerText = `지정 제작 일괄 실행 (가공 ${plan.total_works_to_queue}회${gatherNote})`;
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#fbbf24; font-weight:700;">가공 ${plan.total_works_to_queue}회 등록 필요${gatherNote}${craftableNote}${specialNote}</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-main); font-weight:700;">가공 ${plan.total_works_to_queue}회 등록 필요${gatherNote}${craftableNote}${specialNote}</span>`;
           } else if (neededRawGather.length > 0) {
-            btnExec.innerText = `🌿 부족 채집물 (${neededRawGather.length}종) 맞춤 채집 & 제작 준비${craftableNote}`;
-            btnExec.className = 'btn btn-emerald';
+            btnExec.innerText = `지정 제작 일괄 실행 (채집 ${neededRawGather.length}종)`;
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">필드 채집 ${neededRawGather.length}종 필요${craftableNote}${specialNote}</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-main); font-weight:700;">필드 채집 ${neededRawGather.length}종 필요${craftableNote}${specialNote}</span>`;
           } else if (plan.craftable_tasks_count > 0) {
-            btnExec.innerText = `🔨 준비된 완제품 (${plan.craftable_tasks_count}건) 즉시 제작`;
-            btnExec.className = 'btn btn-emerald';
+            btnExec.innerText = `지정 제작 일괄 실행 (즉시 제작 ${plan.craftable_tasks_count}건)`;
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = `<span style="color:#34d399; font-weight:700;">${plan.craftable_tasks_count}건 즉시 제작 가능</span>`;
+            statusText.innerHTML = `<span style="color:var(--text-main); font-weight:700;">${plan.craftable_tasks_count}건 즉시 제작 가능</span>`;
           } else {
-            btnExec.innerText = '⏳ 가공 진행 중 (완료 시 제작 가능)';
-            btnExec.className = 'btn';
+            btnExec.innerText = '지정 제작 일괄 실행 (대기열 진행 중)';
             btnExec.disabled = isCurrentlyBusy;
-            statusText.innerHTML = '<span style="color:#38bdf8; font-weight:700;">대기열 가공 완료 대기 중</span>';
+            statusText.innerHTML = `<span style="color:var(--text-muted); font-weight:700;"><span class="cli-spinner">${getCurrentSpinnerText()}</span> 대기열 가공 완료 대기 중</span>`;
           }
         }
 
         // Summary Text
         if (summaryText) {
           const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0);
-          const rawText = neededRawGather.length > 0 ? `필드 채집 <strong>${neededRawGather.length}종</strong>` : '채집 불필요';
-          const alterText = plan.total_works_to_queue > 0 ? `가공 <strong>${plan.total_works_to_queue}회</strong>` : '가공 불필요';
-          summaryText.innerHTML = `✨ <span>총 분석 결과: ${rawText} · ${alterText} · 제작 <strong>${(plan.custom_tasks || plan.tasks || plan.targets || []).length}건</strong></span>`;
+          const rawText = neededRawGather.length > 0 ? `필드 채집 <strong class="mono-num">${neededRawGather.length}종</strong>` : '채집 불필요';
+          const alterText = plan.total_works_to_queue > 0 ? `가공 <strong class="mono-num">${plan.total_works_to_queue}회</strong>` : '가공 불필요';
+          summaryText.innerHTML = `> <span>총 분석 결과: ${rawText} :: ${alterText} :: 제작 <strong class="mono-num">${(plan.custom_tasks || plan.tasks || plan.targets || []).length}건</strong></span>`;
         }
 
         // Facility Slots
@@ -6163,30 +6203,28 @@ HTML_PAGE = """<!DOCTYPE html>
               const avail = f.available_now;
               const needed = f.new_works_needed || 0;
               const isOver = f.overflow > 0;
-              const cardBorder = isOver ? 'rgba(244, 63, 94, 0.4)' : (needed > 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.06)');
-              const cardBg = isOver ? 'rgba(244, 63, 94, 0.08)' : 'rgba(255, 255, 255, 0.03)';
               
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 8px 10px;">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--border-line)'}; padding: 8px 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <span style="font-weight: 700; font-size: 12px; color: #e2e8f0;">${f.facility}</span>
-                    <span style="font-size: 11px; font-weight: 600; color: ${avail > 0 ? '#34d399' : '#f43f5e'};">
-                      여유 ${avail} / ${max}
+                    <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">:: ${f.facility}</span>
+                    <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
+                      여유 ${avail}/${max}
                     </span>
                   </div>
-                  <div style="font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                    <span>진행: ${f.in_progress} | 완료: ${f.completed}</span>
-                    ${needed > 0 ? `<span style="font-weight: 700; color: ${isOver ? '#f43f5e' : '#fbbf24'};">필요 +${needed}</span>` : '<span style="color: #64748b;">필요 없음</span>'}
+                  <div class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                    <span>진행:${f.in_progress} | 완료:${f.completed}</span>
+                    ${needed > 0 ? `<span style="font-weight: 700; color: var(--text-main);">필요 +${needed}</span>` : '<span style="color: var(--text-dim);">필요 없음</span>'}
                   </div>
-                  ${f.overflow > 0 ? `<div style="font-size: 10.5px; color: #fb7185; margin-top: 3px; font-weight: 600;">⚠️ ${f.overflow}회 초과 (단계적 진행)</div>` : ''}
+                  ${f.overflow > 0 ? `<div class="mono-num" style="font-size: var(--fs-sm); color: var(--text-main); margin-top: 3px; font-weight: 700;">> [!] ${f.overflow}회 초과 (단계적 진행)</div>` : ''}
                 </div>
               `;
             });
             slotsContainer.innerHTML = html;
             if (summaryBadge) {
               summaryBadge.innerHTML = plan.has_slot_issue 
-                ? '<span style="color: #fbbf24; font-weight: 700;">⚠️ 일부 시설 슬롯 초과 예상</span>' 
-                : '<span style="color: #34d399; font-weight: 600;">✓ 전 시설 슬롯 여유 충분</span>';
+                ? '<span style="color: var(--text-main); font-weight: 700;">[!] 일부 시설 슬롯 초과 예상</span>' 
+                : '<span style="color: var(--text-muted); font-weight: 600;">[전 시설 슬롯 여유 충분]</span>';
             }
           } else {
             slotsSec.style.display = 'none';
@@ -6196,7 +6234,7 @@ HTML_PAGE = """<!DOCTYPE html>
         if (warnBanner && warnList) {
           if (warnings.length > 0) {
             warnBanner.style.display = 'block';
-            warnList.innerHTML = warnings.map(w => `<div style="margin-bottom: 3px;">• ${w}</div>`).join('');
+            warnList.innerHTML = warnings.map(w => `<div style="margin-bottom: 3px;">> ${w}</div>`).join('');
           } else {
             warnBanner.style.display = 'none';
           }
@@ -6208,16 +6246,16 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     async function executeCustomPipeline() {
-      const modeTitle = currentGoalFulfillmentMode ? '🎯 목표 완수 모드' : '🔨 개별 아이템 일괄 제작';
+      const modeTitle = currentGoalFulfillmentMode ? '목표 완수 모드' : '지정 아이템 일괄 제작';
       const modeExpl = currentGoalFulfillmentMode
-        ? '가공품 완료 시 즉시 수령 ➔ 다음 티어 가공 ➔ 목표 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
-        : '원자재 자동 채집 ➔ 시설 가공 일괄 등록 ➔ 최종 아이템 제작 1회 파이프라인을 수행합니다.';
+        ? '가공품 완료 시 즉시 수령 -> 다음 티어 가공 -> 목표 완제품 최종 제작까지 100% 완수할 때까지 PC 절전 방지 상태로 계속 진행합니다.'
+        : '원자재 자동 채집 -> 시설 가공 일괄 등록 -> 최종 아이템 제작 1회 파이프라인을 수행합니다.';
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어 우선 (기초 재료부터)' : '상위 티어 우선 (오래 걸리는 가공부터)';
-      const etaInfo = getPipelineEtaInfo('custom_craft');
-      const etaLine = etaInfo ? `\n• 예상 소요 시간: ${etaInfo.durStr} (${etaInfo.timeStr}경 ${currentGoalFulfillmentMode ? '완수' : '완료'} 예정)` : '';
+      const etaInfo = currentGoalFulfillmentMode ? getPipelineEtaInfo('custom_craft') : null;
+      const etaLine = etaInfo ? `\n• 예상 완수 시각: ${etaInfo.durStr} (${etaInfo.timeStr}경 완수 예정)` : '';
       if (confirm(`[${modeTitle}]\n${modeExpl}${etaLine}\n\n• 가공 우선순위: ${orderDesc}\n\n실행하시겠습니까?`)) {
         isCurrentlyBusy = true;
-        if (typeof applyBusyUI === 'function') applyBusyUI(true, `🔨 개별 지정 아이템 일괄 최적화 제작 준비 중... [${currentGoalFulfillmentMode ? '목표 완수 모드' : '1회차 실행'}]`);
+        if (typeof applyBusyUI === 'function') applyBusyUI(true, `지정 아이템 일괄 최적화 제작 준비 중... [${currentGoalFulfillmentMode ? '목표 완수 모드' : '1회차 실행'}]`);
         try {
           const res = await fetch('/api/execute_custom', {
             method: 'POST',
@@ -6273,8 +6311,8 @@ HTML_PAGE = """<!DOCTYPE html>
 
         if (mcbIdle) mcbIdle.style.display = 'none';
         if (mcbRunning) mcbRunning.style.display = 'flex';
-        if (mcbRunningTitle) mcbRunningTitle.innerText = currentGoalFulfillmentMode ? '🎯 목표 완수 모드 진행 중...' : '⚡ 작업 진행 중...';
-        if (mcbRunningDesc && taskDesc) mcbRunningDesc.innerText = taskDesc;
+        if (mcbRunningTitle) mcbRunningTitle.innerText = currentGoalFulfillmentMode ? '목표 완수 모드 진행 중...' : '작업 진행 중...';
+        if (mcbRunningDesc && taskDesc) mcbRunningDesc.innerText = `> ${taskDesc}`;
         if (mcbBtnStart) mcbBtnStart.disabled = true;
       } else {
         if (busyBox) busyBox.style.display = 'none';
@@ -6341,24 +6379,29 @@ HTML_PAGE = """<!DOCTYPE html>
 
         if (data.connected && data.character) {
           const char = data.character;
+          const realmName = char.RealmName || '서버';
+          const levelNum = char.Level || 0;
           if (statusPill) {
             if (currentlyBusy) {
               statusPill.className = "pill warning";
-              statusPill.innerHTML = `● 작업 진행 중...`;
+              statusPill.innerHTML = `<span class="cli-spinner">${getCurrentSpinnerText()}</span> ${realmName} (Lv.<span class="mono-num">${levelNum}</span>)`;
               statusPill.title = data.current_task || '작업 진행 중';
             } else {
               statusPill.className = "pill online";
-              statusPill.innerHTML = `● ${char.RealmName || '서버'} | Lv.${char.Level || 0} ${char.EnabledCombatJobDisplayName || ''}`;
+              statusPill.innerHTML = `${realmName} (Lv.<span class="mono-num">${levelNum}</span>)`;
               statusPill.title = "정상 연결됨 (클릭하여 설정 확인)";
             }
           }
           if (cliAlertBanner) cliAlertBanner.style.display = 'none';
           if (wingsPill) {
-            wingsPill.innerHTML = `🪽 날개: ${(data.wings || 0).toLocaleString()}개`;
+            wingsPill.innerHTML = `날개 <span class="mono-num">${(data.wings || 0).toLocaleString()}</span>`;
           }
           const inv = data.inventory || {};
+          const curWeight = inv.CurrentInventoryWeightAsDecimal || 0;
+          const maxWeight = inv.MaxInventoryWeightAsDecimal || 0;
           if (weightPill) {
-            weightPill.innerHTML = `📦 무게: ${inv.CurrentInventoryWeightAsDecimal || 0}/${inv.MaxInventoryWeightAsDecimal || 0}`;
+            const weightGauge = makeTextGauge(curWeight, maxWeight, 5);
+            weightPill.innerHTML = `무게 <span class="mono-num">${curWeight}/${maxWeight}</span> <span class="cli-gauge">${weightGauge}</span>`;
           }
         } else {
           const errCode = data.error_code || '';
@@ -6366,33 +6409,33 @@ HTML_PAGE = """<!DOCTYPE html>
 
           if (errCode === 'CLI_NOT_FOUND') {
             shortStatus = 'CLI 미발견 (클릭하여 설정)';
-            if (alertIcon) alertIcon.innerText = '📁';
+            if (alertIcon) alertIcon.innerText = '//';
             if (alertTitle) alertTitle.innerText = '마비노기 모바일 연동 파일(MabinogiMobile_CLI.exe)을 찾을 수 없습니다';
-            if (alertDesc) alertDesc.innerHTML = '게임이 C: 드라이브가 아닌 D: 드라이브나 다른 폴더에 설치되어 있다면 아래에 설치 폴더를 입력해주세요.<br>또한 게임 내 [환경설정] → [기타]에서 <strong>[MM AI 에이전트 활성화]</strong>가 ON으로 켜져 있어야 합니다.';
+            if (alertDesc) alertDesc.innerHTML = '> 게임이 C: 드라이브가 아닌 D: 드라이브나 다른 폴더에 설치되어 있다면 아래에 설치 폴더를 입력해주세요.<br>> 또한 게임 내 [환경설정] -> [기타]에서 <strong>[MM AI 에이전트 활성화]</strong>가 ON으로 켜져 있어야 합니다.';
             if (alertPathBox) alertPathBox.style.display = 'flex';
           } else if (errCode === 'OPTION_OFF') {
             shortStatus = 'AI 에이전트 OFF';
-            if (alertIcon) alertIcon.innerText = '⚙️';
+            if (alertIcon) alertIcon.innerText = '//';
             if (alertTitle) alertTitle.innerText = '게임 설정에서 [MM AI 에이전트 활성화]가 꺼져 있습니다';
-            if (alertDesc) alertDesc.innerHTML = '마비노기 모바일 PC 클라이언트 [환경설정] → [기타/게임 설정]에서 <strong>[MM AI 에이전트 활성화]</strong>를 ON으로 켜주세요. 옵션을 켜면 즉시 연동됩니다.';
+            if (alertDesc) alertDesc.innerHTML = '> 마비노기 모바일 PC 클라이언트 [환경설정] -> [기타/게임 설정]에서 <strong>[MM AI 에이전트 활성화]</strong>를 ON으로 켜주세요. 옵션을 켜면 즉시 연동됩니다.';
             if (alertPathBox) alertPathBox.style.display = 'none';
           } else if (errCode === 'GAME_OFF') {
             shortStatus = '게임 미실행';
-            if (alertIcon) alertIcon.innerText = '🎮';
+            if (alertIcon) alertIcon.innerText = '//';
             if (alertTitle) alertTitle.innerText = '마비노기 모바일 클라이언트가 실행되어 있지 않습니다';
-            if (alertDesc) alertDesc.innerHTML = '마비노기 모바일 PC 클라이언트를 실행하고 캐릭터로 로그인하면 자동으로 감지되어 연결됩니다.';
+            if (alertDesc) alertDesc.innerHTML = '> 마비노기 모바일 PC 클라이언트를 실행하고 캐릭터로 로그인하면 자동으로 감지되어 연결됩니다.';
             if (alertPathBox) alertPathBox.style.display = 'none';
           } else {
             shortStatus = '연결 끊김';
-            if (alertIcon) alertIcon.innerText = '🔌';
+            if (alertIcon) alertIcon.innerText = '//';
             if (alertTitle) alertTitle.innerText = '게임 클라이언트와 연결이 끊어졌습니다';
-            if (alertDesc) alertDesc.innerText = data.error || '게임 및 네트워크 상태를 확인해주세요.';
+            if (alertDesc) alertDesc.innerText = '> ' + (data.error || '게임 및 네트워크 상태를 확인해주세요.');
             if (alertPathBox) alertPathBox.style.display = 'none';
           }
 
           if (statusPill) {
             statusPill.className = "pill offline";
-            statusPill.innerHTML = `● ${shortStatus}`;
+            statusPill.innerHTML = `[!] ${shortStatus}`;
             statusPill.title = (data.error || '클릭하여 연동 가이드 및 설정 열기');
           }
           if (cliAlertBanner) cliAlertBanner.style.display = 'block';
@@ -6402,7 +6445,7 @@ HTML_PAGE = """<!DOCTYPE html>
         applyBusyUI(isCurrentlyBusy, data.current_task || '작업 진행 중...');
         if (isCurrentlyBusy) {
           const mcbDesc = document.getElementById('mcb-running-desc');
-          if (mcbDesc && data.current_task) mcbDesc.innerText = data.current_task;
+          if (mcbDesc && data.current_task) mcbDesc.innerText = `> ${data.current_task}`;
         }
 
         // Execution Summary Modal Hook
@@ -6425,10 +6468,10 @@ HTML_PAGE = """<!DOCTYPE html>
         if (statusFailCount >= 3 && statusPill) {
           if (isCurrentlyBusy) {
             statusPill.className = "pill warning";
-            statusPill.innerHTML = `● 작업 진행 중 (응답 대기)...`;
+            statusPill.innerHTML = `<span class="cli-spinner">${getCurrentSpinnerText()}</span> 작업 진행 중 (응답 대기)...`;
           } else {
             statusPill.className = "pill offline";
-            statusPill.innerHTML = `● 연결 재시도 중...`;
+            statusPill.innerHTML = `[!] 연결 재시도 중...`;
           }
         }
       } finally {
@@ -6444,22 +6487,23 @@ HTML_PAGE = """<!DOCTYPE html>
         if (!listEl) return;
         const tasks = data.tasks || [];
         if (tasks.length === 0) {
-          listEl.innerHTML = '<p style="color: #64748b; font-size: 13px;">현재 진행 중인 납품 목표 퀘스트가 없습니다.</p>';
+          listEl.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-md);">> 현재 진행 중인 납품 목표 퀘스트가 없습니다.</p>';
           return;
         }
 
         let html = '';
         tasks.forEach(t => {
           const isDone = t.is_completed || t.needed === 0;
+          const gaugeStr = makeTextGauge(t.current, t.goal, 5);
           html += `
-            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 12px; margin-bottom: 8px;">
+            <div style="border-bottom: 1px solid var(--border-line); padding: 10px 4px; margin-bottom: 6px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-weight: 700; font-size: 13.5px; color: #e0e7ff;">${t.quest_title}</span>
-                <span class="badge ${isDone ? '' : 'delivery'}">${isDone ? '완료' : '진행 중'}</span>
+                <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">// ${t.quest_title}</span>
+                <span class="${isDone ? 'badge' : 'badge-dim'}">${isDone ? '완료' : '진행 중'}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 12.5px;">
-                <span style="color: #cbd5e1;">🎯 납품 목표: <strong>${t.item_name}</strong></span>
-                <span>보유: <strong style="color: ${isDone ? '#34d399' : '#fbbf24'}">${t.current} / ${t.goal}</strong> (${t.needed}개 부족)</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: var(--fs-sm);">
+                <span style="color: var(--text-muted);">> 납품 목표: <strong style="color: var(--text-main);">${t.item_name}</strong></span>
+                <span class="mono-num"><span class="cli-gauge">${gaugeStr}</span> 보유: <strong style="color: var(--text-main);">${t.current} / ${t.goal}</strong> (${t.needed}개 부족)</span>
               </div>
             </div>
           `;
@@ -6481,7 +6525,7 @@ HTML_PAGE = """<!DOCTYPE html>
         return;
       }
       isCurrentlyBusy = true;
-      if (typeof applyBusyUI === 'function') applyBusyUI(true, `🔨 [${item}] ${count}개 제작 준비 중...`);
+      if (typeof applyBusyUI === 'function') applyBusyUI(true, `[${item}] ${count}개 제작 준비 중...`);
       try {
         const res = await fetch('/api/produce', {
           method: 'POST',
@@ -6526,16 +6570,16 @@ HTML_PAGE = """<!DOCTYPE html>
       if (!q) return;
       const resEl = document.getElementById('search-results');
       if (!resEl) return;
-      resEl.innerHTML = '<span style="color:#64748b;">검색 중...</span>';
+      resEl.innerHTML = '<span style="color:var(--text-muted);">> 검색 중...</span>';
       try {
         const res = await fetch(`/api/search_recipe?name=${encodeURIComponent(q)}`);
         const d = await res.json();
-        let html = `<div style="padding: 6px; background: rgba(0,0,0,0.3); border-radius: 8px; margin-bottom: 8px;">`;
-        html += `<strong>'${d.item_name}'</strong> - 가방: ${d.owned_bag}개 / 개인창고: ${d.owned_char_storage || 0}개 / 공용창고: ${d.owned_account_storage || 0}개 (총 ${d.owned_all || 0}개)<br>`;
-        html += `제작: ${d.craft.length}건 | 가공: ${d.alter.length}건 | 채집: ${d.gather.length}건</div>`;
+        let html = `<div style="padding: 6px; border: 1px solid var(--border-line); margin-bottom: 8px;">`;
+        html += `<strong>:: '${d.item_name}'</strong> - <span class="mono-num">가방: ${d.owned_bag}개 / 개인창고: ${d.owned_char_storage || 0}개 / 공용창고: ${d.owned_account_storage || 0}개 (총 ${d.owned_all || 0}개)</span><br>`;
+        html += `<span class="mono-num">> 제작: ${d.craft.length}건 :: 가공: ${d.alter.length}건 :: 채집: ${d.gather.length}건</span></div>`;
         resEl.innerHTML = html;
       } catch (e) {
-        resEl.innerHTML = `<span style="color:#f43f5e;">검색 오류: ${e}</span>`;
+        resEl.innerHTML = `<span style="color:var(--text-main);">[오류] 검색 오류: ${e}</span>`;
       }
     }
 
@@ -6596,11 +6640,10 @@ HTML_PAGE = """<!DOCTYPE html>
       try {
         await fetch('/api/shutdown', { method: 'POST', keepalive: true });
         document.body.innerHTML = `
-          <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #090d16; color: #f1f5f9; font-family: Pretendard, sans-serif;">
-            <div style="font-size: 56px; margin-bottom: 20px;">🔌</div>
-            <h2 style="font-size: 24px; color: #a5b4fc; margin-bottom: 12px; font-weight: 700;">웹 서버가 안전하게 종료되었습니다</h2>
-            <p style="color: #94a3b8; font-size: 15px; margin-bottom: 24px;">이 브라우저 창이나 탭을 닫으셔도 됩니다.</p>
-            <button onclick="window.close()" style="padding: 10px 24px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">창 닫기</button>
+          <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #121212; color: #E5E5E5; font-family: 'JetBrains Mono', 'Pretendard', monospace;">
+            <h2 style="font-size: 16px; color: #F5F5F5; margin-bottom: 12px; font-weight: 700;">// 웹 서버가 안전하게 종료되었습니다</h2>
+            <p style="color: #888888; font-size: 14px; margin-bottom: 24px;">> 이 브라우저 창이나 탭을 닫으셔도 됩니다.</p>
+            <button onclick="window.close()" style="padding: 8px 20px; background: #E0E0E0; color: #121212; border: 1px solid #F5F5F5; font-weight: 700; cursor: pointer;">[ 창 닫기 ]</button>
           </div>
         `;
       } catch (e) {
