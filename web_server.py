@@ -1941,16 +1941,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       transform: translateY(-1px) !important;
     }
 
-    /* Tier 2: 중간 위계 액션 버튼 (강조 2단계: 연한 녹색 배경, 짙은 녹색 텍스트, 무테두리, 직각 코너) */
+    /* Tier 2: 중간 위계 액션 버튼 (강조 2단계: 1단계와 동일한 에메랄드에 투명도를 많이 준 연한 배경 + 선명한 녹색 텍스트, 무테두리, 직각) */
     #btn-collect-all-altering {
-      background: #A7F3D0 !important;
-      color: #064E3B !important;
+      background: rgba(16, 185, 129, 0.18) !important;
+      color: #10B981 !important;
       font-size: var(--fs-md) !important;
       font-weight: 700 !important;
       padding: 6px 14px !important;
       border-radius: 0 !important;
       border: none !important;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) !important;
+      box-shadow: none !important;
       text-shadow: none !important;
       cursor: pointer;
       transition: all 0.15s ease;
@@ -1960,16 +1960,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: none !important;
     }
     #btn-collect-all-altering:hover:not(:disabled) {
-      background: #6EE7B7 !important;
-      color: #064E3B !important;
+      background: rgba(16, 185, 129, 0.30) !important;
+      color: #34D399 !important;
       border: none !important;
       transform: translateY(-1px) !important;
     }
 
-    /* Facility Header Collect Button (강조 2단계: 연한 녹색 배경, 짙은 녹색 텍스트, 무테두리, 직각 코너) */
+    /* Facility Header Collect Button (강조 2단계: 1단계와 동일한 에메랄드 고투명도 배경 + 선명한 녹색 텍스트, 무테두리, 직각) */
     .btn-facility-collect {
-      background: #A7F3D0 !important;
-      color: #064E3B !important;
+      background: rgba(16, 185, 129, 0.18) !important;
+      color: #10B981 !important;
       font-size: 11px !important;
       font-weight: 700 !important;
       padding: 3px 8px !important;
@@ -1983,8 +1983,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       transition: all 0.12s ease;
     }
     .btn-facility-collect:hover {
-      background: #6EE7B7 !important;
-      color: #064E3B !important;
+      background: rgba(16, 185, 129, 0.30) !important;
+      color: #34D399 !important;
       border: none !important;
     }
     .btn-facility-collect::before,
