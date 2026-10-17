@@ -1853,7 +1853,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       transition: opacity 0.1s ease;
     }
     .btn:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.05);
+      background: transparent !important;
       border: none;
       color: var(--text-bright);
       transform: none;
@@ -1872,11 +1872,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
       line-height: 1.35;
     }
 
-    /* Buttons positioned alongside regular text: borderless subtle light box (연한 박스, 테두리 없음) */
+    /* Buttons positioned alongside regular text: borderless subtle light box (연한 박스, 테두리 없음, 좌우 [, ] 없음) */
     .btn-boxed,
     .target-card .btn,
     .preset-item .btn,
-    .alarm-item .btn {
+    .alarm-item .btn,
+    .btn-manual-bell {
       background: rgba(255, 255, 255, 0.07) !important;
       border: none !important;
       border-radius: 2px !important;
@@ -1885,10 +1886,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: 500 !important;
       line-height: 1.35;
     }
+    .btn-boxed::before, .btn-boxed::after,
+    .target-card .btn::before, .target-card .btn::after,
+    .preset-item .btn::before, .preset-item .btn::after,
+    .alarm-item .btn::before, .alarm-item .btn::after,
+    .btn-manual-bell::before, .btn-manual-bell::after {
+      content: none !important;
+      display: none !important;
+    }
     .btn-boxed:hover:not(:disabled),
     .target-card .btn:hover:not(:disabled),
     .preset-item .btn:hover:not(:disabled),
-    .alarm-item .btn:hover:not(:disabled) {
+    .alarm-item .btn:hover:not(:disabled),
+    .btn-manual-bell:hover:not(:disabled) {
       background: rgba(255, 255, 255, 0.14) !important;
       border: none !important;
       color: var(--text-bright) !important;
@@ -2122,6 +2132,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
       padding: 1px 6px;
       line-height: 1.2;
       transition: all 0.12s ease;
+    }
+    .btn-manual-bell::before,
+    .btn-manual-bell::after {
+      content: none !important;
+      display: none !important;
     }
     .btn-manual-bell:hover {
       background: rgba(255, 255, 255, 0.14);
@@ -4739,7 +4754,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             }
 
             const bellBtn = (!w.IsCompleted && remSec > 0)
-              ? `<button class="btn-manual-bell" title="이 작업에 알람 추가" onclick="addManualAlarm('${fac.name}', '${w.DisplayName}', ${remSec})">[ +알람 ]</button>`
+              ? `<button class="btn-manual-bell" title="이 작업에 알람 추가" onclick="addManualAlarm('${fac.name}', '${w.DisplayName}', ${remSec})">+알람</button>`
               : '';
 
             itemsHtml += `
