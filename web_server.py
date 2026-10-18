@@ -1617,6 +1617,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: 700;
       margin-right: 6px;
       user-select: none;
+      display: inline-block;
+      width: 10px;
+      text-align: left;
+      flex-shrink: 0;
+      vertical-align: baseline;
+    }
+    .card-title .sym-prefix,
+    .modal-header .sym-prefix,
+    h1 .sym-prefix,
+    h2 .sym-prefix,
+    h3 .sym-prefix {
+      width: auto;
     }
 
     /* Header (Sticky Line-Centric Terminal Bar) */
@@ -2594,8 +2606,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--text-bright);
       margin-bottom: 8px;
       display: flex;
-      align-items: center;
+      align-items: baseline;
       gap: 6px;
+    }
+    .summary-section-title .sym-prefix,
+    .summary-extra-row .sym-prefix {
+      margin-right: 0 !important;
+      display: inline-block;
+      width: 10px;
+      flex-shrink: 0;
+    }
+    .summary-extra-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 4px;
     }
     .summary-item-row {
       display: flex;
@@ -2954,7 +2979,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div id="cli-alert-icon" class="mono-num" style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);">[!]</div>
           <div style="flex: 1;">
             <div id="cli-alert-title" style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">게임 연결 끊김</div>
-            <div id="cli-alert-desc" style="font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.5;">&gt; 게임 클라이언트 상태를 확인해주세요.</div>
+            <div id="cli-alert-desc" style="font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.5;"><span class="sym-prefix">&gt;</span>게임 클라이언트 상태를 확인해주세요.</div>
             <!-- Quick path setter form inside alert banner -->
             <div id="cli-alert-path-box" style="display: none; margin-top: 10px; gap: 8px; align-items: center; flex-wrap: wrap;">
               <input type="text" id="quick-cli-path-input" class="input-text" placeholder="예: D:\Nexon\MabinogiMobile 또는 C:\Nexon\MabinogiMobile" style="flex: 1; min-width: 260px;">
@@ -3009,7 +3034,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             </div>
           </div>
           <div id="alarm-list-container" style="max-height: 120px; overflow-y: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px; background: #131313; border: 1px solid var(--line-subtle); border-radius: 0; padding: 6px 10px;">
-            <p style="color: var(--text-muted); font-size: var(--fs-sm);">&gt; 현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>
+            <p style="color: var(--text-muted); font-size: var(--fs-sm);"><span class="sym-prefix">&gt;</span>현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>
           </div>
         </div>
       </div>
@@ -3147,13 +3172,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
               </div>
             </div>
             <div id="preset-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 24px;">
-              <span style="color: var(--text-muted); font-size: var(--fs-sm);">&gt; 저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
+              <span style="color: var(--text-muted); font-size: var(--fs-sm);"><span class="sym-prefix">&gt;</span>저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
             </div>
           </div>
 
           <!-- Registered Delivery Targets Grid / List -->
           <div id="delivery-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
-            <p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;">&gt; 등록된 주간 납품 목표가 없습니다.</p>
+            <p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;"><span class="sym-prefix">&gt;</span>등록된 주간 납품 목표가 없습니다.</p>
           </div>
         </div>
       </div>
@@ -3267,7 +3292,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <!-- Expanded Content -->
         <div id="quick-alter-expanded-content" style="margin-top: 12px;">
           <p id="quick-alter-desc-text" style="font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 12px; line-height: 1.6;">
-            &gt; 완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 최고 티어 재료부터 순서대로 1슬롯씩 대기열에 등록합니다. (가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)
+            <span class="sym-prefix">&gt;</span>완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 최고 티어 재료부터 순서대로 1슬롯씩 대기열에 등록합니다. (가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)
           </p>
 
           <!-- Category Filter Tabs -->
@@ -3281,7 +3306,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           <!-- Quick Alter Plan Container -->
           <div id="quick-alter-plan-container" style="display: flex; flex-direction: column; gap: 12px;">
-            <p style="color: var(--text-muted); font-size: var(--fs-sm);">&gt; 가공대 상태 및 고티어 계획을 분석 중입니다...</p>
+            <p style="color: var(--text-muted); font-size: var(--fs-sm);"><span class="sym-prefix">&gt;</span>가공대 상태 및 고티어 계획을 분석 중입니다...</p>
           </div>
 
           <!-- Bottom Action Bar -->
@@ -3336,7 +3361,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <button class="btn" onclick="addManualCustomTarget()">+ 목표 추가</button>
             </div>
             <div style="display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
-              <span style="font-size: var(--fs-sm); color: var(--text-muted);">&gt; 빠른 추천:</span>
+              <span style="font-size: var(--fs-sm); color: var(--text-muted);"><span class="sym-prefix">&gt;</span>빠른 추천:</span>
               <button type="button" class="btn btn-sm" onclick="quickAddCustomTarget('론 엣지소드S', 4)">론 엣지소드S x4</button>
               <button type="button" class="btn btn-sm" onclick="quickAddCustomTarget('은 펜던트', 4)">은 펜던트 x4</button>
               <button type="button" class="btn btn-sm" onclick="quickAddCustomTarget('실크 로브', 2)">실크 로브 x2</button>
@@ -3346,7 +3371,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           <!-- Registered Custom Targets Grid / List -->
           <div id="custom-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
-            <p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;">&gt; 등록된 개별 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>
+            <p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;"><span class="sym-prefix">&gt;</span>등록된 개별 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>
           </div>
         </div>
       </div>
@@ -3477,7 +3502,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="modal-header">
         <div>
           <h3 id="modal-summary-title" style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>작업 진행 종합 결과</h3>
-          <div id="modal-summary-subtitle" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">&gt; 소요 시간: -</div>
+          <div id="modal-summary-subtitle" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;"><span class="sym-prefix">&gt;</span>소요 시간: -</div>
         </div>
         <button class="btn btn-sm" onclick="closeSummaryModal()">닫기</button>
       </div>
@@ -3548,7 +3573,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="modal-header">
         <div>
           <h3 style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>마비노기 모바일 연동 설정 &amp; 연결 가이드</h3>
-          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">&gt; 게임 클라이언트 연동 상태 및 설치 폴더 관리</div>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;"><span class="sym-prefix">&gt;</span>게임 클라이언트 연동 상태 및 설치 폴더 관리</div>
         </div>
         <button class="btn btn-sm" onclick="closeCliModal()">닫기</button>
       </div>
@@ -3620,13 +3645,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="modal-header">
         <div style="text-align: left;">
           <h3 style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">//</span>스마트폰 브라우저 접속 안내</h3>
-          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">&gt; 동일 Wi-Fi 환경에서 모바일 실시간 모니터링</div>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;"><span class="sym-prefix">&gt;</span>동일 Wi-Fi 환경에서 모바일 실시간 모니터링</div>
         </div>
         <button class="btn btn-sm" onclick="closeMobileConnectModal()">닫기</button>
       </div>
       <div class="modal-body">
         <div style="padding: 10px 0; border-bottom: 1px solid var(--line); text-align: left; font-size: var(--fs-sm); color: var(--text); line-height: 1.6;">
-          <strong>&gt; 이용 방법</strong><br>
+          <strong><span class="sym-prefix">&gt;</span>이용 방법</strong><br>
           1. PC와 스마트폰이 <strong>동일한 Wi-Fi(공유기)</strong>에 연결되어 있어야 합니다.<br>
           2. 스마트폰 기본 카메라로 아래 <strong>QR 코드</strong>를 비추면 즉시 대시보드가 열립니다.
         </div>
@@ -3656,7 +3681,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="modal-header">
         <div>
           <h3 id="recipe-modal-title" style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">//</span>제작 레시피 설정 / 수정</h3>
-          <div id="recipe-modal-subtitle" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">&gt; 아이템 1회 제작에 필요한 소요 재료를 설정합니다</div>
+          <div id="recipe-modal-subtitle" style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;"><span class="sym-prefix">&gt;</span>아이템 1회 제작에 필요한 소요 재료를 설정합니다</div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
           <button class="btn btn-sm" onclick="openUserDataFolder()" title="내 문서의 레시피 파일(recipes_cache.json) 저장 폴더 열기">저장 폴더</button>
@@ -3665,7 +3690,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
       <div class="modal-body">
         <div style="padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.5;">
-          &gt; <strong>레시피 안내:</strong> 여기서 올바른 1회 제작 필요 재료와 수량을 등록해두면 모든 하위 재료/채집이 정확히 계산됩니다.
+          <span class="sym-prefix">&gt;</span><strong>레시피 안내:</strong> 여기서 올바른 1회 제작 필요 재료와 수량을 등록해두면 모든 하위 재료/채집이 정확히 계산됩니다.
         </div>
 
         <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
@@ -3967,7 +3992,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const extraLines = [];
         const collectedList = sum.collected_facilities || sum.collected || [];
         if (collectedList.length > 0) {
-          extraLines.push(`> <strong>사전 완료 가공품 즉시 수령</strong>: ${collectedList.join(', ')}`);
+          extraLines.push(`<span class="sym-prefix">&gt;</span><span><strong>사전 완료 가공품 즉시 수령</strong>: ${collectedList.join(', ')}</span>`);
         }
         const deferredList = sum.deferred_works || sum.deferred || [];
         if (deferredList.length > 0) {
@@ -3977,11 +4002,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
             const fac = d.facility ? `[${d.facility}] ` : '';
             return `${fac}${rName} (${reason})`;
           }).join(', ');
-          extraLines.push(`> <strong>슬롯/재료 대기로 유예된 가공</strong>: ${defNames}`);
+          extraLines.push(`<span class="sym-prefix">&gt;</span><span><strong>슬롯/재료 대기로 유예된 가공</strong>: ${defNames}</span>`);
         }
         if (extraLines.length > 0) {
           secExtras.style.display = 'block';
-          listExtras.innerHTML = extraLines.map(line => `<div style="margin-bottom: 4px;">${line}</div>`).join('');
+          listExtras.innerHTML = extraLines.map(line => `<div class="summary-extra-row">${line}</div>`).join('');
         } else {
           secExtras.style.display = 'none';
         }
@@ -4318,9 +4343,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const descText = document.getElementById('quick-alter-desc-text');
       if (descText) {
         if (isHigh) {
-          descText.innerHTML = `> 완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: var(--text-main);">오래 걸리는 최고 티어 재료(T7 -> T1)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: var(--text-muted);">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
+          descText.innerHTML = `<span class="sym-prefix">&gt;</span>완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: var(--text-main);">오래 걸리는 최고 티어 재료(T7 -> T1)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: var(--text-muted);">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
         } else {
-          descText.innerHTML = `> 완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: var(--text-main);">기초 하위 티어 재료(T1 -> T7)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: var(--text-muted);">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
+          descText.innerHTML = `<span class="sym-prefix">&gt;</span>완료된 가공품이 있으면 일괄 수령하여 슬롯(최대 7개)을 확보하고, 부족한 원자재를 사전에 모두 채집한 뒤 <strong style="color: var(--text-main);">기초 하위 티어 재료(T1 -> T7)부터 순서대로</strong> 1슬롯씩 대기열에 등록합니다. <span style="color: var(--text-muted);">(가공 전용 재료가 부족한 티어는 자동으로 건너뜁니다)</span>`;
         }
       }
     }
@@ -5135,7 +5160,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       countBadge.innerText = `${activeCount}개 활성`;
 
       if (keys.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm);">> 현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>';
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm);"><span class="sym-prefix">&gt;</span>현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>';
         return;
       }
 
@@ -5257,7 +5282,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const categories = data.categories || {};
         const catKeys = Object.keys(categories);
         if (catKeys.length === 0) {
-          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-md);">> 선택된 가공대 정보가 없습니다.</p>';
+          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-md);"><span class="sym-prefix">&gt;</span>선택된 가공대 정보가 없습니다.</p>';
           if (execBtn) execBtn.disabled = true;
           return;
         }
@@ -5477,7 +5502,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const quickSummaryEl = document.getElementById('delivery-targets-quick-summary');
         if (quickSummaryEl) {
           if (targets.length === 0) {
-            quickSummaryEl.innerHTML = '<span style="color: var(--text-muted);">> 등록된 주간 납품 목표가 없습니다. 클릭하여 펼친 뒤 등록하세요.</span>';
+            quickSummaryEl.innerHTML = '<span style="color: var(--text-muted);"><span class="sym-prefix">&gt;</span>등록된 주간 납품 목표가 없습니다. 클릭하여 펼친 뒤 등록하세요.</span>';
           } else {
             const completedCount = targets.filter(t => t.is_completed || t.current >= t.goal).length;
             const itemTexts = targets.slice(0, 5).map(t => {
@@ -5495,7 +5520,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         if (!container) return;
         if (targets.length === 0) {
-          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;">> 등록된 주간 납품 목표가 없습니다. 인게임에서 퀘스트를 선택하고 [현재 퀘스트 등록]을 누르거나 직접 추가하세요.</p>';
+          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;"><span class="sym-prefix">&gt;</span>등록된 주간 납품 목표가 없습니다. 인게임에서 퀘스트를 선택하고 [현재 퀘스트 등록]을 누르거나 직접 추가하세요.</p>';
           return;
         }
 
@@ -5513,7 +5538,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             recHtml = `
               <div style="border-top: 1px solid var(--border-line); border-bottom: 1px solid var(--border-line); padding: 4px 0; font-size: var(--fs-sm); display: flex; justify-content: space-between; align-items: center; gap: 6px;">
                 <span style="color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="1회 제작 재료: ${ingListStr}">
-                  > 1회 재료: <strong style="color: var(--text-main);">${ingListStr}</strong>
+                  <span class="sym-prefix">&gt;</span>1회 재료: <strong style="color: var(--text-main);">${ingListStr}</strong>
                 </span>
                 <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')">레시피</button>
               </div>
@@ -5525,7 +5550,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                   <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">${t.item_name}</div>
-                  <div style="font-size: var(--fs-sm); color: var(--text-muted);">> ${t.quest_title || '주간 납품'}</div>
+                  <div style="font-size: var(--fs-sm); color: var(--text-muted);"><span class="sym-prefix">&gt;</span>${t.quest_title || '주간 납품'}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span class="${isDone ? 'badge' : 'badge-dim'}">${isDone ? '완료' : '진행 중'}</span>
@@ -5696,7 +5721,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
         if (!container) return;
         if (presets.length === 0) {
-          container.innerHTML = '<span style="color: var(--text-muted); font-size: var(--fs-sm);">> 저장된 프리셋이 없습니다. 원하는 납품 목표를 등록한 뒤 이름을 입력하여 저장하세요.</span>';
+          container.innerHTML = '<span style="color: var(--text-muted); font-size: var(--fs-sm);"><span class="sym-prefix">&gt;</span>저장된 프리셋이 없습니다. 원하는 납품 목표를 등록한 뒤 이름을 입력하여 저장하세요.</span>';
           return;
         }
 
@@ -5843,7 +5868,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const tasks = plan.tasks || [];
         if (tasksContainer) {
           if (tasks.length === 0) {
-            tasksContainer.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm);">> 등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</p>';
+            tasksContainer.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm);"><span class="sym-prefix">&gt;</span>등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</p>';
           } else {
             let tasksHtml = '';
             tasks.forEach(t => {
@@ -5948,7 +5973,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             if (plan.all_completed) {
               rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-main); padding: 16px; font-weight: 700;">모든 주간 납품 목표가 달성 완료되었습니다</td></tr>';
             } else if (tasks.length === 0) {
-              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 16px;">> 등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</td></tr>';
+              rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 16px;"><span class="sym-prefix">&gt;</span>등록되거나 진행 중인 주간 납품 퀘스트가 없습니다.</td></tr>';
             } else {
               rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-main); padding: 16px; font-weight: 700;">모든 원자재 및 가공품 준비 완료! 아래 버튼을 눌러 즉시 완제품을 제작하세요</td></tr>';
             }
@@ -6052,7 +6077,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (warnBanner && warnList) {
           if (warnings.length > 0) {
             warnBanner.style.display = 'block';
-            warnList.innerHTML = warnings.map(w => `<div style="margin-bottom: 3px;">> ${w}</div>`).join('');
+            warnList.innerHTML = warnings.map(w => `<div style="margin-bottom: 3px;"><span class="sym-prefix">&gt;</span>${w}</div>`).join('');
           } else {
             warnBanner.style.display = 'none';
           }
@@ -6152,7 +6177,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         if (!container) return;
         if (targets.length === 0) {
-          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;">> 등록된 지정 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>';
+          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;"><span class="sym-prefix">&gt;</span>등록된 지정 제작 목표가 없습니다. 위 입력창에서 제작할 아이템을 등록하세요.</p>';
           return;
         }
 
@@ -6171,7 +6196,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             recHtml = `
               <div style="border-top: 1px solid var(--border-line); border-bottom: 1px solid var(--border-line); padding: 4px 0; font-size: var(--fs-sm); display: flex; justify-content: space-between; align-items: center; gap: 6px;">
                 <span style="color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="1회 제작 재료: ${ingListStr}">
-                  > 1회 재료: <strong style="color: var(--text-main);">${ingListStr}</strong>
+                  <span class="sym-prefix">&gt;</span>1회 재료: <strong style="color: var(--text-main);">${ingListStr}</strong>
                 </span>
                 <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')">레시피</button>
               </div>
@@ -6179,7 +6204,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           } else {
             recHtml = `
               <div style="border-top: 1px solid var(--border-line); border-bottom: 1px solid var(--border-line); padding: 4px 0; font-size: var(--fs-sm); display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-                <span style="color: var(--text-main);">> [!] 재료 미확인 (클릭하여 직접 입력)</span>
+                <span style="color: var(--text-main);"><span class="sym-prefix">&gt;</span>[!] 재료 미확인 (클릭하여 직접 입력)</span>
                 <button class="btn btn-sm" onclick="openRecipeModal('${safeName}')">재료 등록</button>
               </div>
             `;
@@ -6190,7 +6215,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                   <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">${t.item_name}</div>
-                  <div class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted);">> 가방: ${t.inventory_count || 0}개 | 개인창고: ${t.char_storage_count || 0}개 | 공용창고: ${t.account_storage_count || 0}개 (총 ${t.current || 0}개)</div>
+                  <div class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted);"><span class="sym-prefix">&gt;</span>가방: ${t.inventory_count || 0}개 | 개인창고: ${t.char_storage_count || 0}개 | 공용창고: ${t.account_storage_count || 0}개 (총 ${t.current || 0}개)</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span class="${isDone ? 'badge' : 'badge-dim'} mono-num">
@@ -6452,7 +6477,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const itemName = inputEl.value.trim();
       if (!itemName) return;
 
-      container.innerHTML = '<div style="color:var(--text-muted); font-size:var(--fs-sm); padding:8px;">> 레시피 조회 중...</div>';
+      container.innerHTML = '<div style="color:var(--text-muted); font-size:var(--fs-sm); padding:8px;"><span class="sym-prefix">&gt;</span>레시피 조회 중...</div>';
       try {
         const res = await fetch(`/api/recipe?name=${encodeURIComponent(itemName)}`);
         const data = await res.json();
@@ -6460,10 +6485,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const ings = data.ingredients || {};
         const keys = Object.keys(ings);
         if (keys.length === 0) {
-          if (msgEl) msgEl.innerText = '> 등록된 레시피가 없습니다. 아래에 재료를 추가해주세요.';
+          if (msgEl) msgEl.innerHTML = '<span class="sym-prefix">&gt;</span>등록된 레시피가 없습니다. 아래에 재료를 추가해주세요.';
           addRecipeModalRow('', 1);
         } else {
-          if (msgEl) msgEl.innerText = `> 총 ${keys.length}개 재료 로드됨`;
+          if (msgEl) msgEl.innerHTML = `<span class="sym-prefix">&gt;</span>총 ${keys.length}개 재료 로드됨`;
           keys.forEach(k => {
             addRecipeModalRow(k, ings[k]);
           });
@@ -6566,7 +6591,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const rawMaterials = plan.raw_materials || [];
 
         if (materials.length === 0 && rawMaterials.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">> 등록된 지정 제작 목표가 없습니다. 위에서 목표를 추가하세요.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;"><span class="sym-prefix">&gt;</span>등록된 지정 제작 목표가 없습니다. 위에서 목표를 추가하세요.</td></tr>`;
           if (statusText) statusText.innerText = '등록된 목표 없음';
           if (btnExec) {
             btnExec.disabled = true;
@@ -6707,7 +6732,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const neededRawGather = (plan.raw_materials || []).filter(r => r.deficit > 0);
           const rawText = neededRawGather.length > 0 ? `필드 채집 <strong class="mono-num">${neededRawGather.length}종</strong>` : '채집 불필요';
           const alterText = plan.total_works_to_queue > 0 ? `가공 <strong class="mono-num">${plan.total_works_to_queue}회</strong>` : '가공 불필요';
-          summaryText.innerHTML = `> <span>총 분석 결과: ${rawText} | ${alterText} | 제작 <strong class="mono-num">${(plan.custom_tasks || plan.tasks || plan.targets || []).length}건</strong></span>`;
+          summaryText.innerHTML = `<span class="sym-prefix">&gt;</span><span>총 분석 결과: ${rawText} | ${alterText} | 제작 <strong class="mono-num">${(plan.custom_tasks || plan.tasks || plan.targets || []).length}건</strong></span>`;
         }
 
         // Facility Slots
@@ -6760,7 +6785,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (warnBanner && warnList) {
           if (warnings.length > 0) {
             warnBanner.style.display = 'block';
-            warnList.innerHTML = warnings.map(w => `<div style="margin-bottom: 3px;">> ${w}</div>`).join('');
+            warnList.innerHTML = warnings.map(w => `<div style="margin-bottom: 3px;"><span class="sym-prefix">&gt;</span>${w}</div>`).join('');
           } else {
             warnBanner.style.display = 'none';
           }
@@ -6956,25 +6981,25 @@ HTML_PAGE = r"""<!DOCTYPE html>
             shortStatus = 'CLI 미발견 (클릭하여 설정)';
             if (alertIcon) alertIcon.innerText = '//';
             if (alertTitle) alertTitle.innerText = '마비노기 모바일 연동 파일(MabinogiMobile_CLI.exe)을 찾을 수 없습니다';
-            if (alertDesc) alertDesc.innerHTML = '> 게임이 C: 드라이브가 아닌 D: 드라이브나 다른 폴더에 설치되어 있다면 아래에 설치 폴더를 입력해주세요.<br>> 또한 게임 내 [환경설정] -> [기타]에서 <strong>[MM AI 에이전트 활성화]</strong>가 ON으로 켜져 있어야 합니다.';
+            if (alertDesc) alertDesc.innerHTML = '<span class="sym-prefix">&gt;</span>게임이 C: 드라이브가 아닌 D: 드라이브나 다른 폴더에 설치되어 있다면 아래에 설치 폴더를 입력해주세요.<br><span class="sym-prefix">&gt;</span>또한 게임 내 [환경설정] -> [기타]에서 <strong>[MM AI 에이전트 활성화]</strong>가 ON으로 켜져 있어야 합니다.';
             if (alertPathBox) alertPathBox.style.display = 'flex';
           } else if (errCode === 'OPTION_OFF') {
             shortStatus = 'AI 에이전트 OFF';
             if (alertIcon) alertIcon.innerText = '//';
             if (alertTitle) alertTitle.innerText = '게임 설정에서 [MM AI 에이전트 활성화]가 꺼져 있습니다';
-            if (alertDesc) alertDesc.innerHTML = '> 마비노기 모바일 PC 클라이언트 [환경설정] -> [기타/게임 설정]에서 <strong>[MM AI 에이전트 활성화]</strong>를 ON으로 켜주세요. 옵션을 켜면 즉시 연동됩니다.';
+            if (alertDesc) alertDesc.innerHTML = '<span class="sym-prefix">&gt;</span>마비노기 모바일 PC 클라이언트 [환경설정] -> [기타/게임 설정]에서 <strong>[MM AI 에이전트 활성화]</strong>를 ON으로 켜주세요. 옵션을 켜면 즉시 연동됩니다.';
             if (alertPathBox) alertPathBox.style.display = 'none';
           } else if (errCode === 'GAME_OFF') {
             shortStatus = '게임 미실행';
             if (alertIcon) alertIcon.innerText = '//';
             if (alertTitle) alertTitle.innerText = '마비노기 모바일 클라이언트가 실행되어 있지 않습니다';
-            if (alertDesc) alertDesc.innerHTML = '> 마비노기 모바일 PC 클라이언트를 실행하고 캐릭터로 로그인하면 자동으로 감지되어 연결됩니다.';
+            if (alertDesc) alertDesc.innerHTML = '<span class="sym-prefix">&gt;</span>마비노기 모바일 PC 클라이언트를 실행하고 캐릭터로 로그인하면 자동으로 감지되어 연결됩니다.';
             if (alertPathBox) alertPathBox.style.display = 'none';
           } else {
             shortStatus = '연결 끊김';
             if (alertIcon) alertIcon.innerText = '//';
             if (alertTitle) alertTitle.innerText = '게임 클라이언트와 연결이 끊어졌습니다';
-            if (alertDesc) alertDesc.innerText = '> ' + (data.error || '게임 및 네트워크 상태를 확인해주세요.');
+            if (alertDesc) alertDesc.innerHTML = `<span class="sym-prefix">&gt;</span>${(data.error || '게임 및 네트워크 상태를 확인해주세요.')}`;
             if (alertPathBox) alertPathBox.style.display = 'none';
           }
 
@@ -7032,7 +7057,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (!listEl) return;
         const tasks = data.tasks || [];
         if (tasks.length === 0) {
-          listEl.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-md);">> 현재 진행 중인 납품 목표 퀘스트가 없습니다.</p>';
+          listEl.innerHTML = '<p style="color: var(--text-muted); font-size: var(--fs-md);"><span class="sym-prefix">&gt;</span>현재 진행 중인 납품 목표 퀘스트가 없습니다.</p>';
           return;
         }
 
@@ -7047,7 +7072,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <span class="${isDone ? 'badge' : 'badge-dim'}">${isDone ? '완료' : '진행 중'}</span>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: var(--fs-sm);">
-                <span style="color: var(--text-muted);">> 납품 목표: <strong style="color: var(--text-main);">${t.item_name}</strong></span>
+                <span style="color: var(--text-muted);"><span class="sym-prefix">&gt;</span>납품 목표: <strong style="color: var(--text-main);">${t.item_name}</strong></span>
                 <span class="mono-num"><span class="cli-gauge">${gaugeStr}</span> 보유: <strong style="color: var(--text-main);">${t.current} / ${t.goal}</strong> (${t.needed}개 부족)</span>
               </div>
             </div>
@@ -7115,13 +7140,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (!q) return;
       const resEl = document.getElementById('search-results');
       if (!resEl) return;
-      resEl.innerHTML = '<span style="color:var(--text-muted);">> 검색 중...</span>';
+      resEl.innerHTML = '<span style="color:var(--text-muted);"><span class="sym-prefix">&gt;</span>검색 중...</span>';
       try {
         const res = await fetch(`/api/search_recipe?name=${encodeURIComponent(q)}`);
         const d = await res.json();
         let html = `<div style="padding: 6px; border: 1px solid var(--border-line); margin-bottom: 8px;">`;
         html += `<strong>'${d.item_name}'</strong> - <span class="mono-num">가방: ${d.owned_bag}개 | 개인창고: ${d.owned_char_storage || 0}개 | 공용창고: ${d.owned_account_storage || 0}개 (총 ${d.owned_all || 0}개)</span><br>`;
-        html += `<span class="mono-num">> 제작: ${d.craft.length}건 | 가공: ${d.alter.length}건 | 채집: ${d.gather.length}건</span></div>`;
+        html += `<span class="mono-num"><span class="sym-prefix">&gt;</span>제작: ${d.craft.length}건 | 가공: ${d.alter.length}건 | 채집: ${d.gather.length}건</span></div>`;
         resEl.innerHTML = html;
       } catch (e) {
         resEl.innerHTML = `<span style="color:var(--text-main);">[!] 검색 오류: ${e}</span>`;
@@ -7187,7 +7212,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         document.body.innerHTML = `
           <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #121212; color: #E5E5E5; font-family: 'JetBrains Mono', 'Pretendard', monospace;">
             <h2 style="font-size: 16px; color: #F5F5F5; margin-bottom: 12px; font-weight: 700;">// 웹 서버가 안전하게 종료되었습니다</h2>
-            <p style="color: #888888; font-size: 14px; margin-bottom: 24px;">> 이 브라우저 창이나 탭을 닫으셔도 됩니다.</p>
+            <p style="color: #888888; font-size: 14px; margin-bottom: 24px;"><span class="sym-prefix">&gt;</span>이 브라우저 창이나 탭을 닫으셔도 됩니다.</p>
             <button onclick="window.close()" style="padding: 8px 20px; background: #E0E0E0; color: #121212; border: 1px solid #F5F5F5; font-weight: 700; cursor: pointer;">[ 창 닫기 ]</button>
           </div>
         `;
