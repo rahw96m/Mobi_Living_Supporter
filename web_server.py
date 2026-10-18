@@ -1506,25 +1506,57 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Fira+Code:wght@400;600;700&display=swap" rel="stylesheet">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('mabi_theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
   <style>
-    :root {
-      --bg: #101010;
-      --bg-panel: #161616;
-      --bg-sub-panel: #1B1B1B;
-      --bg-elevated: #1F1F1F;
-      --bg-table-header: #202020;
-      --line: #282828;
-      --line-subtle: #222222;
-      --border-line: #262626;
-      --border-focus: #DFDFDF;
-      --text: #E5E5E5;
-      --text-main: #E5E5E5;
-      --text-bright: #F5F5F5;
-      --text-title: #F5F5F5;
-      --text-muted: #888888;
-      --text-dim: #555555;
-      --invert-bg: #DFDFDF;
-      --invert-text: #121212;
+    :root,
+    :root[data-theme="dark"] {
+      /* [다크모드 ON - 기본 설정] 눈부심 없는 부드러운 다크 톤 & 편안한 대비 */
+      --bg: #121316; /* 칠흑 대신 깊고 편안한 딥 차콜 */
+      --bg-panel: #18191D;
+      --bg-sub-panel: #1F2126;
+      --bg-elevated: #1E2025;
+      --bg-table-header: #23252A;
+      --bg-console: #151619;
+      --bg-mcb: #18191D;
+      --bg-mcb-running: #1B231E;
+      --line: #2A2C31;
+      --line-subtle: #222428;
+      --border-line: #2A2C31;
+      --border-focus: #9BA2AB;
+      --text: #C4C8CE; /* 기존 #E5E5E5의 눈부심 완화: 부드럽고 선명한 소프트 실버 */
+      --text-main: #C4C8CE;
+      --text-bright: #DFE2E6; /* 순백 #F5F5F5 대신 차분한 펄 화이트 (눈 피로 제로) */
+      --text-title: #DFE2E6;
+      --text-muted: #7D848D;
+      --text-dim: #545A62;
+      --invert-bg: #C5CAD0; /* 눈부시지 않은 차콜 그레이 반전 배지 */
+      --invert-text: #141618;
+      --badge-manual-bg: #23252A;
+      --badge-dim-bg: #1B1D21;
+      --table-hover-bg: #1D1F24;
+      --tab-pill-bg: #222429;
+      --card-border: rgba(255, 255, 255, 0.22);
+      --card-border-hover: rgba(255, 255, 255, 0.55);
+      --card-border-done: rgba(255, 255, 255, 0.10);
+      --card-box-shadow: 0 0 8px rgba(0, 0, 0, 0.25);
+      --card-box-shadow-hover: 0 0 12px rgba(255, 255, 255, 0.10);
+      --btn-boxed-bg: rgba(255, 255, 255, 0.05);
+      --btn-boxed-hover: rgba(255, 255, 255, 0.10);
+      --btn-boxed-shadow: 0 0 4px rgba(255, 255, 255, 0.04);
+      --btn-facility-idle-bg: rgba(255, 255, 255, 0.02);
+      --gauge-empty-bg: rgba(255, 255, 255, 0.04);
+      --log-warn-color: #D4A373;
+      --modal-overlay-bg: rgba(0, 0, 0, 0.75);
+      --modal-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+      --mcb-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      --badge-shadow: 0 0 4px rgba(197, 202, 208, 0.15);
       --bar-gather: #3FB950;
       --bar-alter: #6E8898;
       --bar-special: #8B949E;
@@ -1534,6 +1566,58 @@ HTML_PAGE = r"""<!DOCTYPE html>
       --fs-md: 14px;
       --fs-sm: 12px;
     }
+
+    :root[data-theme="light"] {
+      /* [다크모드 OFF] 눈이 편안한 따뜻한 웜그레이 & 소프트 대비 팔레트 */
+      --bg: #EAE9E4; /* 아주 조금 노란색이 감돌며 한 톤 차분한 웜그레이 */
+      --bg-panel: #F6F5F1; /* 눈부심 없는 부드러운 밀크/아이보리 웜화이트 */
+      --bg-sub-panel: #DFDDD6; /* 톤다운된 서브 박스/내부 패널 */
+      --bg-elevated: #F6F5F1;
+      --bg-table-header: #DBD9D2;
+      --bg-console: #F6F5F1;
+      --bg-mcb: #F6F5F1;
+      --bg-mcb-running: #E8EFE8;
+      --line: #CAC8BF; /* 너무 도드라지지 않는 부드러운 웜그레이 선 */
+      --line-subtle: #DBD9D1;
+      --border-line: #CAC8BF;
+      --border-focus: #484A4D;
+      --text: #404347; /* 칠흑이 아닌 눈이 편안한 소프트 잉크 차콜 */
+      --text-main: #404347;
+      --text-bright: #26282B; /* 부드럽게 강조되는 딥 차콜 */
+      --text-title: #26282B;
+      --text-muted: #72767B;
+      --text-dim: #989C9F;
+      --invert-bg: #323539; /* 너무 새까맣지 않은 차콜 반전 배지 */
+      --invert-text: #F7F6F2;
+      --badge-manual-bg: #DFDDD6;
+      --badge-dim-bg: #E5E4DD;
+      --table-hover-bg: #E3E2DA;
+      --tab-pill-bg: #DFDDD6;
+      --card-border: rgba(0, 0, 0, 0.12);
+      --card-border-hover: rgba(0, 0, 0, 0.30);
+      --card-border-done: rgba(0, 0, 0, 0.06);
+      --card-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+      --card-box-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.06);
+      --btn-boxed-bg: rgba(0, 0, 0, 0.04);
+      --btn-boxed-hover: rgba(0, 0, 0, 0.08);
+      --btn-boxed-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      --btn-facility-idle-bg: rgba(0, 0, 0, 0.03);
+      --gauge-empty-bg: rgba(0, 0, 0, 0.05);
+      --log-warn-color: #B45309;
+      --modal-overlay-bg: rgba(28, 30, 32, 0.40);
+      --modal-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+      --mcb-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      --badge-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      --bar-gather: #16A34A;
+      --bar-alter: #2563EB;
+      --bar-special: #D97706;
+      --font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'D2Coding', Consolas, monospace;
+      --fs-lg: 16px;
+      --fs-md: 14px;
+      --fs-sm: 12px;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: var(--bg);
@@ -1544,6 +1628,24 @@ HTML_PAGE = r"""<!DOCTYPE html>
       word-break: keep-all;
       min-height: 100vh;
       padding: 20px 24px 40px;
+      transition: background-color 0.2s ease, color 0.15s ease;
+    }
+    header, .card, .facility-card, .master-command-bar, .console, .modal-dialog, .bom-table, input {
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--line);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
     }
     .container { max-width: 1320px; margin: 0 auto; }
 
@@ -1608,7 +1710,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border: 1px solid currentColor;
     }
     .cli-gauge .gauge-cell.empty {
-      background-color: rgba(255, 255, 255, 0.04);
+      background-color: var(--gauge-empty-bg);
       border: 1.5px solid currentColor;
       opacity: 0.45;
     }
@@ -1802,22 +1904,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     .target-card {
       background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.4);
+      border: 1px solid var(--card-border);
       border-radius: 0;
       padding: 10px 12px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       gap: 6px;
-      box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
+      box-shadow: var(--card-box-shadow);
       transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
     .target-card:hover {
-      border-color: rgba(255, 255, 255, 0.85);
-      box-shadow: 0 0 16px rgba(255, 255, 255, 0.22);
+      border-color: var(--card-border-hover);
+      box-shadow: var(--card-box-shadow-hover);
     }
     .target-card.target-done {
-      border-color: rgba(255, 255, 255, 0.18);
+      border-color: var(--card-border-done);
       opacity: 0.55;
       box-shadow: none;
     }
@@ -1846,30 +1948,30 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: inline-flex;
       align-items: center;
       line-height: 1.4;
-      box-shadow: 0 0 6px rgba(223, 223, 223, 0.22);
+      box-shadow: var(--badge-shadow);
     }
     .badge.delivery {
       background: var(--invert-bg);
       color: var(--invert-text);
       border: none;
-      box-shadow: 0 0 6px rgba(223, 223, 223, 0.22);
+      box-shadow: var(--badge-shadow);
     }
     .badge.manual {
-      background: #262626;
+      background: var(--badge-manual-bg);
       color: var(--text);
       border: 1px solid var(--line);
-      box-shadow: 0 0 6px rgba(255, 255, 255, 0.08);
+      box-shadow: var(--badge-shadow);
     }
     .badge-dim {
       font-size: var(--fs-sm);
       padding: 1px 6px;
       border-radius: 0;
       font-weight: 600;
-      background: #1E1E1E;
+      background: var(--badge-dim-bg);
       color: var(--text-muted);
       border: 1px solid var(--line);
       font-family: var(--font-mono);
-      box-shadow: 0 0 6px rgba(255, 255, 255, 0.05);
+      box-shadow: var(--badge-shadow);
     }
 
     /* Buttons Hierarchy */
@@ -1932,14 +2034,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .preset-item .btn,
     .alarm-item .btn,
     .btn-manual-bell {
-      background: rgba(255, 255, 255, 0.08) !important;
+      background: var(--btn-boxed-bg) !important;
       border: none !important;
       border-radius: 0 !important;
       padding: 2px 7px !important;
       color: var(--text-main) !important;
       font-weight: 500 !important;
       line-height: 1.35;
-      box-shadow: 0 0 8px rgba(255, 255, 255, 0.12) !important;
+      box-shadow: var(--btn-boxed-shadow) !important;
       transition: all 0.15s ease;
     }
     .btn-boxed::before, .btn-boxed::after,
@@ -1955,10 +2057,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .preset-item .btn:hover:not(:disabled),
     .alarm-item .btn:hover:not(:disabled),
     .btn-manual-bell:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.18) !important;
+      background: var(--btn-boxed-hover) !important;
       border: none !important;
       color: var(--text-bright) !important;
-      box-shadow: 0 0 14px rgba(255, 255, 255, 0.25) !important;
+      box-shadow: var(--card-box-shadow-hover) !important;
     }
 
     /* Tier 1: 최상위 메인 실행 버튼 (강조 1단계: 솔리드 녹색 박스, #FFFFFF 화이트 텍스트, 무테두리, 직각 코너 + 은은한 에메랄드 광채) */
@@ -2088,7 +2190,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: none !important;
     }
     .btn-facility-idle {
-      background: rgba(255, 255, 255, 0.03) !important;
+      background: var(--btn-facility-idle-bg) !important;
       color: var(--text-dim) !important;
       font-size: 11px !important;
       font-weight: 500 !important;
@@ -2124,7 +2226,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     /* Console */
     .console {
-      background: #141414;
+      background: var(--bg-console);
       border: none;
       border-top: 1px solid var(--line);
       border-bottom: 1px solid var(--line);
@@ -2142,7 +2244,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .log-time { color: var(--text-dim); margin-right: 6px; font-family: var(--font-mono); }
     .log-info { color: var(--text); }
     .log-success { color: var(--text-bright); font-weight: 700; }
-    .log-warn { color: #CCCCCC; }
+    .log-warn { color: var(--log-warn-color); }
     .log-error { color: var(--invert-text); background: var(--invert-bg); padding: 0 4px; font-weight: 700; }
     .log-action { color: var(--text-bright); font-weight: 600; }
 
@@ -2218,7 +2320,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       white-space: nowrap;
     }
     .btn-manual-bell {
-      background: rgba(255, 255, 255, 0.07);
+      background: var(--btn-boxed-bg);
       border: none;
       border-radius: 2px;
       color: var(--text-main);
@@ -2236,7 +2338,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: none !important;
     }
     .btn-manual-bell:hover {
-      background: rgba(255, 255, 255, 0.14);
+      background: var(--btn-boxed-hover);
       border: none;
       color: var(--text-bright);
     }
@@ -2280,7 +2382,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: transparent;
     }
     .bom-table tbody tr:hover td {
-      background: #1C1C1C !important;
+      background: var(--table-hover-bg) !important;
     }
     /* Satisfied / Done rows dimmed to emphasize remaining work */
     .bom-table tr.row-satisfied td {
@@ -2366,7 +2468,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--invert-text) !important;
       border-color: var(--invert-bg) !important;
       font-weight: 700;
-      box-shadow: 0 0 10px rgba(223, 223, 223, 0.3) !important;
+      box-shadow: var(--badge-shadow) !important;
     }
     .quick-cat-card {
       background: transparent;
@@ -2401,7 +2503,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-size: 12px;
     }
     .quick-tier-table tr:hover td {
-      background: #202020;
+      background: var(--table-hover-bg);
     }
 
     /* Master Command Bar Mode Switcher Tabs (Tier 2: Tight Invert Box when Active + subtle glow) */
@@ -2441,7 +2543,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: 700;
       padding: 0 5px;
       border-radius: 0;
-      background: #222222;
+      background: var(--tab-pill-bg);
       color: var(--text-muted);
     }
     /* Active Mode Tab -> Tight Invert Box (#DFDFDF bg + #121212 text + subtle ambient glow) */
@@ -2453,7 +2555,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-color: var(--invert-bg) !important;
       color: var(--invert-text) !important;
       font-weight: 700;
-      box-shadow: 0 0 10px rgba(223, 223, 223, 0.3) !important;
+      box-shadow: var(--badge-shadow) !important;
     }
     .mcb-mode-tab.active .mcb-tab-pill,
     .mcb-mode-tab.active#btn-mode-delivery .mcb-tab-pill,
@@ -2510,7 +2612,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: var(--invert-bg);
       color: var(--invert-text);
       font-weight: 700;
-      box-shadow: 0 0 8px rgba(223, 223, 223, 0.3);
+      box-shadow: var(--badge-shadow);
     }
 
     /* Tab Content */
@@ -2522,7 +2624,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
+      background: var(--modal-overlay-bg);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -2545,7 +2647,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 0 24px rgba(255, 255, 255, 0.12);
+      box-shadow: var(--modal-shadow);
     }
     .modal-header {
       display: flex;
@@ -2581,7 +2683,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-radius: 0;
       padding: 10px;
       text-align: left;
-      box-shadow: 0 0 8px rgba(255, 255, 255, 0.05);
+      box-shadow: var(--card-box-shadow);
     }
     .summary-stat-card .label {
       font-size: var(--fs-sm);
@@ -2638,19 +2740,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
       top: var(--header-height, 102px);
       z-index: 850;
       margin-bottom: 18px;
-      background: #181818;
+      background: var(--bg-mcb);
       border: none;
       border-top: 1px solid var(--line);
       border-bottom: 1px solid var(--line);
       border-radius: 0;
       padding: 12px 14px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+      box-shadow: var(--mcb-shadow);
       transition: top 0.1s ease;
     }
     .master-command-bar.running {
       border-top-color: var(--invert-bg);
       border-bottom-color: var(--invert-bg);
-      background: #1C1C1C;
+      background: var(--bg-mcb-running);
     }
     .mcb-inner {
       display: flex;
@@ -2935,10 +3037,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-top">
         <div class="logo-area">
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span class="badge">v1.1.0</span></h1>
+            <h1>모비노기 생활 지원도구 <span class="badge">v1.1.1</span></h1>
           </div>
         </div>
         <div class="header-actions">
+          <button id="btn-toggle-theme" class="header-action-btn" onclick="toggleTheme()" title="다크모드 끄기 (눈이 편안한 웜그레이 화면으로 전환)">
+            <span class="btn-label" id="theme-toggle-label">다크모드 ON</span>
+          </button>
           <button class="header-action-btn" onclick="openUserDataFolder()" title="레시피, 프리셋, 설정이 저장되는 내 문서 폴더 열기 (버전 업데이트 시 자동 유지)">
             <span class="btn-label">데이터 폴더</span>
           </button>
@@ -3033,7 +3138,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <button class="btn btn-sm" onclick="clearAllAlarms()">알람 비우기</button>
             </div>
           </div>
-          <div id="alarm-list-container" style="max-height: 120px; overflow-y: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px; background: #131313; border: 1px solid var(--line-subtle); border-radius: 0; padding: 6px 10px;">
+          <div id="alarm-list-container" style="max-height: 120px; overflow-y: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px; background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); border-radius: 0; padding: 6px 10px;">
             <p style="color: var(--text-muted); font-size: var(--fs-sm);"><span class="sym-prefix">&gt;</span>현재 등록된 주간 납품 알람이 없습니다. (납품 파이프라인 가동 시 자동 등록됩니다)</p>
           </div>
         </div>
@@ -4283,6 +4388,36 @@ HTML_PAGE = r"""<!DOCTYPE html>
       } catch (e) {}
     }
 
+    let currentTheme = safeGetStorage('mabi_theme', 'dark');
+
+    function applyThemeUI(theme) {
+      currentTheme = theme;
+      document.documentElement.setAttribute('data-theme', theme);
+      safeSetStorage('mabi_theme', theme);
+      const label = document.getElementById('theme-toggle-label');
+      if (label) {
+        label.textContent = theme === 'dark' ? '다크모드 ON' : '다크모드 OFF';
+      }
+      const btn = document.getElementById('btn-toggle-theme');
+      if (btn) {
+        btn.setAttribute('title', theme === 'dark' ? '다크모드 끄기 (눈이 편안한 웜그레이 화면으로 전환)' : '다크모드 켜기 (어두운 화면으로 전환)');
+      }
+    }
+
+    async function toggleTheme() {
+      const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      applyThemeUI(nextTheme);
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ theme: nextTheme })
+        });
+      } catch (e) {
+        console.error('테마 설정 저장 실패:', e);
+      }
+    }
+
     let currentAlterOrder = safeGetStorage('mabi_alter_order', 'high_tier');
     let currentGoalFulfillmentMode = (safeGetStorage('mabi_goal_fulfillment_mode', 'true') === 'true');
     let currentSoundAlarmEnabled = (safeGetStorage('mabi_sound_alarm_enabled', 'false') === 'true');
@@ -4292,12 +4427,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
     let cachedQuickPlan = null;
 
     async function loadSettings() {
+      applyThemeUI(currentTheme);
       applyAlterOrderUI();
       updateMasterCommandBar();
       try {
         const res = await fetch('/api/settings');
         const d = await res.json();
         if (d) {
+          if (d.theme) {
+            applyThemeUI(d.theme);
+          }
           if (d.alter_order) {
             currentAlterOrder = d.alter_order;
             safeSetStorage('mabi_alter_order', currentAlterOrder);
@@ -6048,7 +6187,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const compDetail = f.completed_detail ? ` (${f.completed_detail})` : '';
 
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px; box-shadow: 0 0 8px rgba(255, 255, 255, 0.05);">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px; box-shadow: var(--card-box-shadow);">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">${f.facility}</span>
                     <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
@@ -6756,7 +6895,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const isOver = f.overflow > 0;
               
               html += `
-                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px; box-shadow: 0 0 8px rgba(255, 255, 255, 0.05);">
+                <div style="flex: 1 1 calc(33.333% - 8px); min-width: 185px; background: var(--bg-sub-panel); border: 1px solid ${isOver ? 'var(--border-focus)' : 'var(--line-subtle)'}; border-radius: 0; padding: 8px 10px; box-shadow: var(--card-box-shadow);">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-title);">${f.facility}</span>
                     <span class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: ${avail > 0 ? 'var(--text-main)' : 'var(--text-muted)'};">
