@@ -29,7 +29,11 @@ else:
 import webbrowser
 import subprocess
 from mabi_cli import MabinogiCLI, MabinogiCLIError, get_saved_cli_path, find_cli_path, get_user_data_dir, get_user_data_path
-from delivery_manager import DeliveryManager, DeliveryTask, alarm_store, delivery_target_store, delivery_preset_store, custom_target_store, settings_store, get_facility_for_material
+from delivery_manager import (
+    DeliveryManager, DeliveryTask, alarm_store, delivery_target_store,
+    delivery_preset_store, custom_target_store, settings_store, get_facility_for_material,
+    send_discord_test_message, notify_discord_goal_completion
+)
 
 BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 EXE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
@@ -800,6 +804,23 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error(e)
             return
 
+        if path == "/api/discord/test":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                url = req_json.get("webhook_url") or settings_store.get("discord_webhook_url", "")
+                success, msg = send_discord_test_message(url)
+                if success:
+                    add_log("success", f"[디스코드] 테스트 웹훅 메시지가 성공적으로 전송되었습니다.")
+                    self._send_json({"status": "success", "message": msg})
+                else:
+                    add_log("warn", f"[디스코드] 테스트 웹훅 전송 실패: {msg}")
+                    self._send_json({"status": "error", "message": msg}, 400)
+            except Exception as e:
+                self._send_error(e)
+            return
+
         if path == "/api/execute_batch":
             if is_busy:
                 self._send_error("이미 다른 작업이 진행 중입니다.", 409)
@@ -836,22 +857,35 @@ class RequestHandler(BaseHTTPRequestHandler):
                         with status_lock:
                             last_execution_summary = res["summary"]
                             last_summary_id += 1
+                        if goal_fulfillment_mode and not manager_instance.abort_requested:
+                            threading.Thread(
+                                target=notify_discord_goal_completion,
+                                args=(res["summary"], "전체 주간 납품"),
+                                daemon=True
+                            ).start()
                 except Exception as err:
                     add_log("error", f"일괄 제작 실패: {str(err)}")
+                    err_summary = {
+                        "title": "주간 납품 작업 리포트 (오류 중단)",
+                        "status": "error",
+                        "status_text": "오류 중단",
+                        "duration_text": "0초",
+                        "wings": {"initial": 0, "final": 0, "used": 0},
+                        "gather": {"count": 0, "items": []},
+                        "alter": {"count": 0, "items": []},
+                        "craft": {"count": 0, "items": []},
+                        "collected_facilities": [],
+                        "deferred_works": [{"recipe": "일괄 납품", "reason": str(err)}]
+                    }
                     with status_lock:
-                        last_execution_summary = {
-                            "title": "주간 납품 작업 리포트 (오류 중단)",
-                            "status": "aborted",
-                            "status_text": "오류 중단",
-                            "duration_text": "0초",
-                            "wings": {"initial": 0, "final": 0, "used": 0},
-                            "gather": {"count": 0, "items": []},
-                            "alter": {"count": 0, "items": []},
-                            "craft": {"count": 0, "items": []},
-                            "collected_facilities": [],
-                            "deferred_works": [{"recipe": "일괄 납품", "reason": str(err)}]
-                        }
+                        last_execution_summary = err_summary
                         last_summary_id += 1
+                    if goal_fulfillment_mode and not manager_instance.abort_requested:
+                        threading.Thread(
+                            target=notify_discord_goal_completion,
+                            args=(err_summary, "전체 주간 납품"),
+                            daemon=True
+                        ).start()
                 finally:
                     is_busy = False
                     current_task_info = ""
@@ -897,22 +931,35 @@ class RequestHandler(BaseHTTPRequestHandler):
                         with status_lock:
                             last_execution_summary = res["summary"]
                             last_summary_id += 1
+                        if goal_fulfillment_mode and not manager_instance.abort_requested:
+                            threading.Thread(
+                                target=notify_discord_goal_completion,
+                                args=(res["summary"], "지정 제작"),
+                                daemon=True
+                            ).start()
                 except Exception as err:
                     add_log("error", f"개별 지정 일괄 제작 실패: {str(err)}")
+                    err_summary = {
+                        "title": "개별 지정 제작 리포트 (오류 중단)",
+                        "status": "error",
+                        "status_text": "오류 중단",
+                        "duration_text": "0초",
+                        "wings": {"initial": 0, "final": 0, "used": 0},
+                        "gather": {"count": 0, "items": []},
+                        "alter": {"count": 0, "items": []},
+                        "craft": {"count": 0, "items": []},
+                        "collected_facilities": [],
+                        "deferred_works": [{"recipe": "개별 지정 제작", "reason": str(err)}]
+                    }
                     with status_lock:
-                        last_execution_summary = {
-                            "title": "개별 지정 제작 리포트 (오류 중단)",
-                            "status": "aborted",
-                            "status_text": "오류 중단",
-                            "duration_text": "0초",
-                            "wings": {"initial": 0, "final": 0, "used": 0},
-                            "gather": {"count": 0, "items": []},
-                            "alter": {"count": 0, "items": []},
-                            "craft": {"count": 0, "items": []},
-                            "collected_facilities": [],
-                            "deferred_works": [{"recipe": "개별 지정 제작", "reason": str(err)}]
-                        }
+                        last_execution_summary = err_summary
                         last_summary_id += 1
+                    if goal_fulfillment_mode and not manager_instance.abort_requested:
+                        threading.Thread(
+                            target=notify_discord_goal_completion,
+                            args=(err_summary, "지정 제작"),
+                            daemon=True
+                        ).start()
                 finally:
                     is_busy = False
                     current_task_info = ""
@@ -3037,7 +3084,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-top">
         <div class="logo-area">
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span class="badge">v1.1.1</span></h1>
+            <h1>모비노기 생활 지원도구 <span class="badge">v1.2.0</span></h1>
           </div>
         </div>
         <div class="header-actions">
@@ -3074,6 +3121,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="pill weight" id="pill-weight">무게 -/-</div>
         <span class="status-delim">|</span>
         <div class="pill sound" id="pill-sound" onclick="toggleSoundAlarmSetting()" style="cursor: pointer;" title="클릭하여 작업 완료 알림음 ON/OFF 전환">알람 소리: 꺼짐</div>
+        <span class="status-delim">|</span>
+        <div class="pill discord" id="pill-discord" onclick="openDiscordModal()" style="cursor: pointer;" title="클릭하여 디스코드 웹훅 알림 설정 열기">디스코드: 꺼짐</div>
       </div>
     </header>
 
@@ -3186,6 +3235,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <button class="mcb-pill-btn" id="mcb-btn-sound" onclick="toggleSoundAlarmSetting()" title="목표 완수/작업 완료 시 효과음 알림 (기본값: 무음)">
               <span class="cli-check-box" id="mcb-sound-icon">□</span>
               <span id="mcb-sound-text">알림음 꺼짐</span>
+            </button>
+            <button class="mcb-pill-btn" id="mcb-btn-discord" onclick="handleMcbDiscordClick()" title="목표 완수 모드 완료 시 디스코드 웹훅 알림 (클릭하여 ON/OFF 전환 또는 설정)">
+              <span class="cli-check-box" id="mcb-discord-icon">□</span>
+              <span id="mcb-discord-text">디스코드 알림</span>
             </button>
             <button class="mcb-pill-btn btn" id="mcb-btn-order" onclick="toggleAlterOrderSetting()" title="가공 순서 우선순위 (상위 티어 / 하위 티어 우선)">
               <span id="mcb-order-text">상위티어 우선</span>
@@ -3823,6 +3876,61 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Discord Webhook Modal -->
+  <div class="modal-overlay" id="discord-modal-overlay" onclick="handleDiscordModalOverlayClick(event)">
+    <div class="modal-dialog" style="max-width: 560px;">
+      <div class="modal-header">
+        <div>
+          <h3 style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">//</span>디스코드 웹훅 알림 연동</h3>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;"><span class="sym-prefix">&gt;</span>목표 완수 모드 작업 완료 시 디스코드 채널로 리포트 전송</div>
+        </div>
+        <button class="btn btn-sm" onclick="closeDiscordModal()">닫기</button>
+      </div>
+      <div class="modal-body" style="line-height: 1.6;">
+        <!-- Status Box -->
+        <div style="margin-bottom: 16px; padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>연동 상태</span>
+            <span id="discord-modal-status-badge" class="badge">설정 확인 중...</span>
+          </div>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted);">
+            목표 완수 모드에서 가공, 채집, 완제품 제작 등 <strong>할 수 있는 모든 작업이 완료되었을 때</strong> 디스코드로 결과 요약 리포트를 자동으로 전송합니다.
+          </div>
+        </div>
+
+        <!-- Webhook URL Input -->
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-weight: 700; color: var(--text-bright); margin-bottom: 6px; font-size: var(--fs-md);">
+            <span class="sym-prefix">&gt;</span>디스코드 웹훅 URL
+          </label>
+          <input type="text" id="discord-webhook-url-input" class="input-text mono-num" style="width: 100%; box-sizing: border-box;" placeholder="https://discord.com/api/webhooks/...">
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 6px;">
+            * 디스코드 채널 설정 &gt; 연동 &gt; 웹훅 만들기 &gt; [웹훅 URL 복사]를 붙여넣으세요.
+          </div>
+        </div>
+
+        <!-- Notification Toggle -->
+        <div style="margin-bottom: 16px;">
+          <label class="mcb-option-toggle" style="cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="discord-alarm-enabled-input" onchange="onDiscordModalToggleChange(this.checked)">
+            <span class="cli-check-box" id="discord-enabled-check-sym">□</span>
+            <span style="font-size: var(--fs-md); font-weight: 600; color: var(--text-bright);">목표 완수 모드 완료 시 디스코드 알림 활성화</span>
+          </label>
+        </div>
+
+        <!-- Test Result Banner -->
+        <div id="discord-test-result" style="display: none; padding: 10px 12px; margin-bottom: 8px; font-size: var(--fs-sm); border: 1px solid var(--line);"></div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <button class="btn btn-sm" id="btn-discord-test" onclick="testDiscordWebhook()">테스트 전송</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-sm" onclick="closeDiscordModal()">취소</button>
+          <button class="btn btn-sm btn-solid-core" onclick="saveDiscordSettings()">저장</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Global Error Handlers (Reports browser errors to server logs)
     window.onerror = function(msg, url, lineNo, colNo, err) {
@@ -4421,6 +4529,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
     let currentAlterOrder = safeGetStorage('mabi_alter_order', 'high_tier');
     let currentGoalFulfillmentMode = (safeGetStorage('mabi_goal_fulfillment_mode', 'true') === 'true');
     let currentSoundAlarmEnabled = (safeGetStorage('mabi_sound_alarm_enabled', 'false') === 'true');
+    let currentDiscordWebhookUrl = safeGetStorage('mabi_discord_webhook_url', '');
+    let currentDiscordAlarmEnabled = (safeGetStorage('mabi_discord_alarm_enabled', 'false') === 'true');
     let currentIsWeightOver = false;
     let cachedBatchPlan = null;
     let cachedCustomPlan = null;
@@ -4449,6 +4559,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
           if (d.sound_alarm_enabled !== undefined) {
             currentSoundAlarmEnabled = !!d.sound_alarm_enabled;
             safeSetStorage('mabi_sound_alarm_enabled', String(currentSoundAlarmEnabled));
+          }
+          if (d.discord_webhook_url !== undefined) {
+            currentDiscordWebhookUrl = d.discord_webhook_url || '';
+            safeSetStorage('mabi_discord_webhook_url', currentDiscordWebhookUrl);
+          }
+          if (d.discord_alarm_enabled !== undefined) {
+            currentDiscordAlarmEnabled = !!d.discord_alarm_enabled;
+            safeSetStorage('mabi_discord_alarm_enabled', String(currentDiscordAlarmEnabled));
           }
           updateMasterCommandBar();
         }
@@ -4658,6 +4776,35 @@ HTML_PAGE = r"""<!DOCTYPE html>
           pillSound.title = '클릭하여 작업 완료 알림음 켜기 (현재 꺼짐)';
         }
       }
+
+      const discordIcon = document.getElementById('mcb-discord-icon');
+      const discordText = document.getElementById('mcb-discord-text');
+      const pillDiscord = document.getElementById('pill-discord');
+      const isDiscordActive = currentDiscordAlarmEnabled && !!currentDiscordWebhookUrl;
+      if (discordIcon) {
+        discordIcon.innerText = isDiscordActive ? '■' : '□';
+        discordIcon.style.color = isDiscordActive ? 'var(--text-bright)' : 'var(--text-dim)';
+      }
+      if (discordText) {
+        if (!currentDiscordWebhookUrl) {
+          discordText.innerText = '디스코드 미설정';
+        } else {
+          discordText.innerText = currentDiscordAlarmEnabled ? '디스코드 켜짐' : '디스코드 꺼짐';
+        }
+      }
+      if (pillDiscord) {
+        if (isDiscordActive) {
+          pillDiscord.innerHTML = `디스코드: <span style="color: var(--text-bright); font-weight: 700;">켜짐</span>`;
+          pillDiscord.title = '클릭하여 디스코드 웹훅 알림 설정 (현재 켜짐)';
+        } else if (currentDiscordWebhookUrl) {
+          pillDiscord.innerHTML = `디스코드: <span style="color: var(--text-dim);">꺼짐</span>`;
+          pillDiscord.title = '클릭하여 디스코드 웹훅 알림 설정 (현재 꺼짐)';
+        } else {
+          pillDiscord.innerHTML = `디스코드: <span style="color: var(--text-dim);">미설정</span>`;
+          pillDiscord.title = '클릭하여 디스코드 웹훅 URL 등록';
+        }
+      }
+
       if (orderText) orderText.innerText = currentAlterOrder === 'low_tier' ? '가공: 하위티어 우선' : '가공: 상위티어 우선';
       if (startIcon) startIcon.innerText = '';
 
@@ -4791,6 +4938,177 @@ HTML_PAGE = r"""<!DOCTYPE html>
           body: JSON.stringify({ sound_alarm_enabled: currentSoundAlarmEnabled })
         });
       } catch (e) {}
+    }
+
+    function handleMcbDiscordClick() {
+      if (!currentDiscordWebhookUrl) {
+        openDiscordModal();
+        return;
+      }
+      toggleDiscordAlarmSetting();
+    }
+
+    async function toggleDiscordAlarmSetting() {
+      if (!currentDiscordWebhookUrl) {
+        openDiscordModal();
+        return;
+      }
+      currentDiscordAlarmEnabled = !currentDiscordAlarmEnabled;
+      safeSetStorage('mabi_discord_alarm_enabled', String(currentDiscordAlarmEnabled));
+      updateMasterCommandBar();
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ discord_alarm_enabled: currentDiscordAlarmEnabled })
+        });
+      } catch (e) {}
+    }
+
+    function openDiscordModal() {
+      const overlay = document.getElementById('discord-modal-overlay');
+      const urlInput = document.getElementById('discord-webhook-url-input');
+      const enabledCheck = document.getElementById('discord-alarm-enabled-input');
+      const checkSym = document.getElementById('discord-enabled-check-sym');
+      const badge = document.getElementById('discord-modal-status-badge');
+      const testResult = document.getElementById('discord-test-result');
+
+      if (urlInput) urlInput.value = currentDiscordWebhookUrl;
+      if (enabledCheck) {
+        enabledCheck.checked = currentDiscordAlarmEnabled;
+        if (checkSym) {
+          checkSym.innerText = currentDiscordAlarmEnabled ? '■' : '□';
+          checkSym.style.color = currentDiscordAlarmEnabled ? 'var(--text-bright)' : 'var(--text-dim)';
+        }
+      }
+      if (badge) {
+        if (currentDiscordAlarmEnabled && currentDiscordWebhookUrl) {
+          badge.className = 'badge';
+          badge.style.color = 'var(--text-bright)';
+          badge.innerText = '알림 켜짐';
+        } else if (currentDiscordWebhookUrl) {
+          badge.className = 'badge';
+          badge.style.color = 'var(--text-dim)';
+          badge.innerText = '알림 꺼짐 (URL 등록됨)';
+        } else {
+          badge.className = 'badge';
+          badge.style.color = 'var(--text-dim)';
+          badge.innerText = '미등록';
+        }
+      }
+      if (testResult) {
+        testResult.style.display = 'none';
+        testResult.innerText = '';
+      }
+      if (overlay) overlay.style.display = 'flex';
+    }
+
+    function closeDiscordModal() {
+      const overlay = document.getElementById('discord-modal-overlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+
+    function handleDiscordModalOverlayClick(e) {
+      if (e.target && e.target.id === 'discord-modal-overlay') {
+        closeDiscordModal();
+      }
+    }
+
+    function onDiscordModalToggleChange(checked) {
+      const checkSym = document.getElementById('discord-enabled-check-sym');
+      if (checkSym) {
+        checkSym.innerText = checked ? '■' : '□';
+        checkSym.style.color = checked ? 'var(--text-bright)' : 'var(--text-dim)';
+      }
+    }
+
+    async function saveDiscordSettings() {
+      const urlInput = document.getElementById('discord-webhook-url-input');
+      const enabledCheck = document.getElementById('discord-alarm-enabled-input');
+      const url = urlInput ? urlInput.value.trim() : '';
+      const enabled = enabledCheck ? enabledCheck.checked : false;
+
+      if (enabled && !url) {
+        alert('디스코드 웹훅 알림을 켜려면 먼저 유효한 웹훅 URL을 입력해주세요.');
+        return;
+      }
+      if (url && !url.startsWith('https://discord.com/api/webhooks/') && !url.startsWith('https://discordapp.com/api/webhooks/')) {
+        if (!confirm('입력하신 URL이 일반적인 디스코드 웹훅 주소(https://discord.com/api/webhooks/...) 형식이 아닙니다.\n이대로 저장하시겠습니까?')) {
+          return;
+        }
+      }
+
+      currentDiscordWebhookUrl = url;
+      currentDiscordAlarmEnabled = enabled;
+      safeSetStorage('mabi_discord_webhook_url', url);
+      safeSetStorage('mabi_discord_alarm_enabled', String(enabled));
+      updateMasterCommandBar();
+
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            discord_webhook_url: currentDiscordWebhookUrl,
+            discord_alarm_enabled: currentDiscordAlarmEnabled
+          })
+        });
+        closeDiscordModal();
+        alert('디스코드 웹훅 설정이 저장되었습니다.');
+      } catch (e) {
+        alert('설정 저장 중 오류가 발생했습니다: ' + e);
+      }
+    }
+
+    async function testDiscordWebhook() {
+      const urlInput = document.getElementById('discord-webhook-url-input');
+      const url = urlInput ? urlInput.value.trim() : currentDiscordWebhookUrl;
+      const resBox = document.getElementById('discord-test-result');
+      const btnTest = document.getElementById('btn-discord-test');
+
+      if (!url) {
+        alert('테스트할 디스코드 웹훅 URL을 입력해주세요.');
+        return;
+      }
+
+      if (btnTest) btnTest.disabled = true;
+      if (resBox) {
+        resBox.style.display = 'block';
+        resBox.style.color = 'var(--text-muted)';
+        resBox.innerText = '디스코드 테스트 메시지 전송 중...';
+      }
+
+      try {
+        const resp = await fetch('/api/discord/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ webhook_url: url })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+          if (resBox) {
+            resBox.style.display = 'block';
+            resBox.style.color = 'var(--text-bright)';
+            resBox.style.borderColor = 'var(--line)';
+            resBox.innerHTML = `[성공] ${data.message || '디스코드로 테스트 메시지가 정상 전송되었습니다!'}`;
+          }
+        } else {
+          if (resBox) {
+            resBox.style.display = 'block';
+            resBox.style.color = '#EF4444';
+            resBox.style.borderColor = '#EF4444';
+            resBox.innerText = `[실패] ${data.message || '웹훅 전송에 실패했습니다.'}`;
+          }
+        }
+      } catch (err) {
+        if (resBox) {
+          resBox.style.display = 'block';
+          resBox.style.color = '#EF4444';
+          resBox.innerText = `[오류] 전송 중 네트워크 오류: ${err.message}`;
+        }
+      } finally {
+        if (btnTest) btnTest.disabled = false;
+      }
     }
 
     function toggleAlterOrderSetting() {

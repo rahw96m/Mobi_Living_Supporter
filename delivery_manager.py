@@ -1022,6 +1022,8 @@ class SettingsStore:
         "alter_order": "high_tier",  # "high_tier" (상위 티어부터 / 오래 걸리는 가공 우선) or "low_tier" (하위 티어부터 / 기초 재료부터)
         "goal_fulfillment_mode": True,  # 목표 완수 모드 (완제품까지 연속 실행)
         "sound_alarm_enabled": False,   # 완료 효과음 알림 (기본값 OFF, 무음)
+        "discord_webhook_url": "",      # 디스코드 웹훅 URL
+        "discord_alarm_enabled": False, # 디스코드 완료 알림 활성화 여부
     }
 
     def __init__(self, filepath: str = SETTINGS_FILE):
@@ -1061,6 +1063,238 @@ class SettingsStore:
         self.save()
 
 settings_store = SettingsStore()
+
+
+def send_discord_webhook(webhook_url: str, payload: Dict[str, Any], timeout: int = 10) -> Tuple[bool, str]:
+    """Sends a JSON payload to a Discord webhook URL using urllib."""
+    if not webhook_url or not isinstance(webhook_url, str) or not webhook_url.startswith("http"):
+        return False, "유효한 웹훅 URL이 아닙니다."
+    try:
+        import urllib.request
+        import urllib.error
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            webhook_url.strip(),
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "MobiLivingSupporter/1.1",
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if response.status in (200, 204):
+                return True, "전송 성공"
+            return False, f"HTTP {response.status}"
+    except urllib.error.HTTPError as e:
+        return False, f"전송 실패 (HTTP {e.code}): {e.reason}"
+    except Exception as e:
+        return False, f"전송 오류: {str(e)}"
+
+
+def send_discord_test_message(webhook_url: str) -> Tuple[bool, str]:
+    """Sends a verification test embed to the user's Discord webhook."""
+    from datetime import datetime
+    payload = {
+        "content": "🔔 **[모비노기 생활 지원도구]** 디스코드 웹훅 연동 테스트 성공!",
+        "embeds": [
+            {
+                "title": "🔔 디스코드 웹훅 알림 연동 완료",
+                "description": "모비노기 생활 지원도구와 디스코드 채널이 정상적으로 연결되었습니다.\n**[목표 완수 모드]**에서 모든 작업이 완료되면 이 채널로 상세 리포트가 전송됩니다.",
+                "color": 0x5865F2,  # Discord Blurple
+                "fields": [
+                    {
+                        "name": "🎯 알림 연동 대상",
+                        "value": "• 전체 주간 납품 목표 완수 모드\n• 개별 지정 제작 목표 완수 모드",
+                        "inline": False
+                    },
+                    {
+                        "name": "⚙️ 전송 정보",
+                        "value": "소요 시간, 정령의 날개 소모, 완제품 제작 목록, 가공/채집 내역",
+                        "inline": False
+                    }
+                ],
+                "footer": {
+                    "text": f"모비노기 생활 지원도구 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                }
+            }
+        ]
+    }
+    return send_discord_webhook(webhook_url, payload)
+
+
+def notify_discord_goal_completion(summary: Dict[str, Any], context_label: str = "주간 납품") -> bool:
+    """Sends a rich Discord embed summary when Goal Fulfillment Mode finishes all available tasks."""
+    webhook_url = settings_store.get("discord_webhook_url", "")
+    if isinstance(webhook_url, str):
+        webhook_url = webhook_url.strip()
+    alarm_enabled = bool(settings_store.get("discord_alarm_enabled", False))
+
+    if not alarm_enabled or not webhook_url:
+        return False
+
+    from datetime import datetime
+
+    status = summary.get("status", "completed")
+    status_text = summary.get("status_text", "완료")
+    duration_text = summary.get("duration_text", "0초")
+    wings = summary.get("wings", {})
+    craft = summary.get("craft", {})
+    alter = summary.get("alter", {})
+    gather = summary.get("gather", {})
+    collected = summary.get("collected_facilities", [])
+    special = summary.get("special_materials", [])
+    deferred = summary.get("deferred_works", [])
+
+    # Check if a popup window or blocked state occurred
+    blocked_reason = ""
+    for dw in deferred:
+        r = str(dw.get("reason", ""))
+        if any(k in r.lower() for k in ["blocked", "popup", "팝업", "차단"]):
+            blocked_reason = r
+            break
+    if not blocked_reason:
+        for g in gather.get("items", []):
+            err = str(g.get("error", ""))
+            if any(k in err.lower() for k in ["blocked", "popup", "팝업", "차단"]):
+                blocked_reason = err
+                break
+
+    # Color & title based on result
+    if blocked_reason:
+        title = f"⚠️ [{context_label}] 게임 내 팝업창 감지 / 작업 중단"
+        desc = "🔔 게임 화면에 확인 팝업(1시간 안전 확인 등) 또는 상호작용 UI가 발생하여 캐릭터 행동이 차단되었습니다.\n게임 클라이언트에서 [확인]을 눌러 팝업을 닫아주세요."
+        color = 0xE74C3C  # Red
+    elif status == "completed":
+        title = f"🎯 [{context_label}] 목표 완수 모드 100% 달성 완료!"
+        desc = "🎉 등록된 모든 목표 아이템의 제작/납품 수량이 100% 완수되었습니다!"
+        color = 0x2ECC71  # Green
+    elif status == "waiting_in_background":
+        title = f"🎯 [{context_label}] 목표 완수 모드 가용 작업 완료 안내"
+        desc = "ℹ️ 현재 보유한 원자재로 진행 가능한 모든 가공 및 제작이 완료되었습니다.\n(원자재 소진 또는 대기열 진행 중)"
+        color = 0x3498DB  # Blue
+    elif status == "aborted":
+        title = f"⏹️ [{context_label}] 목표 완수 모드 사용자 중지"
+        desc = "사용자의 중단 요청으로 작업이 중간에 안전하게 중단되었습니다."
+        color = 0x95A5A6  # Gray
+    elif status in ("error", "failed"):
+        title = f"⚠️ [{context_label}] 목표 완수 모드 작업 오류 중단"
+        desc = "작업 수행 중 예기치 않은 오류가 발생하여 파이프라인이 중단되었습니다."
+        color = 0xE74C3C  # Red
+    else:
+        title = f"⚠️ [{context_label}] 목표 완수 모드 작업 종료 ({status_text})"
+        desc = "가방 과적, 정령의 날개 부족 또는 안전장치로 인해 작업이 마무리되었습니다."
+        color = 0xE67E22  # Orange
+
+    fields = [
+        {
+            "name": "⏱️ 소요 시간",
+            "value": duration_text or "-",
+            "inline": True
+        },
+        {
+            "name": "🪶 정령의 날개",
+            "value": f"{wings.get('used', 0):,}개 소모 (잔여: {wings.get('final', 0):,}개)",
+            "inline": True
+        }
+    ]
+
+    if blocked_reason:
+        fields.append({
+            "name": "🚨 차단 상세 원인",
+            "value": f"게임 클라이언트 응답: `{blocked_reason}`\n(게임 내 확인 팝업창을 닫은 뒤 대시보드에서 일괄 실행을 다시 누르면 이어서 진행됩니다)",
+            "inline": False
+        })
+
+    # Crafted items
+    craft_items = craft.get("items", [])
+    if craft_items:
+        craft_lines = [f"• **{c.get('item', c.get('item_name', ''))}**: {c.get('crafted', c.get('count', 0)):,}개" for c in craft_items[:10]]
+        if len(craft_items) > 10:
+            craft_lines.append(f"• 외 {len(craft_items) - 10}건...")
+        fields.append({
+            "name": f"🔨 완제품 제작 완료 (총 {craft.get('total_crafted', len(craft_items)):,}개)",
+            "value": "\n".join(craft_lines),
+            "inline": False
+        })
+    elif status == "completed":
+        fields.append({
+            "name": "🔨 완제품 제작",
+            "value": "모든 목표 수량이 이미 달성되어 제작 생략",
+            "inline": False
+        })
+
+    # Altering items
+    alter_items = alter.get("items", [])
+    if alter_items:
+        alter_lines = [
+            f"• [{a.get('facility', '').replace(' 가공 시설', '')}] {a.get('recipe', a.get('item', ''))}: {a.get('registered', a.get('slots', 1))}슬롯"
+            f" (예상 산출 {a.get('yield_est', 0):,}개)"
+            for a in alter_items[:8]
+        ]
+        if len(alter_items) > 8:
+            alter_lines.append(f"• 외 {len(alter_items) - 8}건...")
+        fields.append({
+            "name": f"⚙️ 시설 가공 등록 (총 {alter.get('total_slots', len(alter_items))}슬롯)",
+            "value": "\n".join(alter_lines),
+            "inline": False
+        })
+
+    # Gathered items
+    gather_items = gather.get("items", [])
+    if gather_items:
+        gather_lines = [f"• **{g.get('item', g.get('name', ''))}**: +{g.get('gained', 0):,}개" for g in gather_items[:8]]
+        if len(gather_items) > 8:
+            gather_lines.append(f"• 외 {len(gather_items) - 8}건...")
+        fields.append({
+            "name": f"🌿 원자재 필드 채집 (총 {gather.get('total_gained', len(gather_items)):,}개)",
+            "value": "\n".join(gather_lines),
+            "inline": False
+        })
+
+    # Pre-collected facilities
+    if collected:
+        clean_facs = [f.replace(' 가공 시설', '') for f in collected]
+        fields.append({
+            "name": "📦 사전 수령 완료 시설",
+            "value": ", ".join(clean_facs),
+            "inline": False
+        })
+
+    # Special / missing materials alert
+    if special:
+        sp_lines = [f"• **{sm.get('item_name', '')}**: {sm.get('deficit', 0)}개 부족 (상점 구매 또는 사냥 필요)" for sm in special[:5]]
+        fields.append({
+            "name": "⚠️ 별도 확보 필요 재료",
+            "value": "\n".join(sp_lines),
+            "inline": False
+        })
+
+    # Deferred works
+    if deferred and status != "completed":
+        fields.append({
+            "name": "⏳ 가공 보류/대기",
+            "value": f"총 {len(deferred)}건의 가공이 슬롯 또는 하위 재료 대기로 보류되었습니다.",
+            "inline": False
+        })
+
+    payload = {
+        "content": f"🔔 **[모비노기 생활 지원도구]** {title}",
+        "embeds": [
+            {
+                "title": title,
+                "description": desc,
+                "color": color,
+                "fields": fields,
+                "footer": {
+                    "text": f"모비노기 생활 지원도구 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                }
+            }
+        ]
+    }
+
+    success, _ = send_discord_webhook(webhook_url, payload)
+    return success
 
 class DeliveryManager:
     def __init__(self, cli: Optional[MabinogiCLI] = None):
