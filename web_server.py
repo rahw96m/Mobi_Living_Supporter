@@ -3084,7 +3084,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-top">
         <div class="logo-area">
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span class="badge">v1.2.0</span></h1>
+            <h1>모비노기 생활 지원도구 <span class="badge">v1.2.1</span></h1>
           </div>
         </div>
         <div class="header-actions">
@@ -3236,8 +3236,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <span class="cli-check-box" id="mcb-sound-icon">□</span>
               <span id="mcb-sound-text">알림음 꺼짐</span>
             </button>
-            <button class="mcb-pill-btn" id="mcb-btn-discord" onclick="handleMcbDiscordClick()" title="목표 완수 모드 완료 시 디스코드 웹훅 알림 (클릭하여 ON/OFF 전환 또는 설정)">
-              <span class="cli-check-box" id="mcb-discord-icon">□</span>
+            <button class="mcb-pill-btn" id="mcb-btn-discord" onclick="openDiscordModal()" title="목표 완수 모드 디스코드 웹훅 알림 설정 (클릭하여 설정 열기)">
+              <span class="cli-check-box" id="mcb-discord-icon" onclick="event.stopPropagation(); toggleDiscordAlarmSetting();" title="알림 켜기/끄기">□</span>
               <span id="mcb-discord-text">디스코드 알림</span>
             </button>
             <button class="mcb-pill-btn btn" id="mcb-btn-order" onclick="toggleAlterOrderSetting()" title="가공 순서 우선순위 (상위 티어 / 하위 티어 우선)">
@@ -4066,6 +4066,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         closeSummaryModal();
         if (typeof closeCliModal === 'function') closeCliModal();
         if (typeof closeRecipeModal === 'function') closeRecipeModal();
+        if (typeof closeDiscordModal === 'function') closeDiscordModal();
       }
     });
 
@@ -4941,11 +4942,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     function handleMcbDiscordClick() {
-      if (!currentDiscordWebhookUrl) {
-        openDiscordModal();
-        return;
-      }
-      toggleDiscordAlarmSetting();
+      openDiscordModal();
     }
 
     async function toggleDiscordAlarmSetting() {
@@ -4973,7 +4970,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const badge = document.getElementById('discord-modal-status-badge');
       const testResult = document.getElementById('discord-test-result');
 
-      if (urlInput) urlInput.value = currentDiscordWebhookUrl;
+      if (urlInput) urlInput.value = currentDiscordWebhookUrl || '';
       if (enabledCheck) {
         enabledCheck.checked = currentDiscordAlarmEnabled;
         if (checkSym) {
@@ -5000,12 +4997,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
         testResult.style.display = 'none';
         testResult.innerText = '';
       }
-      if (overlay) overlay.style.display = 'flex';
+      if (overlay) {
+        overlay.style.display = '';
+        overlay.classList.add('active');
+      }
     }
 
     function closeDiscordModal() {
       const overlay = document.getElementById('discord-modal-overlay');
-      if (overlay) overlay.style.display = 'none';
+      if (overlay) {
+        overlay.classList.remove('active');
+      }
     }
 
     function handleDiscordModalOverlayClick(e) {
