@@ -1024,6 +1024,7 @@ class SettingsStore:
         "sound_alarm_enabled": False,   # 완료 효과음 알림 (기본값 OFF, 무음)
         "discord_webhook_url": "",      # 디스코드 웹훅 URL
         "discord_alarm_enabled": False, # 디스코드 완료 알림 활성화 여부
+        "weight_limit_ratio": 0.98,     # 작업 안전 중지 가방 무게 기준 (기본 98%)
     }
 
     def __init__(self, filepath: str = SETTINGS_FILE):
@@ -1063,6 +1064,19 @@ class SettingsStore:
         self.save()
 
 settings_store = SettingsStore()
+
+MAX_SAFE_WEIGHT_RATIO = 0.98  # 작업 안전 중지 가방 무게 기준 (98%)
+
+
+def get_weight_limit_ratio() -> float:
+    """작업 안전 중지 가방 무게 기준 비율을 반환합니다 (기본 0.98, 98%)."""
+    try:
+        val = float(settings_store.get("weight_limit_ratio", MAX_SAFE_WEIGHT_RATIO))
+        if 0.5 <= val <= 1.0:
+            return val
+    except Exception:
+        pass
+    return MAX_SAFE_WEIGHT_RATIO
 
 
 def send_discord_webhook(webhook_url: str, payload: Dict[str, Any], timeout: int = 10) -> Tuple[bool, str]:
@@ -2287,6 +2301,7 @@ class DeliveryManager:
 
         candidate_idx = 0
         stopped_by_target = False
+        stopped_by_overweight = False
         poll_interval = 1.0
         last_logged_gained = -1
         consecutive_zero_gains = 0
@@ -2307,6 +2322,25 @@ class DeliveryManager:
             if not tool_ok:
                 self.log(f"'{species_label}'({gather_target_item}) 채집 도구가 소모되었거나 내구도가 0입니다. 채집을 중단합니다.", "warn", callback)
                 break
+
+            # 0. Safety check: bag weight before starting gather round (98% limit)
+            try:
+                inv_info = self.cli.get_inventory()
+                cur_w = float(inv_info.get("CurrentInventoryWeightAsDecimal", 0) or inv_info.get("CurrentInventoryWeight", 0) or 0)
+                max_w = float(inv_info.get("MaxInventoryWeightAsDecimal", 1) or inv_info.get("MaxInventoryWeight", 1) or 1)
+                limit_ratio = get_weight_limit_ratio()
+                if max_w > 0 and (cur_w / max_w) >= limit_ratio:
+                    pct = (cur_w / max_w) * 100
+                    limit_pct = limit_ratio * 100
+                    self.log(
+                        f"[가방 무게 경고] 가방 무게가 {pct:.1f}%({cur_w:.1f}/{max_w:.1f})로 {limit_pct:.0f}% 기준 이상 차 있어 과적 방지를 위해 채집을 즉시 중단합니다.",
+                        "warn",
+                        callback
+                    )
+                    stopped_by_overweight = True
+                    break
+            except Exception:
+                pass
 
             worker_error = []
             worker_result = []
@@ -2355,19 +2389,22 @@ class DeliveryManager:
                 except Exception:
                     pass
 
-                # 1-1. Weight check to prevent overweight (95% limit)
+                # 1-1. Weight check to prevent overweight (98% limit)
                 try:
                     inv_info = self.cli.get_inventory()
-                    cur_w = float(inv_info.get("CurrentInventoryWeight", 0))
-                    max_w = float(inv_info.get("MaxInventoryWeight", 1))
-                    if max_w > 0 and (cur_w / max_w) >= 0.95:
+                    cur_w = float(inv_info.get("CurrentInventoryWeightAsDecimal", 0) or inv_info.get("CurrentInventoryWeight", 0) or 0)
+                    max_w = float(inv_info.get("MaxInventoryWeightAsDecimal", 1) or inv_info.get("MaxInventoryWeight", 1) or 1)
+                    limit_ratio = get_weight_limit_ratio()
+                    if max_w > 0 and (cur_w / max_w) >= limit_ratio:
                         pct = (cur_w / max_w) * 100
+                        limit_pct = limit_ratio * 100
                         self.log(
-                            f"[가방 무게 경고] 가방 무게가 {pct:.1f}%({cur_w:.1f}/{max_w:.1f})에 도달하여 과적 방지를 위해 채집을 즉시 안전 중단합니다.",
+                            f"[가방 무게 경고] 가방 무게가 {pct:.1f}%({cur_w:.1f}/{max_w:.1f})에 도달하여 {limit_pct:.0f}% 과적 방지 기준에 따라 채집을 즉시 안전 중단합니다.",
                             "warn",
                             callback
                         )
                         self._force_stop_worker(worker_thread)
+                        stopped_by_overweight = True
                         break
                 except Exception:
                     pass
@@ -2421,7 +2458,7 @@ class DeliveryManager:
             # Ensure current worker is stopped
             self._force_stop_worker(worker_thread, max_attempts=4)
 
-            if stopped_by_target or self.abort_requested:
+            if stopped_by_target or stopped_by_overweight or self.abort_requested:
                 break
 
             # Check if an error occurred during gathering
@@ -2489,7 +2526,14 @@ class DeliveryManager:
         final_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
         total_gained = max(0, final_count - initial_count)
 
-        if total_gained >= required_count or final_count >= target_count:
+        if stopped_by_overweight:
+            limit_pct = get_weight_limit_ratio() * 100
+            self.log(
+                f"[채집 과적 중단] 가방 무게 {limit_pct:.0f}% 기준 도달로 '{item_name}' 채집을 안전 종료합니다. (현재 획득: {total_gained}/{required_count}개, 가방: {final_count}개)",
+                "warn",
+                callback
+            )
+        elif total_gained >= required_count or final_count >= target_count:
             self.log(
                 f"[맞춤 채집 완료] '{item_name}' 총 {total_gained}개 획득 (가방: {final_count}개 / 필요: {required_count}개)", 
                 "success", 
@@ -2535,12 +2579,13 @@ class DeliveryManager:
             self.log(f"[개별 제작 목표 갱신] '{item_name}' 채집 완료({total_gained}개 획득) 반영 -> 현재 {new_cur_c}/{goal_c}개", "info", callback)
 
         return {
-            "status": "completed" if (total_gained >= required_count or final_count >= target_count) else "partial",
+            "status": "overweight" if stopped_by_overweight else ("completed" if (total_gained >= required_count or final_count >= target_count) else "partial"),
             "item": item_name,
             "required": required_count,
             "gained": total_gained,
             "current_owned": final_count,
-            "stopped_by_target": stopped_by_target
+            "stopped_by_target": stopped_by_target,
+            "stopped_by_overweight": stopped_by_overweight
         }
 
 
@@ -2582,6 +2627,19 @@ class DeliveryManager:
         for fac in facilities:
             if self.abort_requested:
                 break
+            # Weight check before collecting next facility (98% limit)
+            try:
+                inv = self.cli.get_inventory()
+                cur_w = float(inv.get("CurrentInventoryWeightAsDecimal", 0) or inv.get("CurrentInventoryWeight", 0) or 0)
+                max_w = float(inv.get("MaxInventoryWeightAsDecimal", 100) or inv.get("MaxInventoryWeight", 100) or 100)
+                limit_ratio = get_weight_limit_ratio()
+                if max_w > 0 and (cur_w / max_w) >= limit_ratio:
+                    pct = (cur_w / max_w) * 100
+                    limit_pct = limit_ratio * 100
+                    self.log(f"[가방 과적 경고] 가방 무게({cur_w:.1f}/{max_w:.1f}, {pct:.1f}%)가 {limit_pct:.0f}% 기준에 도달하여 가공품 수령을 안전하게 멈춥니다.", "warn", callback)
+                    break
+            except Exception:
+                pass
             items = facility_to_items[fac]
             rep_item = items[0]
             self.log(f"   ▶ '{fac}' 완료 가공품 {len(items)}건 수령 진행 ('{rep_item}' 등)...", "action", callback)
@@ -3541,6 +3599,9 @@ class DeliveryManager:
                             "required": g_deficit,
                             "status": g_res.get("status", "completed") if isinstance(g_res, dict) else "completed"
                         })
+                        if isinstance(g_res, dict) and g_res.get("status") == "overweight":
+                            self.log("[가방 과적 방지] 가방 무게가 98% 기준에 도달하여 남은 사전 채집을 안전 중단하고 다음 단계로 진행합니다.", "warn", callback)
+                            break
                         if isinstance(g_res, dict) and g_res.get("status") == "aborted":
                             self.log("[사용자 중지] 파이프라인이 중단되었습니다.", "warn", callback)
                             final_wings = self._safe_get_wings(initial_wings)
@@ -3913,13 +3974,16 @@ class DeliveryManager:
                             self.log("게임 연결이 끊겨 목표 완수 모드를 안전하게 종료합니다.", "warn", callback)
                             break
 
-                    # 2. Safety check: bag weight
+                    # 2. Safety check: bag weight (98% limit)
                     try:
                         inv = self.cli.get_inventory()
-                        cur_w = float(inv.get("CurrentInventoryWeightAsDecimal", 0) or 0)
-                        max_w = float(inv.get("MaxInventoryWeightAsDecimal", 100) or 100)
-                        if max_w > 0 and (cur_w / max_w) >= 0.98:
-                            self.log(f"[가방 과적 경고] 가방 무게({cur_w:.1f}/{max_w:.1f})가 98%에 도달하여 안전을 위해 가공 수령을 멈춥니다.", "warn", callback)
+                        cur_w = float(inv.get("CurrentInventoryWeightAsDecimal", 0) or inv.get("CurrentInventoryWeight", 0) or 0)
+                        max_w = float(inv.get("MaxInventoryWeightAsDecimal", 100) or inv.get("MaxInventoryWeight", 100) or 100)
+                        limit_ratio = get_weight_limit_ratio()
+                        if max_w > 0 and (cur_w / max_w) >= limit_ratio:
+                            pct = (cur_w / max_w) * 100
+                            limit_pct = limit_ratio * 100
+                            self.log(f"[가방 과적 경고] 가방 무게({cur_w:.1f}/{max_w:.1f}, {pct:.1f}%)가 {limit_pct:.0f}% 기준에 도달하여 안전을 위해 가공 수령 및 연속 작업을 멈춥니다.", "warn", callback)
                             break
                     except Exception:
                         pass
@@ -4197,6 +4261,9 @@ class DeliveryManager:
                             "required": g_deficit,
                             "status": g_res.get("status", "completed") if isinstance(g_res, dict) else "completed"
                         })
+                        if isinstance(g_res, dict) and g_res.get("status") == "overweight":
+                            self.log("[가방 과적 방지] 가방 무게가 98% 기준에 도달하여 남은 채집을 안전 중단하고 다음 단계로 진행합니다.", "warn", callback)
+                            break
                     except Exception as g_err:
                         gathered_list.append({
                             "item": g_name,
@@ -4739,6 +4806,9 @@ class DeliveryManager:
                         "required": needed_qty,
                         "status": g_res.get("status", "completed") if isinstance(g_res, dict) else "completed"
                     })
+                    if isinstance(g_res, dict) and g_res.get("status") == "overweight":
+                        self.log("[가방 과적 방지] 가방 무게가 98% 기준에 도달하여 남은 맞춤 채집을 안전 중단하고 다음 단계로 진행합니다.", "warn", callback)
+                        break
                     if isinstance(g_res, dict) and g_res.get("status") == "aborted":
                         self.log("[사용자 중지] 빠른 실행 파이프라인이 중단되었습니다.", "warn", callback)
                         final_wings = self._safe_get_wings(initial_wings)

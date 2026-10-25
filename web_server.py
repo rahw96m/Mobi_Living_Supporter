@@ -4022,7 +4022,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       const gaugeInner = renderGaugeCells(filled, len);
       const color = getWeightColorByRatio(ratio);
-      const isOver = ratio >= 1.0;
+      const isOver = ratio >= 0.98;
       const glowStyle = isOver ? 'text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); font-weight: 700;' : '';
       const percentStr = (ratio * 100).toFixed(1);
       const remain = Math.max(0, m - c);
@@ -4533,6 +4533,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
     let currentDiscordWebhookUrl = safeGetStorage('mabi_discord_webhook_url', '');
     let currentDiscordAlarmEnabled = (safeGetStorage('mabi_discord_alarm_enabled', 'false') === 'true');
     let currentIsWeightOver = false;
+    let currentWeightRatio = 0;
+
+    function checkWeightSafetyConfirm() {
+      if (currentIsWeightOver) {
+        const msg = currentWeightRatio >= 1.0
+          ? '[!] 가방 무게 초과 (정리 필요)\n\n현재 가방 무게가 최대치(100%)를 초과한 상태입니다.\n이대로 진행하면 채집/가공 완료품을 획득하지 못할 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?'
+          : '[!] 가방 무게 98% 도달 (작업 중지 주의)\n\n현재 가방 무게가 작업 안전 중지 기준(98%)에 도달한 상태입니다.\n이대로 진행하면 과적 방지 안전장치(98%)에 의해 채집 및 가공 수령 작업이 즉시 안전 중단될 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?';
+        return confirm(msg);
+      }
+      return true;
+    }
     let cachedBatchPlan = null;
     let cachedCustomPlan = null;
     let cachedQuickPlan = null;
@@ -4886,7 +4897,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
 
       if (currentIsWeightOver && briefing) {
-        briefing.innerHTML += ` <span style="color: #EF4444; font-weight: 700; text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); margin-left: 6px;">[!] 가방 무게 초과 (정리 필요)</span>`;
+        const warnLabel = currentWeightRatio >= 1.0 ? '[!] 가방 무게 초과 (정리 필요)' : '[!] 가방 무게 98% 도달 (작업 중단 주의)';
+        briefing.innerHTML += ` <span style="color: #EF4444; font-weight: 700; text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); margin-left: 6px;">${warnLabel}</span>`;
       }
 
       const goalToggleLabel = document.getElementById('mcb-goal-toggle-label');
@@ -5120,10 +5132,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     function triggerMasterStartAction() {
-      if (currentIsWeightOver) {
-        if (!confirm('[!] 가방 무게 초과 (정리 필요)\n\n현재 가방 무게가 최대치를 초과한 상태입니다.\n이대로 진행하면 채집/가공 완료품을 획득하지 못할 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?')) {
-          return;
-        }
+      if (!checkWeightSafetyConfirm()) {
+        return;
       }
       if (currentMainMode === 'delivery') {
         executeBatchPipeline();
@@ -5827,9 +5837,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const rawEntries = Object.entries(totalRaw);
         if (rawEntries.length > 0) {
           const rawText = rawEntries.map(([k, v]) => `<strong style="color: var(--text-main);">${k}</strong> <span class="mono-num">${v}</span>개`).join(', ');
-          if (gatherSum) gatherSum.innerHTML = `> <span>사전 부족분 맞춤 채집: ${rawText} <span style="color: var(--text-muted); font-size: var(--fs-sm);">(부족한 수량만 채집 후 즉시 자동 중단)</span></span>`;
+          if (gatherSum) gatherSum.innerHTML = `<span class="sym-prefix">&gt;</span><span>사전 부족분 맞춤 채집: ${rawText} <span style="color: var(--text-muted); font-size: var(--fs-sm);">(부족한 수량만 채집 후 즉시 자동 중단)</span></span>`;
         } else {
-          if (gatherSum) gatherSum.innerHTML = `> <span style="color: var(--text-main);">사전 채집이 필요한 원자재 없음 (보유량 충분)</span>`;
+          if (gatherSum) gatherSum.innerHTML = `<span class="sym-prefix">&gt;</span><span style="color: var(--text-main);">사전 채집이 필요한 원자재 없음 (보유량 충분)</span>`;
         }
 
         if (execBtn) {
@@ -5857,7 +5867,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const quickSummaryEl = document.getElementById('quick-alter-quick-summary');
         if (quickSummaryEl) {
           const canStartTag = data.can_start ? '<span style="color:var(--text-main); font-weight:700;">실행 가능</span>' : '<span style="color:var(--text-muted);">가공 예정 없음</span>';
-          quickSummaryEl.innerHTML = `> <strong>7슬롯 가공 빠른 실행:</strong> 가공 예정 <span class="mono-num" style="color: var(--text-main); font-weight:700;">${totalPlanned}건</span> :: 완료 수령 대기 <span class="mono-num" style="color: var(--text-main); font-weight:700;">${totalCompleted}건</span> :: 상태: ${canStartTag}`;
+          quickSummaryEl.innerHTML = `<strong>7슬롯 가공 빠른 실행:</strong> 가공 예정 <span class="mono-num" style="color: var(--text-main); font-weight:700;">${totalPlanned}건</span> :: 완료 수령 대기 <span class="mono-num" style="color: var(--text-main); font-weight:700;">${totalCompleted}건</span> :: 상태: ${canStartTag}`;
         }
         updateMasterCommandBar();
       } catch (e) {
@@ -5867,10 +5877,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     async function executeQuickAlter() {
-      if (currentIsWeightOver) {
-        if (!confirm('[!] 가방 무게 초과 (정리 필요)\n\n현재 가방 무게가 최대치를 초과한 상태입니다.\n이대로 진행하면 채집/가공 완료품을 획득하지 못할 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?')) {
-          return;
-        }
+      if (!checkWeightSafetyConfirm()) {
+        return;
       }
       const catText = currentQuickCategory === 'all' ? '전체 가공대' : `'${currentQuickCategory}' 가공대`;
       const orderDesc = currentAlterOrder === 'low_tier' ? '하위 티어(T1~T7)부터 순차 가공 등록' : '최고 티어(T7~T1)부터 순차 가공 등록 (오래 걸리는 가공 우선)';
@@ -5961,7 +5969,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const quickSummaryEl = document.getElementById('delivery-targets-quick-summary');
         if (quickSummaryEl) {
           if (targets.length === 0) {
-            quickSummaryEl.innerHTML = '<span style="color: var(--text-muted);"><span class="sym-prefix">&gt;</span>등록된 주간 납품 목표가 없습니다. 클릭하여 펼친 뒤 등록하세요.</span>';
+            quickSummaryEl.innerHTML = '<span style="color: var(--text-muted);">등록된 주간 납품 목표가 없습니다. 클릭하여 펼친 뒤 등록하세요.</span>';
           } else {
             const completedCount = targets.filter(t => t.is_completed || t.current >= t.goal).length;
             const itemTexts = targets.slice(0, 5).map(t => {
@@ -6548,10 +6556,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     async function executeBatchPipeline() {
-      if (currentIsWeightOver) {
-        if (!confirm('[!] 가방 무게 초과 (정리 필요)\n\n현재 가방 무게가 최대치를 초과한 상태입니다.\n이대로 진행하면 채집/가공 완료품을 획득하지 못할 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?')) {
-          return;
-        }
+      if (!checkWeightSafetyConfirm()) {
+        return;
       }
       const modeTitle = currentGoalFulfillmentMode ? '목표 완수 모드' : '주간 납품 일괄 제작';
       const modeExpl = currentGoalFulfillmentMode 
@@ -7256,10 +7262,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     async function executeCustomPipeline() {
-      if (currentIsWeightOver) {
-        if (!confirm('[!] 가방 무게 초과 (정리 필요)\n\n현재 가방 무게가 최대치를 초과한 상태입니다.\n이대로 진행하면 채집/가공 완료품을 획득하지 못할 수 있습니다.\n\n정리하지 않고 그래도 계속 실행하시겠습니까?')) {
-          return;
-        }
+      if (!checkWeightSafetyConfirm()) {
+        return;
       }
       const modeTitle = currentGoalFulfillmentMode ? '목표 완수 모드' : '지정 아이템 일괄 제작';
       const modeExpl = currentGoalFulfillmentMode
@@ -7415,19 +7419,25 @@ HTML_PAGE = r"""<!DOCTYPE html>
             wingsPill.innerHTML = `날개 <span class="mono-num">${(data.wings || 0).toLocaleString()}</span>`;
           }
           const inv = data.inventory || {};
-          const curWeight = inv.CurrentInventoryWeightAsDecimal || 0;
-          const maxWeight = inv.MaxInventoryWeightAsDecimal || 0;
+          const curWeight = inv.CurrentInventoryWeightAsDecimal || inv.CurrentInventoryWeight || 0;
+          const maxWeight = inv.MaxInventoryWeightAsDecimal || inv.MaxInventoryWeight || 0;
           const wasWeightOver = currentIsWeightOver;
-          currentIsWeightOver = (maxWeight > 0 && curWeight > maxWeight);
+          currentWeightRatio = maxWeight > 0 ? (curWeight / maxWeight) : 0;
+          currentIsWeightOver = (maxWeight > 0 && currentWeightRatio >= 0.98);
           if (weightPill) {
-            const ratio = maxWeight > 0 ? (curWeight / maxWeight) : 0;
+            const ratio = currentWeightRatio;
             const gaugeHtml = maxWeight > 0 ? makeWeightGaugeHtml(curWeight, maxWeight, 5) : '';
             const weightColor = maxWeight > 0 ? getWeightColorByRatio(ratio) : 'var(--text)';
             const isOver = currentIsWeightOver;
             const glowStyle = isOver ? 'text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); font-weight: 700;' : '';
-            const overText = isOver ? ` <span style="color: #EF4444; font-weight: 700; text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); margin-left: 4px;">[!] 가방 무게 초과 (정리 필요)</span>` : '';
+            let overText = '';
+            if (ratio >= 1.0) {
+              overText = ` <span style="color: #EF4444; font-weight: 700; text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); margin-left: 4px;">[!] 가방 무게 초과 (정리 필요)</span>`;
+            } else if (ratio >= 0.98) {
+              overText = ` <span style="color: #EF4444; font-weight: 700; text-shadow: 0 0 6px rgba(239, 68, 68, 0.7); margin-left: 4px;">[!] 가방 98% 도달 (작업 중단 주의)</span>`;
+            }
             weightPill.innerHTML = `무게 <span class="mono-num" style="color: ${weightColor}; ${glowStyle}">${curWeight}/${maxWeight}</span> ${gaugeHtml}${overText}`;
-            weightPill.title = `가방 무게: ${curWeight}/${maxWeight} (${(ratio * 100).toFixed(1)}%${isOver ? ' - [!] 가방 무게 초과 (정리 필요)' : ''})`;
+            weightPill.title = `가방 무게: ${curWeight}/${maxWeight} (${(ratio * 100).toFixed(1)}%${ratio >= 1.0 ? ' - [!] 가방 무게 100% 초과' : (ratio >= 0.98 ? ' - [!] 98% 작업 안전 중지 기준 도달' : '')})`;
           }
           if (wasWeightOver !== currentIsWeightOver) {
             updateMasterCommandBar();
