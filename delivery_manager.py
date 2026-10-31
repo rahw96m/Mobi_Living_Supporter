@@ -781,14 +781,16 @@ class DeliveryAlarmStore:
                 facility_works[fac].append(w)
 
         updated_alarms = []
+        changed = False
         for fac, f_works in facility_works.items():
             incomplete = [w for w in f_works if not w.get("IsCompleted") and int(w.get("RemainingSeconds", 0)) > 0]
             if not incomplete:
                 # All slots at this facility are finished and waiting to be collected
                 if fac in self.alarms:
-                    self.alarms[fac]["total_remaining_seconds"] = 0
-                    self.alarms[fac]["targetTimestamp"] = min(self.alarms[fac].get("targetTimestamp", int(time.time() * 1000)), int(time.time() * 1000))
-                    self.save()
+                    if self.alarms[fac].get("total_remaining_seconds") != 0:
+                        self.alarms[fac]["total_remaining_seconds"] = 0
+                        self.alarms[fac]["targetTimestamp"] = min(self.alarms[fac].get("targetTimestamp", int(time.time() * 1000)), int(time.time() * 1000))
+                        changed = True
                     updated_alarms.append(self.alarms[fac])
                 continue
 
@@ -812,7 +814,11 @@ class DeliveryAlarmStore:
         # Clean up alarms for facilities that have no works left at all (collected)
         for k in list(self.alarms.keys()):
             if k not in facility_works:
-                self.delete_alarm(k)
+                del self.alarms[k]
+                changed = True
+
+        if changed:
+            self.save()
 
         return updated_alarms
 
@@ -840,12 +846,43 @@ class RegisteredDeliveryStore:
 
     def load(self):
         with self._lock:
+            loaded = False
             if os.path.exists(self.filepath):
                 try:
                     with open(self.filepath, "r", encoding="utf-8") as f:
                         self.targets = json.load(f)
+                        if self.targets and isinstance(self.targets, dict):
+                            loaded = True
                 except Exception:
                     self.targets = {}
+            if not loaded or not self.targets:
+                # 번들된 delivery_presets.json에서 기본 18개 주간 납품 목록을 자동 등록
+                bundled_preset = os.path.join(SCRIPT_DIR, "delivery_presets.json")
+                if os.path.exists(bundled_preset):
+                    try:
+                        with open(bundled_preset, "r", encoding="utf-8") as f:
+                            presets = json.load(f)
+                            preset_data = presets.get("주간 납품") or (next(iter(presets.values())) if presets else None)
+                            if preset_data and "items" in preset_data:
+                                self.targets = {}
+                                for item in preset_data["items"]:
+                                    name = item.get("item_name")
+                                    goal = int(item.get("goal", 1))
+                                    qtitle = item.get("quest_title", f"{name} 구하기")
+                                    if name:
+                                        self.targets[name] = {
+                                            "quest_title": qtitle,
+                                            "item_name": name,
+                                            "goal": goal,
+                                            "current": 0,
+                                            "needed": goal,
+                                            "is_completed": False,
+                                            "override_current": None,
+                                            "updated_at": int(time.time() * 1000)
+                                        }
+                                self.save()
+                    except Exception:
+                        pass
 
     def save(self):
         with self._lock:
@@ -1022,6 +1059,10 @@ class SettingsStore:
         "alter_order": "high_tier",  # "high_tier" (상위 티어부터 / 오래 걸리는 가공 우선) or "low_tier" (하위 티어부터 / 기초 재료부터)
         "goal_fulfillment_mode": True,  # 목표 완수 모드 (완제품까지 연속 실행)
         "sound_alarm_enabled": False,   # 완료 효과음 알림 (기본값 OFF, 무음)
+        "auto_collect_enabled": False,  # 가공 완료 시 무료 자동 수령 (기본값 OFF)
+        "auto_play_music_enabled": False, # 작업 완료/대기 중 자동 악보 연주 (기본값 OFF)
+        "auto_play_music_title": "",    # 자동 연주할 악보 제목 (비어 있으면 첫 번째 보유 악보)
+        "safety_stocks": {},            # 상비약/요리 최소 유지 재고 프리셋 {"아이템명": 최소수량}
         "discord_webhook_url": "",      # 디스코드 웹훅 URL
         "discord_alarm_enabled": False, # 디스코드 완료 알림 활성화 여부
         "weight_limit_ratio": 0.98,     # 작업 안전 중지 가방 무게 기준 (기본 98%)
@@ -1316,6 +1357,8 @@ class DeliveryManager:
         self.recipes: Dict[str, Dict[str, int]] = dict(DEFAULT_RECIPES)
         self.abort_requested: bool = False
         self.on_altering_updated: Optional[Callable[[Dict[str, Any]], None]] = None
+        self._cached_quests: Optional[List[DeliveryTask]] = None
+        self._cached_quests_time: float = 0.0
         self.load_recipe_cache()
 
     def notify_altering_updated(self, works_info: Optional[Dict[str, Any]] = None):
@@ -1668,8 +1711,14 @@ class DeliveryManager:
         Strictly excludes combat/dungeon clear objectives (클리어, 처치, 사냥, 토벌, 대화 등)
         and non-active background quest lines (main, auto_register_candidate_sub).
         """
+        now = time.time()
+        if self._cached_quests is not None and (now - self._cached_quests_time) < 3.0:
+            return list(self._cached_quests)
+
         quests = self.cli.get_quests()
         if not quests:
+            self._cached_quests = []
+            self._cached_quests_time = now
             return []
 
         # 1. Only process active / pinned sources.
@@ -1792,7 +1841,10 @@ class DeliveryManager:
                             best_title = final_title
                         tasks_dict[parsed_item] = DeliveryTask(best_title, parsed_item, new_cur, parsed_goal, new_cur >= parsed_goal)
 
-        return list(tasks_dict.values())
+        res_list = list(tasks_dict.values())
+        self._cached_quests = res_list
+        self._cached_quests_time = time.time()
+        return list(res_list)
 
     def get_effective_owned(self, item_name: str, include_storage: bool = True) -> int:
         """
@@ -1827,8 +1879,8 @@ class DeliveryManager:
         Never resurrects targets deleted by the user while status polling was in progress.
         """
         targets = delivery_target_store.get_all()
-        updated_list = []
         active_delivery_tasks = {t.item_name: t for t in self.detect_delivery_quests()}
+        dirty = False
 
         for t in targets:
             item_name = t["item_name"]
@@ -1858,6 +1910,9 @@ class DeliveryManager:
             needed = max(0, goal - current)
             is_completed = (current >= goal)
 
+            if current != prev_current or t.get("needed") != needed or t.get("is_completed") != is_completed:
+                dirty = True
+
             t["current"] = current
             t["needed"] = needed
             t["is_completed"] = is_completed
@@ -1876,7 +1931,8 @@ class DeliveryManager:
                     continue
                 delivery_target_store.targets[item_name] = t
 
-        delivery_target_store.save()
+        if dirty:
+            delivery_target_store.save()
         return delivery_target_store.get_all()
 
     def add_detected_quests_to_targets(self) -> List[Dict[str, Any]]:
@@ -1905,7 +1961,7 @@ class DeliveryManager:
         Never resurrects targets deleted by the user while status polling was in progress.
         """
         targets = custom_target_store.get_all()
-        updated_list = []
+        dirty = False
 
         for t in targets:
             item_name = t["item_name"]
@@ -1926,6 +1982,9 @@ class DeliveryManager:
             needed = max(0, goal - current)
             is_completed = (current >= goal)
 
+            if current != prev_current or t.get("needed") != needed or t.get("is_completed") != is_completed:
+                dirty = True
+
             t["current"] = current
             t["needed"] = needed
             t["is_completed"] = is_completed
@@ -1944,7 +2003,8 @@ class DeliveryManager:
                     continue
                 custom_target_store.targets[item_name] = t
 
-        custom_target_store.save()
+        if dirty:
+            custom_target_store.save()
         return custom_target_store.get_all()
 
     def analyze_custom_plan(self, alter_order: Optional[str] = None) -> Dict[str, Any]:
@@ -2082,9 +2142,13 @@ class DeliveryManager:
         """Finds altering recipe for the exact item_name (excluding inefficient shortcut recipes)."""
         clean_name = item_name.split("(")[0].strip()
         try:
-            res = self.cli.get_alterable_items(clean_name)
+            # Query unfiltered list first (shared 10s TTL cache across all items)
+            res = self.cli.get_alterable_items()
         except Exception:
-            return None
+            try:
+                res = self.cli.get_alterable_items(clean_name)
+            except Exception:
+                return None
         items = self.filter_standard_alter_recipes(res.get("items", []))
         # 1. Exact match
         for item in items:
@@ -2135,6 +2199,10 @@ class DeliveryManager:
         """Returns (is_gatherable, tool_ok)."""
         clean_name = item_name.split("(")[0].strip()
 
+        # Fast-path non-gatherable items (shop/monster drops, finished equipment, processed materials)
+        if is_non_gatherable_material(clean_name) or is_equipment_item(clean_name) or clean_name in STANDARD_ALTER_RECIPES:
+            return False, False
+
         # 1. 양털 계열의 경우: 후보 양들 중 하나라도 채집 가능한지 확인
         if is_wool_family(clean_name):
             try:
@@ -2177,8 +2245,9 @@ class DeliveryManager:
             if clean_name in KNOWN_GATHERABLE_ITEMS or any(k in clean_name for k in ["통나무", "나무 진액", "나뭇가지"]):
                 return True, True
 
+        # 3. 일반 채집물: 전체 채집 가능 목록(15초 TTL 캐시)에서 우선 조회하여 프로세스 중복 호출 방지
         try:
-            res = self.cli.get_gatherable_items(item_name)
+            res = self.cli.get_gatherable_items()
             for item in res.get("items", []):
                 if item.get("DisplayName") in (item_name, clean_name):
                     return True, bool(item.get("ToolOk", False))
@@ -2215,7 +2284,14 @@ class DeliveryManager:
         if not tool_ok:
             raise MabinogiCLIError(f"'{item_name}' 채집 도구가 없거나 내구도가 0입니다.")
 
-        initial_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
+        # Zero-overhead snapshot from cached locations map to track byproducts later
+        try:
+            initial_locs_map = self.cli.get_all_item_locations_map(bypass_cache=True)
+            initial_inv_snapshot = {k: v.get("inventory", 0) for k, v in initial_locs_map.items()}
+            initial_count = initial_inv_snapshot.get(item_name, 0)
+        except Exception:
+            initial_inv_snapshot = {}
+            initial_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
         target_count = initial_count + required_count
 
         # --- 양털 및 벌목 계열 다단계 우선순위 및 레벨 필터링 설정 ---
@@ -2356,6 +2432,8 @@ class DeliveryManager:
             worker_thread.start()
 
             round_initial_count = curr_count
+            round_start_time = time.time()
+            refreshed_by_timer = False
             idle_counter = 0
 
             # Monitoring loop for current execute_gathering call
@@ -2372,6 +2450,18 @@ class DeliveryManager:
                         "required": required_count,
                         "gained": max(0, self.cli.count_item(item_name, include_storage=False, bypass_cache=True) - initial_count)
                     }
+
+                # 0-1. 55-minute single-action cycle refresh (prevents 1-hour continuous action popup)
+                if (time.time() - round_start_time) >= 3300:
+                    self.log(
+                        f"[55분 주기 갱신] '{item_name}' 단일 연속 채집이 55분 경과하여 1시간 확인창 방지를 위해 잠시 멈추고 즉시 이어서 재시작합니다.",
+                        "info",
+                        callback
+                    )
+                    refreshed_by_timer = True
+                    self._force_stop_worker(worker_thread)
+                    time.sleep(1.5)
+                    break
 
                 # 1. Safety check
                 activity = {}
@@ -2455,14 +2545,15 @@ class DeliveryManager:
                     else:
                         break
 
-            # Ensure current worker is stopped
-            self._force_stop_worker(worker_thread, max_attempts=4)
+            # Ensure current worker is stopped if still running
+            if worker_thread.is_alive():
+                self._force_stop_worker(worker_thread, max_attempts=4)
 
             if stopped_by_target or stopped_by_overweight or self.abort_requested:
                 break
 
             # Check if an error occurred during gathering
-            if worker_error:
+            if worker_error and not refreshed_by_timer:
                 err = worker_error[0]
                 err_msg = str(err)
                 self.log(f"'{species_label}'({gather_target_item}) 채집 중 응답: {err_msg}", "warn", callback)
@@ -2522,9 +2613,25 @@ class DeliveryManager:
                 )
                 time.sleep(1.0)
 
-        # Final recount
-        final_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
+        # Final recount & Zero-overhead Byproduct Detection (single get_all_item_locations_map call)
+        byproducts: Dict[str, int] = {}
+        try:
+            final_locs_map = self.cli.get_all_item_locations_map(bypass_cache=True)
+            final_count = final_locs_map.get(item_name, {}).get("inventory", 0)
+            if initial_inv_snapshot:
+                for k, v in final_locs_map.items():
+                    if k == item_name:
+                        continue
+                    diff = v.get("inventory", 0) - initial_inv_snapshot.get(k, 0)
+                    if diff > 0:
+                        byproducts[k] = diff
+        except Exception:
+            final_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
         total_gained = max(0, final_count - initial_count)
+
+        if byproducts:
+            bp_str = ", ".join(f"{bk} +{bv}개" for bk, bv in list(byproducts.items())[:5])
+            self.log(f"🎁 [채집 부산물 동시 획득] '{item_name}' 채집 중 부수 재료 획득: {bp_str}", "info", callback)
 
         if stopped_by_overweight:
             limit_pct = get_weight_limit_ratio() * 100
@@ -2646,12 +2753,18 @@ class DeliveryManager:
             try:
                 res = self.cli.complete_altering_work(rep_item)
                 collected_facilities.append(fac)
-                self.log(f"     '{fac}' 완료 가공품 수령 완료! (슬롯 확보 완료)", "success", callback)
+                crit_rewards = res.get("criticalRewards", []) if isinstance(res, dict) else []
+                crit_str = ""
+                if crit_rewards:
+                    c_parts = [f"{cr.get('Name', rep_item)} +{cr.get('Amount', 0)}개" for cr in crit_rewards if cr.get("Amount", 0) > 0]
+                    if c_parts:
+                        crit_str = f" (✨ 대성공 추가 획득: {', '.join(c_parts)})"
+                self.log(f"     '{fac}' 완료 가공품 수령 완료!{crit_str} (슬롯 확보 완료)", "success", callback)
                 # Clean up alarms for items at this facility
                 for it in items:
                     key = f"{fac}_{it}"
                     alarm_store.delete_alarm(key)
-                time.sleep(1)
+                time.sleep(0.35)
             except Exception as ex:
                 self.log(f"     '{fac}' 수령 중 알림/오류: {ex}", "warn", callback)
         if collected_facilities:
@@ -2659,7 +2772,7 @@ class DeliveryManager:
 
         return collected_facilities
 
-    def auto_alter(self, item_name: str, works_needed: int, callback: Optional[LogCallback] = None, is_delivery: bool = True):
+    def auto_alter(self, item_name: str, works_needed: int, callback: Optional[LogCallback] = None, is_delivery: bool = True, skip_pre_collect: bool = False):
         """Queues works_needed altering tasks, sets delivery alarm, and manages waiting."""
         recipe = self.find_alter_recipe(item_name)
         if not recipe:
@@ -2672,7 +2785,8 @@ class DeliveryManager:
         target_facility = get_facility_for_material(item_name)
 
         # 1. Check and collect any completed altering slots across facilities before submitting new work!
-        self.collect_completed_altering_works(preferred_facility=target_facility, callback=callback)
+        if not skip_pre_collect:
+            self.collect_completed_altering_works(preferred_facility=target_facility, callback=callback)
 
         successful_works = 0
         for i in range(works_needed):
@@ -2732,7 +2846,7 @@ class DeliveryManager:
                 except MabinogiCLIError as retry_err:
                     self.log(f"   '{alter_display_name}' 가공 슬롯 부족/오류 ({retry_err}). 남은 {works_needed - successful_works}회 등록을 보류하고 다음 작업으로 진행합니다.", "warn", callback)
                     return {"status": "slot_full_skipped", "item": item_name, "registered": successful_works, "facility": target_facility, "error": str(retry_err)}
-            time.sleep(1)
+            time.sleep(0.35)
 
         if successful_works == 0:
             return {"status": "slot_full_skipped", "item": item_name, "registered": 0, "facility": target_facility}
@@ -2819,16 +2933,20 @@ class DeliveryManager:
             try:
                 res = self.cli.execute_crafting(item_name, craft_count=batch)
                 produced_now = 0
+                crit_now = 0
                 for r in res.get("rewards", []):
                     if r.get("Name") == item_name:
                         produced_now += r.get("Amount", 0)
                 for r in res.get("criticalRewards", []):
                     if r.get("Name") == item_name:
-                        produced_now += r.get("Amount", 0)
+                        c_amt = r.get("Amount", 0)
+                        produced_now += c_amt
+                        crit_now += c_amt
 
                 items_made = max(produced_now, batch * produced_per_craft)
                 total_produced += items_made
-                self.log(f"[제작 성공] {batch}회 제작 완료 (산출: +{items_made}개 / 누적: {total_produced}/{needed_target}개)", "success", callback)
+                crit_msg = f" [✨ 대성공 보너스 +{crit_now}개!]" if crit_now > 0 else ""
+                self.log(f"[제작 성공] {batch}회 제작 완료 (산출: +{items_made}개{crit_msg} / 누적: {total_produced}/{needed_target}개)", "success", callback)
 
                 remaining_needed = max(0, needed_target - total_produced)
                 if remaining_needed <= 0:
@@ -3155,30 +3273,32 @@ class DeliveryManager:
                 recipe_details[it_name] = alt_info.get("ingredients", {})
                 pending_fin = completed_yield_by_item.get(clean_it, 0) + queued_yield_by_item.get(clean_it, 0)
                 net_needed = max(0, needed - pending_fin)
-                if net_needed > 0:
-                    yield_pw = alt_info.get("produced", 3)
-                    works = math.ceil(net_needed / yield_pw)
-                    fac = alt_info.get("facility") or get_facility_for_material(clean_it)
-                    tier = alt_info.get("tier", 1)
-                    recipe_dn = alt_info.get("display_name", clean_it)
+                yield_pw = alt_info.get("produced", 3)
+                fac = alt_info.get("facility") or get_facility_for_material(clean_it)
+                tier = alt_info.get("tier", 1)
+                recipe_dn = alt_info.get("display_name", clean_it)
 
+                if clean_mat := clean_it:
+                    if clean_mat not in alter_plan:
+                        alter_plan[clean_mat] = {
+                            "item_name": clean_mat,
+                            "recipe_name": recipe_dn,
+                            "facility": fac,
+                            "tier": tier,
+                            "ingredients": dict(alt_info.get("ingredients", {})),
+                            "works_needed": 0,
+                            "yield_per_work": yield_pw,
+                            "total_needed": 0,
+                            "net_needed": 0,
+                        }
+                    alter_plan[clean_mat]["total_needed"] += needed
+                    intermediate_total_demands[clean_mat] += needed
+
+                if net_needed > 0:
+                    works = math.ceil(net_needed / yield_pw)
                     if clean_mat := clean_it:
-                        if clean_mat not in alter_plan:
-                            alter_plan[clean_mat] = {
-                                "item_name": clean_mat,
-                                "recipe_name": recipe_dn,
-                                "facility": fac,
-                                "tier": tier,
-                                "ingredients": dict(alt_info.get("ingredients", {})),
-                                "works_needed": 0,
-                                "yield_per_work": yield_pw,
-                                "total_needed": 0,
-                                "net_needed": 0,
-                            }
                         alter_plan[clean_mat]["works_needed"] += works
-                        alter_plan[clean_mat]["total_needed"] += net_needed
                         alter_plan[clean_mat]["net_needed"] += net_needed
-                        intermediate_total_demands[clean_mat] += net_needed
 
                     for sub_name, sub_req in alt_info.get("ingredients", {}).items():
                         pending_demands[sub_name] += sub_req * works
@@ -3222,27 +3342,28 @@ class DeliveryManager:
 
                 if is_alt:
                     intermediate_total_demands[clean_mat] += demand_qty
-                    if net_def > 0:
-                        yield_pw = alt_info.get("produced", 3)
-                        works = math.ceil(net_def / yield_pw)
-                        fac = alt_info.get("facility") or get_facility_for_material(clean_mat)
-                        tier = alt_info.get("tier", 1)
-                        recipe_dn = alt_info.get("display_name", clean_mat)
+                    yield_pw = alt_info.get("produced", 3)
+                    fac = alt_info.get("facility") or get_facility_for_material(clean_mat)
+                    tier = alt_info.get("tier", 1)
+                    recipe_dn = alt_info.get("display_name", clean_mat)
 
-                        if clean_mat not in alter_plan:
-                            alter_plan[clean_mat] = {
-                                "item_name": clean_mat,
-                                "recipe_name": recipe_dn,
-                                "facility": fac,
-                                "tier": tier,
-                                "ingredients": dict(alt_info.get("ingredients", {})),
-                                "works_needed": 0,
-                                "yield_per_work": yield_pw,
-                                "total_needed": 0,
-                                "net_needed": 0,
-                            }
+                    if clean_mat not in alter_plan:
+                        alter_plan[clean_mat] = {
+                            "item_name": clean_mat,
+                            "recipe_name": recipe_dn,
+                            "facility": fac,
+                            "tier": tier,
+                            "ingredients": dict(alt_info.get("ingredients", {})),
+                            "works_needed": 0,
+                            "yield_per_work": yield_pw,
+                            "total_needed": 0,
+                            "net_needed": 0,
+                        }
+                    alter_plan[clean_mat]["total_needed"] += demand_qty
+
+                    if net_def > 0:
+                        works = math.ceil(net_def / yield_pw)
                         alter_plan[clean_mat]["works_needed"] += works
-                        alter_plan[clean_mat]["total_needed"] += demand_qty
                         alter_plan[clean_mat]["net_needed"] += net_def
 
                         for sub_name, sub_req in alt_info.get("ingredients", {}).items():
@@ -3428,6 +3549,74 @@ class DeliveryManager:
         except Exception:
             wings_count = 0
 
+        # 8. Pre-flight Readiness Diagnostics (Tool durability, Locked ingredients, Skill/Facility/Decor level)
+        preflight_warnings: List[str] = []
+        locked_items_set = set()
+        try:
+            for it_entry in self.cli.get_items():
+                if it_entry.get("IsLocked"):
+                    dn = it_entry.get("DisplayName", "")
+                    if dn:
+                        locked_items_set.add(dn)
+        except Exception:
+            pass
+
+        alter_reason_map: Dict[str, str] = {}
+        try:
+            for alt_it in self.cli.get_alterable_items().get("items", []):
+                dn = alt_it.get("DisplayName", "").split("(")[0].strip()
+                rsn = str(alt_it.get("Reason") or "")
+                if dn and rsn and rsn != "not_enough_ingredient":
+                    alter_reason_map[dn] = rsn
+        except Exception:
+            pass
+
+        REASON_LABELS = {
+            "insufficient_living_skill_level": "생활 스킬 레벨 부족",
+            "insufficient_facility_level": "설비 레벨 부족",
+            "insufficient_decor_score": "마이홈 데코 점수 부족",
+            "ingredient_locked": "재료 잠금 상태",
+            "insufficient_transfer_cost": "재료 전송 비용(골드) 부족",
+        }
+
+        for r_mat in raw_materials_analysis:
+            r_name = r_mat["item_name"]
+            if r_mat.get("status") == "tool_missing" and r_mat.get("deficit", 0) > 0:
+                preflight_warnings.append(f"⚠️ [도구 점검] '{r_name}' 채집 도구가 없거나 내구도가 0입니다.")
+            if r_name in locked_items_set and r_mat.get("total_owned", 0) > 0:
+                r_mat["is_locked"] = True
+                preflight_warnings.append(f"🔒 [재료 잠금] '{r_name}' 아이템이 잠금 상태여서 제작/가공 소모가 차단될 수 있습니다.")
+
+        for i_mat in intermediate_analysis:
+            i_name = i_mat["item_name"]
+            if i_name in locked_items_set and i_mat.get("total_owned", 0) > 0:
+                i_mat["is_locked"] = True
+                preflight_warnings.append(f"🔒 [재료 잠금] 중간재 '{i_name}' 아이템이 잠금 상태입니다.")
+            if i_mat.get("works_needed", 0) > 0 and i_name in alter_reason_map:
+                rsn_code = alter_reason_map[i_name]
+                rsn_ko = REASON_LABELS.get(rsn_code, rsn_code)
+                i_mat["readiness_warning"] = rsn_ko
+                preflight_warnings.append(f"⛔ [가공 조건 미충족] '{i_name}': {rsn_ko}")
+
+        # 9. Spirit Wings Estimate & Lightweight ETA Calculation (Zero extra CLI calls)
+        gather_trips = sum(math.ceil(r.get("deficit", 0) / 100.0) for r in raw_materials_analysis if r.get("deficit", 0) > 0 and r.get("is_gatherable"))
+        craft_calls = 0
+        for t in tasks_to_plan:
+            if t.get("needed", 0) > 0 and not t.get("is_gather_item") and not t.get("is_alter_item"):
+                craft_calls += 1
+        estimated_wings = (total_works_to_queue + gather_trips + craft_calls) * 5
+        if estimated_wings > 0 and wings_count > 0 and wings_count < estimated_wings:
+            preflight_warnings.append(f"🪶 [정령의 날개 부족 주의] 예상 소모량 약 {estimated_wings:,}개 / 현재 보유 {wings_count:,}개")
+
+        total_gather_items = sum(r.get("deficit", 0) for r in raw_materials_analysis if r.get("deficit", 0) > 0 and r.get("is_gatherable"))
+        estimated_eta_seconds = int(total_gather_items * 2.2 + total_works_to_queue * 12 + craft_calls * 8)
+        if estimated_eta_seconds >= 60:
+            estimated_eta_text = f"약 {math.ceil(estimated_eta_seconds / 60)}분"
+        elif estimated_eta_seconds > 0:
+            estimated_eta_text = f"약 {estimated_eta_seconds}초"
+        else:
+            estimated_eta_text = "즉시 완료"
+
         return {
             "tasks": tasks_to_plan,
             "targets": tasks_to_plan,
@@ -3441,6 +3630,10 @@ class DeliveryManager:
             "total_works_to_queue": total_works_to_queue,
             "facility_slots": facility_analysis,
             "slot_warnings": slot_warnings,
+            "preflight_warnings": preflight_warnings,
+            "estimated_wings": estimated_wings,
+            "estimated_eta_seconds": estimated_eta_seconds,
+            "estimated_eta_text": estimated_eta_text,
             "has_slot_issue": has_slot_issue,
             "wings_count": wings_count,
             "alter_order": alter_order
@@ -3509,10 +3702,8 @@ class DeliveryManager:
             )
             return {"status": "aborted", "message": "사용자에 의해 작업이 중지되었습니다.", "summary": summary}
 
-        # 0. Check activity
-        activity = self.cli.get_activity()
-        if activity.get("IsDead") or activity.get("IsReviving"):
-            raise MabinogiCLIError("캐릭터가 행동 불능 상태입니다. 인게임에서 부활을 먼저 완료해주세요.")
+        # 0. Check activity & normalize character state (stand up from chair/sitting or stop instrument performance)
+        self.ensure_character_ready_for_action(callback=callback)
 
         intermediate_reqs = plan.get("intermediate_requirements", [])
         tasks = plan.get("tasks", [])
@@ -3771,7 +3962,7 @@ class DeliveryManager:
                     "action", callback
                 )
                 try:
-                    alter_res = self.auto_alter(recipe_name, works_to_register, callback=callback, is_delivery=True)
+                    alter_res = self.auto_alter(recipe_name, works_to_register, callback=callback, is_delivery=True, skip_pre_collect=True)
                     reg_count = alter_res.get("registered", works_to_register) if isinstance(alter_res, dict) else works_to_register
                     facility_used_slots[facility] += reg_count
 
@@ -4087,7 +4278,7 @@ class DeliveryManager:
                         if to_reg > 0:
                             self.log(f"[연계 가공 등록] [{fac}] '{rec_name}' {to_reg}회 추가 가공 등록합니다.", "action", callback)
                             try:
-                                alt_res = self.auto_alter(rec_name, to_reg, callback=callback, is_delivery=True)
+                                alt_res = self.auto_alter(rec_name, to_reg, callback=callback, is_delivery=True, skip_pre_collect=True)
                                 reg_cnt = alt_res.get("registered", to_reg) if isinstance(alt_res, dict) else to_reg
                                 fac_used[fac] += reg_cnt
                                 if reg_cnt > 0:
@@ -4116,21 +4307,22 @@ class DeliveryManager:
                             time.sleep(3)
                             continue
 
-                    # 7. Group remaining works by facility to find the FIRST completing facility
-                    fac_remaining_sums = defaultdict(int)
-                    for w in pending_works:
-                        fac = w.get("FacilityName") or get_facility_for_material(w.get("DisplayName", ""))
-                        fac_remaining_sums[fac] += int(w.get("RemainingSeconds", 0) or 0)
+                    # 7. Find the FIRST completing work across all facilities so finished slots are collected immediately
+                    in_progress_works = [w for w in pending_works if w.get("State") == "InProgress" and int(w.get("RemainingSeconds", 0) or 0) > 0]
+                    cand_works = in_progress_works if in_progress_works else [w for w in pending_works if int(w.get("RemainingSeconds", 0) or 0) > 0]
+                    if cand_works:
+                        soonest_w = min(cand_works, key=lambda w: int(w.get("RemainingSeconds", 0) or 0))
+                        min_fac_remaining = int(soonest_w.get("RemainingSeconds", 30) or 30)
+                        fac_label = soonest_w.get("FacilityName") or get_facility_for_material(soonest_w.get("DisplayName", "")) or "가공 시설"
+                    else:
+                        min_fac_remaining = 15
+                        fac_label = "가공 시설"
 
-                    min_fac_remaining = min(fac_remaining_sums.values()) if fac_remaining_sums else 30
-                    wait_seconds = max(10, min_fac_remaining + 2)
+                    wait_seconds = max(8, min_fac_remaining + 2)
                     wait_minutes = math.ceil(wait_seconds / 60)
 
-                    target_fac = [f for f, r in fac_remaining_sums.items() if r == min_fac_remaining]
-                    fac_label = target_fac[0] if target_fac else "가공 시설"
-
                     self.log(
-                        f"[목표 완수 스마트 대기 {cycle}회차] '{fac_label}' 완료까지 약 {wait_minutes}분({wait_seconds}초) 대기합니다. (PC 절전 방지 유지 중)",
+                        f"[목표 완수 스마트 대기 {cycle}회차] '{fac_label}' 다음 슬롯 완료까지 약 {wait_minutes}분({wait_seconds}초) 대기합니다. (PC 절전 방지 유지 중)",
                         "info", callback
                     )
 
@@ -4177,6 +4369,7 @@ class DeliveryManager:
 
         if not goal_fulfillment_mode and queued_any_long:
             self.log("[가공 백그라운드 진행 안내] 대기열 가공이 진행 중입니다. 알람이 울리면 웹 대시보드에서 '일괄 제작'을 다시 실행하세요!", "success", callback)
+            self.try_auto_play_music(callback=callback)
             return {
                 "status": "waiting_in_background",
                 "message": "가공 대기열 등록 완료 및 즉시 제작 가능한 아이템 제작 완료",
@@ -4186,6 +4379,7 @@ class DeliveryManager:
             }
 
         self.log("[통합 납품 파이프라인 처리 완료] 일괄 처리가 마무리되었습니다!", "success", callback)
+        self.try_auto_play_music(callback=callback)
         return {"status": "completed", "results": craft_results, "deferred_works": deferred_works, "summary": summary}
 
     def resolve_and_produce(self, item_name: str, target_count: int, callback: Optional[LogCallback] = None) -> Dict[str, Any]:
@@ -4508,18 +4702,16 @@ class DeliveryManager:
                 w_item = w.get("DisplayName")
                 pending_yields[w_item] += produced_map.get(w_item, 3)
 
-        # Single-call inventory map (가방 소지품: 실제 가공시설에서 즉시 소모 가능한 수량)
+        # Single-call cached inventory map (가방 소지품: 실제 가공시설에서 즉시 소모 가능한 수량)
         owned_inventory_map = defaultdict(int)
         owned_storage_map = defaultdict(int)
         try:
-            for it in self.cli.get_items():
-                loc = it.get("Location")
-                cnt = int(it.get("Count", 0))
-                dn = it.get("DisplayName", "")
-                if loc == "inventory":
-                    owned_inventory_map[dn] += cnt
-                elif loc in ("character_storage", "account_storage"):
-                    owned_storage_map[dn] += cnt
+            all_locs = self.cli.get_all_item_locations_map()
+            for dn, bd in all_locs.items():
+                if bd.get("inventory", 0) > 0:
+                    owned_inventory_map[dn] += bd["inventory"]
+                if bd.get("storage_total", 0) > 0:
+                    owned_storage_map[dn] += bd["storage_total"]
         except Exception:
             pass
 
@@ -4891,7 +5083,7 @@ class DeliveryManager:
                 except Exception as ex:
                     self.log(f"     등록 실패: {ex}", "error", callback)
                     queued_results.append({"category": c_name, "tier": tier_num, "recipe": r_name, "status": "failed", "error": str(ex)})
-                time.sleep(1)
+                time.sleep(0.35)
 
         if altered_list:
             self.notify_altering_updated()
@@ -4905,6 +5097,7 @@ class DeliveryManager:
 
         self.log("[가공대 7슬롯 빠른 실행 완료] 수령 -> 가공 판단 -> 일괄 채집 -> 고티어 가공 등록이 완료되었습니다!", "success", callback)
         self.log("각 가공시설별 마지막 가공이 끝나면 알람이 울립니다.", "info", callback)
+        self.try_auto_play_music(callback=callback)
 
         duration = time.time() - start_time
         final_wings = self._safe_get_wings(initial_wings)
@@ -4930,4 +5123,434 @@ class DeliveryManager:
             "total_queued": len(queued_results),
             "summary": summary
         }
+
+    # =========================================================================
+    # AI CONNECTOR EXTENDED AUTOMATION & CONVENIENCE FEATURES
+    # =========================================================================
+
+    def ensure_character_ready_for_action(self, callback: Optional[LogCallback] = None) -> None:
+        """
+        Checks character state via get_activity() before starting a pipeline:
+        - Raises if dead/reviving or in dungeon/battlefield.
+        - Automatically stands up if sitting on a chair or ground (/앉기), or stops instrument performance.
+        """
+        try:
+            activity = self.cli.get_activity()
+        except Exception:
+            return
+
+        combat = activity.get("combatState", {}) if isinstance(activity.get("combatState"), dict) else {}
+        if activity.get("IsDead") or activity.get("IsReviving") or combat.get("IsDead") or combat.get("IsReviving"):
+            raise MabinogiCLIError("캐릭터가 행동 불능 상태입니다. 인게임에서 부활을 먼저 완료해주세요.")
+
+        dungeon = activity.get("Dungeon", {}) if isinstance(activity.get("Dungeon"), dict) else {}
+        if dungeon.get("State") and dungeon.get("State") != "NotInDungeon":
+            raise MabinogiCLIError(f"캐릭터가 현재 던전({dungeon.get('State')}) 내부에 있어 생활 이동을 시작할 수 없습니다.")
+
+        perf = activity.get("Performance", {}) if isinstance(activity.get("Performance"), dict) else {}
+        mode = activity.get("Mode", {}) if isinstance(activity.get("Mode"), dict) else {}
+        if perf.get("IsPlaying") or mode.get("SitState") == "Sitting":
+            self.log("[상태 자동 보정] 의자 착석 또는 악기 연주 상태를 해제하고 출발합니다.", "info", callback)
+            try:
+                self.cli.stop_action()
+                time.sleep(0.4)
+            except Exception:
+                pass
+
+        # Also attempt stand_up quietly in case character used /앉기 emote
+        try:
+            self.cli.stand_up()
+        except Exception:
+            pass
+
+    def try_auto_play_music(self, callback: Optional[LogCallback] = None) -> bool:
+        """
+        If 'auto_play_music_enabled' setting is ON, equips an instrument (if none equipped)
+        and starts playing the user's selected music score (or the first available score) when idle.
+        """
+        if not settings_store.get("auto_play_music_enabled", False) or self.abort_requested:
+            return False
+        try:
+            instruments = self.cli.get_instruments()
+            if not instruments:
+                return False
+            equipped = [inst for inst in instruments if inst.get("IsEquipped")]
+            if not equipped:
+                first_inst = instruments[0].get("Name")
+                if first_inst:
+                    self.cli.change_instrument(first_inst)
+                    time.sleep(0.3)
+
+            scores = self.cli.get_music_scores()
+            if not scores:
+                return False
+            pref_title = (settings_store.get("auto_play_music_title") or "").strip()
+            target_title = ""
+            if pref_title:
+                for sc in scores:
+                    if sc.get("DisplayTitle") == pref_title or pref_title in sc.get("DisplayTitle", ""):
+                        target_title = sc.get("DisplayTitle", "")
+                        break
+            if not target_title:
+                target_title = scores[0].get("DisplayTitle", "")
+            if target_title:
+                self.cli.play_music_score(target_title)
+                self.log(f"🎵 [휴식 자동 연주] 작업 대기를 시작하며 '{target_title}' 악보 연주를 시작합니다.", "info", callback)
+                return True
+        except Exception:
+            pass
+        return False
+
+    def recommend_zero_gather_crafts(self) -> List[Dict[str, Any]]:
+        """
+        [#8 창고 털이 추천기]
+        Scans current bag + personal/account storage inventory once and finds all craftable / alterable
+        recipes that can be produced 100% IMMEDIATELY with ZERO additional gathering.
+        Returns sorted list by total materials consumed (best storage cleanup effect first).
+        """
+        locs_map = self.cli.get_all_item_locations_map()
+        recommendations: List[Dict[str, Any]] = []
+
+        # 1. Check all craft recipes
+        for r_name, ings in (self.recipes or {}).items():
+            if not ings or not isinstance(ings, dict):
+                continue
+            max_crafts = 999999
+            per_craft_sum = 0
+            ing_details = []
+            for ing_k, ing_req in ings.items():
+                req = max(1, int(ing_req))
+                per_craft_sum += req
+                clean_k = ing_k.split("(")[0].strip()
+                owned = locs_map.get(clean_k, {}).get("total", 0)
+                if owned < req:
+                    max_crafts = 0
+                    break
+                max_crafts = min(max_crafts, owned // req)
+                ing_details.append({"name": clean_k, "req": req, "owned": owned})
+
+            if 0 < max_crafts < 999999:
+                prod_pc = max(1, self.get_produced_per_craft(r_name))
+                total_consumed = max_crafts * per_craft_sum
+                owned_self = locs_map.get(r_name, {}).get("total", 0)
+                recommendations.append({
+                    "item_name": r_name,
+                    "category": "완제품 제작",
+                    "max_crafts": max_crafts,
+                    "total_output": max_crafts * prod_pc,
+                    "owned_now": owned_self,
+                    "materials_consumed": total_consumed,
+                    "net_slots_freed": max(0, total_consumed - (max_crafts * prod_pc)),
+                    "ingredients": ing_details
+                })
+
+        # 2. Check all standard alter recipes
+        for a_name, a_info in STANDARD_ALTER_RECIPES.items():
+            ings = a_info.get("ingredients", {})
+            if not ings:
+                continue
+            max_works = 999999
+            per_work_sum = 0
+            ing_details = []
+            for ing_k, ing_req in ings.items():
+                req = max(1, int(ing_req))
+                per_work_sum += req
+                clean_k = ing_k.split("(")[0].strip()
+                owned = locs_map.get(clean_k, {}).get("total", 0)
+                if owned < req:
+                    max_works = 0
+                    break
+                max_works = min(max_works, owned // req)
+                ing_details.append({"name": clean_k, "req": req, "owned": owned})
+
+            if 0 < max_works < 999999:
+                prod_pw = max(1, int(a_info.get("produced", 3)))
+                total_consumed = max_works * per_work_sum
+                owned_self = locs_map.get(a_name, {}).get("total", 0)
+                recommendations.append({
+                    "item_name": a_name,
+                    "category": a_info.get("facility", "시설 가공"),
+                    "max_crafts": max_works,
+                    "total_output": max_works * prod_pw,
+                    "owned_now": owned_self,
+                    "materials_consumed": total_consumed,
+                    "net_slots_freed": max(0, total_consumed - (max_works * prod_pw)),
+                    "ingredients": ing_details
+                })
+
+        recommendations.sort(key=lambda x: (-x["materials_consumed"], -x["max_crafts"], x["item_name"]))
+        return recommendations[:40]
+
+    def get_safety_stocks_status(self) -> List[Dict[str, Any]]:
+        """
+        [#9 상비약·요리 최소 재고 자동 보충]
+        Returns current inventory+storage counts vs configured minimum safety stock levels.
+        """
+        stocks_cfg = settings_store.get("safety_stocks", {}) or {}
+        if not isinstance(stocks_cfg, dict):
+            stocks_cfg = {}
+        try:
+            locs_map = self.cli.get_all_item_locations_map()
+        except Exception:
+            locs_map = {}
+
+        result = []
+        for item_name, min_qty in stocks_cfg.items():
+            goal = max(1, int(min_qty or 1))
+            bd = locs_map.get(item_name, {"inventory": 0, "storage_total": 0, "total": 0})
+            owned = bd.get("total", 0)
+            deficit = max(0, goal - owned)
+            result.append({
+                "item_name": item_name,
+                "min_stock": goal,
+                "owned_bag": bd.get("inventory", 0),
+                "owned_storage": bd.get("storage_total", 0),
+                "owned_total": owned,
+                "deficit": deficit,
+                "is_satisfied": deficit == 0
+            })
+        return result
+
+    def apply_safety_stocks_to_custom(self) -> List[Dict[str, Any]]:
+        """
+        Adds all deficient safety stock items to custom_target_store so the user can produce them in one click.
+        """
+        statuses = self.get_safety_stocks_status()
+        added = []
+        for st in statuses:
+            if st["deficit"] > 0:
+                entry = custom_target_store.add_or_update(
+                    item_name=st["item_name"],
+                    goal=st["min_stock"],
+                    current=st["owned_total"]
+                )
+                added.append(entry)
+        return added
+
+    def scan_all_selectable_quests(self) -> List[Dict[str, Any]]:
+        """
+        [#11 퀘스트 선택 가져오기 모달용 스캔]
+        Scans both weekly delivery quests AND general/sub/guide/event quests in the Quest Tracker,
+        returning a structured list so the user can selectively check which items to import.
+        """
+        selectable: List[Dict[str, Any]] = []
+        seen_keys = set()
+
+        # 1. Weekly Delivery Quests
+        for dq in self.detect_delivery_quests():
+            key = f"delivery:{dq.item_name}"
+            seen_keys.add(key)
+            selectable.append({
+                "id": key,
+                "quest_title": dq.quest_title,
+                "category": "주간 납품",
+                "target_mode": "delivery",
+                "item_name": dq.item_name,
+                "current": dq.current,
+                "goal": dq.goal,
+                "needed": dq.needed,
+                "is_completed": dq.is_completed,
+                "already_registered": dq.item_name in delivery_target_store.targets
+            })
+
+        # 2. General / Guide / Sub / Event / Goddess Missions in Quest Tracker
+        try:
+            raw_quests = self.cli.get_quests()
+        except Exception:
+            raw_quests = []
+
+        all_known_items = (
+            set((self.recipes or {}).keys())
+            | set(STANDARD_ALTER_RECIPES.keys())
+            | set(KNOWN_GATHERABLE_ITEMS)
+        )
+        # Sort known items by length descending so longer specific names match first
+        sorted_known = sorted(all_known_items, key=len, reverse=True)
+
+        for q in raw_quests:
+            q_title = self.clean_text(q.get("QuestTitle", ""))
+            src_disp = self.clean_text(q.get("SourceDisplayName", "") or q.get("Source", "일반 퀘스트"))
+            for obj in q.get("Objectives", []):
+                desc = self.clean_text(obj.get("Description", ""))
+                cur = int(obj.get("Count", 0) or 0)
+                goal = int(obj.get("Goal", 1) or 1)
+                is_comp = bool(obj.get("IsCompleted", False))
+
+                # Try matching any known craft/alter/gather item inside the objective description
+                matched_item = ""
+                for cand in sorted_known:
+                    if len(cand) >= 2 and cand in desc:
+                        matched_item = cand
+                        break
+                if not matched_item:
+                    continue
+
+                if f"delivery:{matched_item}" in seen_keys:
+                    continue
+                key = f"quest:{q_title}:{matched_item}"
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+
+                selectable.append({
+                    "id": key,
+                    "quest_title": q_title,
+                    "category": src_disp or "일반/가이드",
+                    "target_mode": "custom",
+                    "item_name": matched_item,
+                    "current": cur,
+                    "goal": goal,
+                    "needed": max(0, goal - cur),
+                    "is_completed": is_comp,
+                    "objective_text": desc,
+                    "already_registered": matched_item in custom_target_store.targets or matched_item in delivery_target_store.targets
+                })
+
+        return selectable
+
+    def execute_smart_fishing(
+        self,
+        fish_name: str = "고등어",
+        target_count: int = 0,
+        max_minutes: int = 30,
+        callback: Optional[LogCallback] = None,
+        status_reporter: Optional[Callable[[str], None]] = None
+    ) -> Dict[str, Any]:
+        """
+        [#5 스마트 자동 낚시 매니저]
+        Starts auto-fishing for `fish_name` via execute_gathering (which returns 'started' immediately
+        and runs indefinitely in-game), then monitors bag weight, gained fish count, and timer,
+        calling stop_action() automatically when any safety/goal condition is reached.
+        """
+        self.reset_abort()
+        self.ensure_character_ready_for_action(callback=callback)
+
+        fish_name = (fish_name or "고등어").strip()
+        max_sec = max(1, int(max_minutes or 30)) * 60
+        start_time = time.time()
+        initial_wings = self._safe_get_wings()
+
+        try:
+            init_locs = self.cli.get_all_item_locations_map(bypass_cache=True)
+            init_inv = {k: v.get("inventory", 0) for k, v in init_locs.items()}
+        except Exception:
+            init_inv = {}
+        init_fish_cnt = init_inv.get(fish_name, 0)
+
+        self.log(
+            f"🎣 [스마트 자동 낚시 시작] 대상: '{fish_name}' | 목표: {f'{target_count}마리' if target_count > 0 else '제한 없음'} | 최대 시간: {max_minutes}분",
+            "action",
+            callback
+        )
+        try:
+            res = self.cli.execute_gathering(fish_name)
+            self.log(f"   낚시터 이동 및 자동 낚시 시작 응답: {res}", "info", callback)
+        except Exception as e:
+            self.log(f"   낚시 시작 오류: {e}", "error", callback)
+            raise
+
+        stop_reason = "목표 시간 도달"
+        round_start_time = time.time()
+        while not self.abort_requested:
+            elapsed = time.time() - start_time
+            if elapsed >= max_sec:
+                stop_reason = f"설정 시간({max_minutes}분) 도달"
+                break
+
+            # 55-minute single-action cycle refresh (prevents 1-hour continuous action popup)
+            if (time.time() - round_start_time) >= 3300 and (max_sec - elapsed) > 60:
+                self.log(
+                    f"🎣 [55분 주기 갱신] '{fish_name}' 연속 낚시 55분이 경과하여 1시간 확인창 방지를 위해 잠시 멈추고 즉시 다시 낚시를 시작합니다.",
+                    "info",
+                    callback
+                )
+                try:
+                    self.cli.stop_action()
+                except Exception:
+                    pass
+                time.sleep(2.0)
+                if self.abort_requested:
+                    break
+                try:
+                    self.cli.execute_gathering(fish_name)
+                    round_start_time = time.time()
+                except Exception as e:
+                    self.log(f"   낚시 재시작 오류: {e}", "warn", callback)
+                    break
+
+            # Check inventory weight & fish count every 3 seconds
+            try:
+                inv = self.cli.get_inventory()
+                cur_w = float(inv.get("CurrentInventoryWeightAsDecimal", 0) or inv.get("CurrentInventoryWeight", 0) or 0)
+                max_w = float(inv.get("MaxInventoryWeightAsDecimal", 100) or inv.get("MaxInventoryWeight", 100) or 100)
+                limit_ratio = get_weight_limit_ratio()
+                if max_w > 0 and (cur_w / max_w) >= limit_ratio:
+                    stop_reason = f"가방 안전 무게({limit_ratio*100:.0f}%) 도달 ({cur_w:.0f}/{max_w:.0f})"
+                    break
+            except Exception:
+                pass
+
+            try:
+                curr_locs = self.cli.get_all_item_locations_map(bypass_cache=True)
+                curr_fish = curr_locs.get(fish_name, {}).get("inventory", 0)
+                gained_target = max(0, curr_fish - init_fish_cnt)
+                total_all_gained = sum(
+                    max(0, v.get("inventory", 0) - init_inv.get(k, 0))
+                    for k, v in curr_locs.items()
+                )
+                rem_min = max(0, int((max_sec - elapsed) // 60))
+                if status_reporter:
+                    status_reporter(
+                        f"🎣 스마트 낚시 중: '{fish_name}' +{gained_target}마리 (전체 어획 +{total_all_gained}개 | 남은 시간 {rem_min}분)"
+                    )
+                if target_count > 0 and gained_target >= target_count:
+                    stop_reason = f"목표 수량({target_count}마리) 달성"
+                    break
+            except Exception:
+                pass
+
+            time.sleep(3.0)
+
+        if self.abort_requested:
+            stop_reason = "사용자 중지 요청"
+
+        try:
+            self.cli.stop_action()
+        except Exception:
+            pass
+
+        # Summarize all caught items
+        caught_items = []
+        try:
+            final_locs = self.cli.get_all_item_locations_map(bypass_cache=True)
+            for k, v in final_locs.items():
+                diff = v.get("inventory", 0) - init_inv.get(k, 0)
+                if diff > 0:
+                    caught_items.append({"item": k, "gained": diff, "required": target_count if k == fish_name else diff, "status": "completed"})
+        except Exception:
+            pass
+
+        self.log(f"🎣 [스마트 자동 낚시 종료] 사유: {stop_reason} (총 {len(caught_items)}종 어획 완료)", "success", callback)
+        self.try_auto_play_music(callback=callback)
+
+        final_wings = self._safe_get_wings(initial_wings)
+        summary = self.format_and_log_summary(
+            summary_title=f"스마트 자동 낚시 완료 ({stop_reason})",
+            initial_wings=initial_wings,
+            final_wings=final_wings,
+            gathered_list=caught_items,
+            altered_list=[],
+            crafted_list=[],
+            collected_facilities=[],
+            duration_sec=time.time() - start_time,
+            status="aborted" if self.abort_requested else "completed",
+            callback=callback
+        )
+        return {
+            "status": "aborted" if self.abort_requested else "completed",
+            "reason": stop_reason,
+            "caught": caught_items,
+            "summary": summary
+        }
+
 

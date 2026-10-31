@@ -23,6 +23,14 @@ READ_CACHE_TTL = {
     "get_items": 4.0,
     "get_quests": 5.0,
     "get_my_info": 30.0,
+    "get_current_environment": 10.0,
+    "get_daily_missions": 15.0,
+    "get_weekly_missions": 15.0,
+    "get_music_scores": 30.0,
+    "get_instruments": 30.0,
+    "get_social_actions": 60.0,
+    "get_near_pcs": 5.0,
+    "get_near_npcs": 5.0,
     "get_craftable_items": 15.0,
     "get_alterable_items": 15.0,
     "get_gatherable_items": 15.0,
@@ -33,7 +41,11 @@ ACTION_COMMANDS = {
     "execute_gathering",
     "execute_crafting",
     "complete_altering_work",
-    "stop_action"
+    "stop_action",
+    "stand_up",
+    "play_music_score",
+    "change_instrument",
+    "write_chat",
 }
 
 CLI_DEFAULT_PATH = r"C:\Nexon\MabinogiMobile\MabinogiMobile_CLI.exe"
@@ -205,10 +217,18 @@ def _find_from_running_processes() -> Optional[str]:
     return None
 
 
+_GAME_RUNNING_CACHE: Tuple[float, bool] = (0.0, False)
+
+
 def _is_game_running() -> bool:
-    """Fast check whether MabinogiMobile.exe is currently active in the process list."""
+    """Fast check whether MabinogiMobile.exe is currently active in the process list (with 2.0s cache)."""
+    global _GAME_RUNNING_CACHE
     if sys.platform != "win32":
         return False
+    now = time.time()
+    if (now - _GAME_RUNNING_CACHE[0]) < 2.0:
+        return _GAME_RUNNING_CACHE[1]
+
     # Method 1: CreateToolhelp32Snapshot (Works reliably even when process is elevated or protected by NGS)
     try:
         import ctypes.wintypes
@@ -235,6 +255,7 @@ def _is_game_running() -> bool:
                 if kernel32.Process32FirstW(h_snap, ctypes.byref(pe)):
                     while True:
                         if pe.szExeFile.lower() in target_names:
+                            _GAME_RUNNING_CACHE = (now, True)
                             return True
                         if not kernel32.Process32NextW(h_snap, ctypes.byref(pe)):
                             break
@@ -262,10 +283,12 @@ def _is_game_running() -> bool:
                         lower = os.path.basename(exe_path).lower()
                         if lower in ("mabinogimobile.exe", "mabinogimobile_cli.exe", "mabinogimobile_controller.exe"):
                             kernel32.CloseHandle(h_proc)
+                            _GAME_RUNNING_CACHE = (now, True)
                             return True
                     kernel32.CloseHandle(h_proc)
     except Exception:
         pass
+    _GAME_RUNNING_CACHE = (now, False)
     return False
 
 
@@ -406,6 +429,8 @@ class MabinogiCLI:
         self.cli_path: Optional[str] = None
         self.discovery_source: str = ""
         self._read_cache: Dict[Tuple[str, Optional[str]], Tuple[float, Any]] = {}
+        self._item_locations_map: Optional[Dict[str, Dict[str, int]]] = None
+        self._item_locations_map_time: float = 0.0
         self._cache_lock = threading.Lock()
         self.discover_cli_path(cli_path)
 
@@ -413,6 +438,8 @@ class MabinogiCLI:
         """Clears all cached read responses (called after mutations or inventory changes)."""
         with self._cache_lock:
             self._read_cache.clear()
+            self._item_locations_map = None
+            self._item_locations_map_time = 0.0
 
     def check_game_running(self) -> bool:
         """Checks if Mabinogi Mobile game process is running."""
@@ -481,12 +508,9 @@ class MabinogiCLI:
         if encoded is not None:
             args.append(encoded)
 
-        # Commands that must not block the shared _CLI_LOCK:
-        # - stop_action: emergency interrupt of in-progress actions
-        # - execute_gathering: long-running background action monitored concurrently by worker loop
-        if command in ("stop_action", "execute_gathering"):
+        def _exec_proc() -> subprocess.CompletedProcess:
             try:
-                kwargs = {
+                kwargs: Dict[str, Any] = {
                     "capture_output": True,
                     "text": True,
                     "timeout": timeout,
@@ -499,8 +523,7 @@ class MabinogiCLI:
                     startupinfo.wShowWindow = subprocess.SW_HIDE
                     kwargs["startupinfo"] = startupinfo
                     kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-
-                res = subprocess.run(args, **kwargs)
+                return subprocess.run(args, **kwargs)
             except subprocess.TimeoutExpired as te:
                 raise MabinogiCLIError(f"명령어 '{command}' 실행 시간이 초과되었습니다 ({timeout}초)", exit_code=3, error_code="TIMEOUT") from te
             except FileNotFoundError as fnf:
@@ -513,36 +536,15 @@ class MabinogiCLI:
                 ) from fnf
             except Exception as ex:
                 raise MabinogiCLIError(f"CLI 실행 중 오류가 발생했습니다 ('{command}'): {str(ex)}", error_code="EXEC_ERROR") from ex
+
+        # Commands that must not block the shared _CLI_LOCK:
+        # - stop_action: emergency interrupt of in-progress actions
+        # - execute_gathering: long-running background action monitored concurrently by worker loop
+        if command in ("stop_action", "execute_gathering"):
+            res = _exec_proc()
         else:
             with _CLI_LOCK:
-                try:
-                    kwargs = {
-                        "capture_output": True,
-                        "text": True,
-                        "timeout": timeout,
-                        "encoding": "utf-8",
-                        "errors": "replace"
-                    }
-                    if sys.platform == "win32":
-                        startupinfo = subprocess.STARTUPINFO()
-                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                        kwargs["startupinfo"] = startupinfo
-                        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-
-                    res = subprocess.run(args, **kwargs)
-                except subprocess.TimeoutExpired as te:
-                    raise MabinogiCLIError(f"명령어 '{command}' 실행 시간이 초과되었습니다 ({timeout}초)", exit_code=3, error_code="TIMEOUT") from te
-                except FileNotFoundError as fnf:
-                    raise MabinogiCLIError(
-                        f"MabinogiMobile_CLI.exe 실행 파일을 찾을 수 없습니다: {str(fnf)}\n"
-                        f"설정된 경로: {self.cli_path}\n"
-                        f"게임 설치 폴더 및 MM AI 에이전트 활성화 상태를 확인해주세요.",
-                        exit_code=1,
-                        error_code="CLI_NOT_FOUND"
-                    ) from fnf
-                except Exception as ex:
-                    raise MabinogiCLIError(f"CLI 실행 중 오류가 발생했습니다 ('{command}'): {str(ex)}", error_code="EXEC_ERROR") from ex
+                res = _exec_proc()
 
         exit_code = res.returncode
         stdout_str = res.stdout.strip()
@@ -686,6 +688,12 @@ class MabinogiCLI:
         item_name -> {inventory, character_storage, account_storage, storage_total, total}.
         Queries get_items() once without filters (benefiting from 4.0s READ_CACHE_TTL when bypass_cache is False).
         """
+        ttl = READ_CACHE_TTL.get("get_items", 4.0)
+        if not bypass_cache:
+            with self._cache_lock:
+                if self._item_locations_map is not None and (time.time() - self._item_locations_map_time) < ttl:
+                    return self._item_locations_map
+
         items = self.get_items(bypass_cache=bypass_cache)
         mapping: Dict[str, Dict[str, int]] = {}
         for it in items:
@@ -711,6 +719,10 @@ class MabinogiCLI:
                 mapping[name]["account_storage"] += cnt
                 mapping[name]["storage_total"] += cnt
             mapping[name]["total"] += cnt
+
+        with self._cache_lock:
+            self._item_locations_map = mapping
+            self._item_locations_map_time = time.time()
         return mapping
 
     def count_item(self, item_name: str, include_storage: bool = True, bypass_cache: bool = False) -> int:
@@ -727,7 +739,7 @@ class MabinogiCLI:
         """
         mapping = self.get_all_item_locations_map(bypass_cache=bypass_cache)
         if item_name in mapping:
-            return copy.deepcopy(mapping[item_name])
+            return dict(mapping[item_name])
         return {
             "inventory": 0,
             "character_storage": 0,
@@ -781,3 +793,61 @@ class MabinogiCLI:
     def stop_action(self) -> Dict[str, Any]:
         _, data = self.run_raw("stop_action", timeout=15)
         return data
+
+    def stand_up(self) -> Dict[str, Any]:
+        _, data = self.run_raw("stand_up", timeout=15)
+        return data if isinstance(data, dict) else {}
+
+    # --- Missions, Music, Social & Nearby ---
+
+    def get_daily_missions(self) -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_daily_missions", timeout=15)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict) and isinstance(data.get("body"), list):
+            return data["body"]
+        return []
+
+    def get_weekly_missions(self) -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_weekly_missions", timeout=15)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict) and isinstance(data.get("body"), list):
+            return data["body"]
+        return []
+
+    def get_music_scores(self, filter_title: str = "") -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_music_scores", filter_title if filter_title else None, timeout=15)
+        return data if isinstance(data, list) else []
+
+    def play_music_score(self, title: str) -> Dict[str, Any]:
+        body = json.dumps({"title": title}, ensure_ascii=False)
+        _, data = self.run_raw("play_music_score", body, timeout=15)
+        return data if isinstance(data, dict) else {}
+
+    def get_instruments(self, filter_name: str = "") -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_instruments", filter_name if filter_name else None, timeout=15)
+        return data if isinstance(data, list) else []
+
+    def change_instrument(self, name: str) -> Dict[str, Any]:
+        body = json.dumps({"name": name}, ensure_ascii=False)
+        _, data = self.run_raw("change_instrument", body, timeout=15)
+        return data if isinstance(data, dict) else {}
+
+    def get_social_actions(self, filter_name: str = "") -> Dict[str, Any]:
+        _, data = self.run_raw("get_social_actions", filter_name if filter_name else None, timeout=15)
+        return data if isinstance(data, dict) else {"Behaviours": [], "Facials": []}
+
+    def get_near_pcs(self) -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_near_pcs", timeout=15)
+        return data if isinstance(data, list) else []
+
+    def get_near_npcs(self) -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_near_npcs", timeout=15)
+        return data if isinstance(data, list) else []
+
+    def write_chat(self, message: str) -> Dict[str, Any]:
+        msg = (message or "").strip()[:50]
+        _, data = self.run_raw("write_chat", msg, timeout=15)
+        return data if isinstance(data, dict) else {}
+

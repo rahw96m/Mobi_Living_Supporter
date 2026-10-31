@@ -32,13 +32,19 @@ from mabi_cli import MabinogiCLI, MabinogiCLIError, get_saved_cli_path, find_cli
 from delivery_manager import (
     DeliveryManager, DeliveryTask, alarm_store, delivery_target_store,
     delivery_preset_store, custom_target_store, settings_store, get_facility_for_material,
-    send_discord_test_message, notify_discord_goal_completion
+    send_discord_test_message, notify_discord_goal_completion,
+    STANDARD_ALTER_RECIPES, KNOWN_GATHERABLE_ITEMS, KNOWN_NON_GATHERABLE_MATERIALS
 )
 
 BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 EXE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 
+_ICON_BYTES_CACHE: Dict[str, Any] = {}
+_HTML_PAGE_BYTES: Any = None
+
 def get_icon_bytes(format_type="png"):
+    if format_type in _ICON_BYTES_CACHE:
+        return _ICON_BYTES_CACHE[format_type]
     filename = "app_icon.png" if format_type == "png" else "app_icon.ico"
     candidates = [
         os.path.join(BASE_DIR, filename),
@@ -49,9 +55,12 @@ def get_icon_bytes(format_type="png"):
         if os.path.exists(c):
             try:
                 with open(c, "rb") as f:
-                    return f.read()
+                    data = f.read()
+                    _ICON_BYTES_CACHE[format_type] = data
+                    return data
             except Exception:
                 pass
+    _ICON_BYTES_CACHE[format_type] = None
     return None
 
 cli_instance = MabinogiCLI()
@@ -182,7 +191,52 @@ cached_altering_works = None
 cached_delivery_targets = None
 cached_custom_targets = None
 cached_quests = None
+cached_batch_plan = None
+cached_batch_plan_time = 0.0
+cached_batch_plan_order = None
+cached_custom_plan = None
+cached_custom_plan_time = 0.0
+cached_custom_plan_order = None
+cached_quick_plan = None
+cached_quick_plan_time = 0.0
+cached_quick_plan_key = None
 status_lock = threading.Lock()
+
+_CHOSUNG_LIST = [
+    'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ',
+    'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+]
+
+def _extract_chosung_py(text: str) -> str:
+    out = []
+    for ch in (text or ""):
+        code = ord(ch) - 0xAC00
+        if 0 <= code <= 11171:
+            out.append(_CHOSUNG_LIST[code // 588])
+        else:
+            out.append(ch)
+    return "".join(out)
+
+def _match_query_py(target: str, q_lower: str, q_nospace: str) -> bool:
+    t_lower = target.lower()
+    if q_lower in t_lower:
+        return True
+    t_nospace = t_lower.replace(" ", "")
+    if q_nospace in t_nospace:
+        return True
+    if q_nospace in _extract_chosung_py(t_nospace):
+        return True
+    return False
+
+def invalidate_plan_caches():
+    global cached_batch_plan, cached_batch_plan_time, cached_custom_plan, cached_custom_plan_time, cached_quick_plan, cached_quick_plan_time
+    with status_lock:
+        cached_batch_plan = None
+        cached_batch_plan_time = 0.0
+        cached_custom_plan = None
+        cached_custom_plan_time = 0.0
+        cached_quick_plan = None
+        cached_quick_plan_time = 0.0
 
 def _on_altering_works_updated_handler(works_info: Dict[str, Any]):
     global cached_altering_works
@@ -255,10 +309,15 @@ def get_cached_status() -> Dict[str, Any]:
         activity = cli_instance.get_activity()
         wings = cli_instance.get_wings_count()
         inv = cli_instance.get_inventory()
+        try:
+            env_info = cli_instance.get_current_environment()
+        except Exception:
+            env_info = {}
 
         data = {
             "connected": True,
             "activity": activity,
+            "environment": env_info,
             "character": new_char_info or prev_char_info,
             "wings": wings,
             "inventory": inv,
@@ -338,7 +397,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._send_data(status, body_bytes, "application/json; charset=utf-8")
 
     def _send_html(self, html_text, status=200):
-        body_bytes = html_text.encode("utf-8")
+        global _HTML_PAGE_BYTES
+        if html_text is HTML_PAGE:
+            if _HTML_PAGE_BYTES is None:
+                _HTML_PAGE_BYTES = HTML_PAGE.encode("utf-8")
+            body_bytes = _HTML_PAGE_BYTES
+        else:
+            body_bytes = html_text.encode("utf-8")
         self._send_data(status, body_bytes, "text/html; charset=utf-8")
 
     def _send_error(self, message, status=500):
@@ -464,21 +529,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error(e)
             return
 
-        if path == "/api/network_info":
-            try:
-                ip = get_local_ip()
-                port = active_server_port
-                mobile_url = f"http://{ip}:{port}"
-                self._send_json({
-                    "local_ip": ip,
-                    "port": port,
-                    "mobile_url": mobile_url
-                })
-            except Exception as e:
-                self._send_error(e)
-            return
-
         if path == "/api/batch_plan":
+            global cached_batch_plan, cached_batch_plan_time, cached_batch_plan_order
             if is_busy:
                 self._send_json({"is_busy": True, "can_start": False, "items": [], "steps": []})
                 return
@@ -486,6 +538,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             alter_order = query_params.get("alter_order", [None])[0]
             try:
                 plan = manager_instance.analyze_batch_plan(alter_order=alter_order)
+                with status_lock:
+                    cached_batch_plan = plan
+                    cached_batch_plan_time = time.time()
+                    cached_batch_plan_order = alter_order
                 self._send_json(plan)
             except Exception as e:
                 self._send_error(e)
@@ -508,6 +564,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/custom_plan":
+            global cached_custom_plan, cached_custom_plan_time, cached_custom_plan_order
             if is_busy:
                 self._send_json({"is_busy": True, "can_start": False, "items": [], "steps": []})
                 return
@@ -515,6 +572,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             alter_order = query_params.get("alter_order", [None])[0]
             try:
                 plan = manager_instance.analyze_custom_plan(alter_order=alter_order)
+                with status_lock:
+                    cached_custom_plan = plan
+                    cached_custom_plan_time = time.time()
+                    cached_custom_plan_order = alter_order
                 self._send_json(plan)
             except Exception as e:
                 self._send_error(e)
@@ -531,30 +592,124 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/search_recipe":
-            if is_busy:
-                self._send_error("작업 진행 중에는 실시간 레시피 검색을 수행할 수 없습니다.", 409)
-                return
             query_params = parse_qs(parsed.query)
             item_name = query_params.get("name", [""])[0].strip()
             if not item_name:
                 self._send_error("검색할 이름을 입력해주세요.", 400)
                 return
             try:
-                craft_res = cli_instance.get_craftable_items(item_name)
-                alter_res = cli_instance.get_alterable_items(item_name)
-                gath_res = cli_instance.get_gatherable_items(item_name)
-                breakdown = cli_instance.get_item_location_breakdown(item_name)
+                # 1. Local Recipe / Alter / Gather / Reverse-Usage Database Lookup (Always fast & available)
+                q_lower = item_name.lower()
+                q_nospace = q_lower.replace(" ", "")
+                local_crafts = []
+                used_in = []
+
+                for r_name, ings in (manager_instance.recipes or {}).items():
+                    if _match_query_py(r_name, q_lower, q_nospace):
+                        local_crafts.append({
+                            "name": r_name,
+                            "type": "제작",
+                            "ingredients": ings
+                        })
+                    if isinstance(ings, dict):
+                        for ing_k, ing_v in ings.items():
+                            if _match_query_py(ing_k, q_lower, q_nospace):
+                                used_in.append({
+                                    "target": r_name,
+                                    "category": "제작",
+                                    "ingredient": ing_k,
+                                    "qty": ing_v
+                                })
+
+                local_alters = []
+                for a_name, a_info in STANDARD_ALTER_RECIPES.items():
+                    ings = a_info.get("ingredients", {})
+                    fac = a_info.get("facility", "가공 시설")
+                    if _match_query_py(a_name, q_lower, q_nospace):
+                        local_alters.append({
+                            "name": a_name,
+                            "facility": fac,
+                            "produced": a_info.get("produced", 1),
+                            "tier": a_info.get("tier", 1),
+                            "ingredients": ings
+                        })
+                    if isinstance(ings, dict):
+                        for ing_k, ing_v in ings.items():
+                            if _match_query_py(ing_k, q_lower, q_nospace):
+                                used_in.append({
+                                    "target": a_name,
+                                    "category": fac.replace(" 가공 시설", "").replace(" 시설", "") + " 가공",
+                                    "ingredient": ing_k,
+                                    "qty": ing_v
+                                })
+
+                local_gathers = [g for g in sorted(KNOWN_GATHERABLE_ITEMS) if _match_query_py(g, q_lower, q_nospace)]
+                local_specials = [s for s in sorted(KNOWN_NON_GATHERABLE_MATERIALS) if _match_query_py(s, q_lower, q_nospace)]
+
+                # Sort exact matches first, then prefix matches, then by length
+                def _rank_name(nm: str) -> tuple:
+                    nl = nm.lower()
+                    if nl == q_lower:
+                        return (0, len(nm), nm)
+                    if nl.startswith(q_lower):
+                        return (1, len(nm), nm)
+                    return (2, len(nm), nm)
+
+                local_crafts.sort(key=lambda x: _rank_name(x["name"]))
+                local_alters.sort(key=lambda x: (0 if x["name"].lower() == q_lower else 1, x.get("tier", 1), x["name"]))
+                local_gathers.sort(key=_rank_name)
+                local_specials.sort(key=_rank_name)
+                used_in.sort(key=lambda x: (0 if x["ingredient"].lower() == q_lower else 1, x["target"]))
+
+                # Resolve best canonical item name for inventory stock check if user searched a partial/chosung query
+                stock_target_name = item_name
+                exact_candidates = (
+                    [c["name"] for c in local_crafts]
+                    + [a["name"] for a in local_alters]
+                    + local_gathers
+                    + local_specials
+                )
+                if exact_candidates and item_name not in exact_candidates:
+                    stock_target_name = exact_candidates[0]
+
+                # 2. Live CLI Inventory & In-Game Recipe Lookup (if not busy and connected)
+                cli_live_ok = False
+                breakdown = {"inventory": 0, "character_storage": 0, "account_storage": 0, "storage_total": 0, "total": 0}
+                craft_items = []
+                alter_items = []
+                gath_items = []
+
+                if not is_busy:
+                    try:
+                        breakdown = cli_instance.get_item_location_breakdown(stock_target_name)
+                        craft_res = cli_instance.get_craftable_items(stock_target_name)
+                        craft_items = craft_res.get("items", [])
+                        all_alter = cli_instance.get_alterable_items().get("items", [])
+                        alter_items = [it for it in all_alter if stock_target_name in it.get("DisplayName", "")]
+                        all_gath = cli_instance.get_gatherable_items().get("items", [])
+                        gath_items = [it for it in all_gath if stock_target_name in it.get("DisplayName", "")]
+                        cli_live_ok = True
+                    except Exception:
+                        cli_live_ok = False
 
                 self._send_json({
-                    "item_name": item_name,
+                    "item_name": stock_target_name,
+                    "query": item_name,
+                    "cli_live_ok": cli_live_ok,
+                    "is_busy": is_busy,
                     "owned_bag": breakdown["inventory"],
                     "owned_char_storage": breakdown["character_storage"],
                     "owned_account_storage": breakdown["account_storage"],
                     "owned_storage": breakdown["storage_total"],
                     "owned_all": breakdown["total"],
-                    "craft": craft_res.get("items", []),
-                    "alter": alter_res.get("items", []),
-                    "gather": gath_res.get("items", [])
+                    "craft": craft_items,
+                    "alter": alter_items,
+                    "gather": gath_items,
+                    "local_crafts": local_crafts[:25],
+                    "local_alters": local_alters[:20],
+                    "local_gathers": local_gathers[:20],
+                    "local_specials": local_specials[:10],
+                    "used_in": used_in[:30]
                 })
             except Exception as e:
                 self._send_error(e)
@@ -580,14 +735,36 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/quick_alter_plan":
-            if is_busy:
-                self._send_json({"is_busy": True, "can_start": False, "facilities": []})
-                return
+            global cached_quick_plan, cached_quick_plan_time, cached_quick_plan_key
             query_params = parse_qs(parsed.query)
             category = query_params.get("category", ["all"])[0].strip()
             alter_order = query_params.get("alter_order", [None])[0]
+            force_refresh = query_params.get("force", ["0"])[0] == "1"
+            req_key = f"{category}:{alter_order or manager_instance.get_alter_order()}"
+
+            if is_busy:
+                with status_lock:
+                    if cached_quick_plan is not None and cached_quick_plan_key == req_key:
+                        resp = dict(cached_quick_plan)
+                        resp["is_busy"] = True
+                        self._send_json(resp)
+                        return
+                self._send_json({"is_busy": True, "can_start": False, "facilities": []})
+                return
+
+            now = time.time()
+            if not force_refresh:
+                with status_lock:
+                    if cached_quick_plan is not None and cached_quick_plan_key == req_key and (now - cached_quick_plan_time) < 6.0:
+                        self._send_json(cached_quick_plan)
+                        return
+
             try:
                 plan = manager_instance.analyze_quick_alter(category if category != "all" else None, alter_order=alter_order)
+                with status_lock:
+                    cached_quick_plan = plan
+                    cached_quick_plan_time = time.time()
+                    cached_quick_plan_key = req_key
                 self._send_json(plan)
             except Exception as e:
                 self._send_error(e)
@@ -628,7 +805,73 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/recipes_all":
             try:
-                self._send_json({"recipes": manager_instance.recipes})
+                self._send_json({
+                    "recipes": manager_instance.recipes,
+                    "alter_recipes": STANDARD_ALTER_RECIPES,
+                    "gatherables": sorted(list(KNOWN_GATHERABLE_ITEMS)),
+                    "non_gatherables": sorted(list(KNOWN_NON_GATHERABLE_MATERIALS))
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/selectable_quests":
+            if is_busy:
+                self._send_json({"quests": [], "is_busy": True})
+                return
+            try:
+                quests = manager_instance.scan_all_selectable_quests()
+                self._send_json({"quests": quests})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/zero_gather_recommendations":
+            if is_busy:
+                self._send_json({"items": [], "is_busy": True})
+                return
+            try:
+                recs = manager_instance.recommend_zero_gather_crafts()
+                self._send_json({"items": recs})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/safety_stocks":
+            try:
+                items = manager_instance.get_safety_stocks_status() if not is_busy else []
+                self._send_json({
+                    "items": items,
+                    "config": settings_store.get("safety_stocks", {}) or {},
+                    "is_busy": is_busy
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/missions":
+            if is_busy:
+                self._send_json({"daily": [], "weekly": [], "is_busy": True})
+                return
+            try:
+                daily = cli_instance.get_daily_missions()
+                weekly = cli_instance.get_weekly_missions()
+                self._send_json({"daily": daily, "weekly": weekly})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/music_and_social":
+            if is_busy:
+                self._send_json({"scores": [], "instruments": [], "is_busy": True})
+                return
+            try:
+                scores = cli_instance.get_music_scores()
+                instruments = cli_instance.get_instruments()
+                self._send_json({
+                    "scores": scores,
+                    "instruments": instruments
+                })
             except Exception as e:
                 self._send_error(e)
             return
@@ -766,6 +1009,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                             with status_lock:
                                 last_execution_summary = res["summary"]
                                 last_summary_id += 1
+                        if not manager_instance.abort_requested:
+                            manager_instance.try_auto_play_music(callback=add_log)
                     except Exception as err:
                         add_log("error", f"작업 실패: {str(err)}")
                         with status_lock:
@@ -847,7 +1092,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                         global current_task_info
                         current_task_info = msg
 
-                    plan = manager_instance.analyze_batch_plan(alter_order=alter_order)
+                    plan = None
+                    with status_lock:
+                        if cached_batch_plan is not None and (time.time() - cached_batch_plan_time) < 6.0 and cached_batch_plan_order == alter_order:
+                            plan = copy.deepcopy(cached_batch_plan)
+                    if plan is None:
+                        plan = manager_instance.analyze_batch_plan(alter_order=alter_order)
                     res = manager_instance.execute_batch_deliveries(
                         plan, callback=add_log, alter_order=alter_order,
                         goal_fulfillment_mode=goal_fulfillment_mode,
@@ -863,6 +1113,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                                 args=(res["summary"], "전체 주간 납품"),
                                 daemon=True
                             ).start()
+                    if not manager_instance.abort_requested:
+                        manager_instance.try_auto_play_music(callback=add_log)
                 except Exception as err:
                     add_log("error", f"일괄 제작 실패: {str(err)}")
                     err_summary = {
@@ -920,7 +1172,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                         global current_task_info
                         current_task_info = msg
 
-                    plan = manager_instance.analyze_custom_plan(alter_order=alter_order)
+                    plan = None
+                    with status_lock:
+                        if cached_custom_plan is not None and (time.time() - cached_custom_plan_time) < 6.0 and cached_custom_plan_order == alter_order:
+                            plan = copy.deepcopy(cached_custom_plan)
+                    if plan is None:
+                        plan = manager_instance.analyze_custom_plan(alter_order=alter_order)
                     res = manager_instance.execute_batch_deliveries(
                         plan, callback=add_log, alter_order=alter_order,
                         goal_fulfillment_mode=goal_fulfillment_mode,
@@ -937,6 +1194,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                                 args=(res["summary"], "지정 제작"),
                                 daemon=True
                             ).start()
+                    if not manager_instance.abort_requested:
+                        manager_instance.try_auto_play_music(callback=add_log)
                 except Exception as err:
                     add_log("error", f"개별 지정 일괄 제작 실패: {str(err)}")
                     err_summary = {
@@ -1007,6 +1266,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                             with status_lock:
                                 last_execution_summary = res["summary"]
                                 last_summary_id += 1
+                        if not manager_instance.abort_requested:
+                            manager_instance.try_auto_play_music(callback=add_log)
                     except Exception as err:
                         add_log("error", f"빠른 가공 실행 실패: {str(err)}")
                     finally:
@@ -1092,6 +1353,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
             try:
                 added = manager_instance.add_detected_quests_to_targets()
+                invalidate_plan_caches()
                 if added:
                     add_log("success", f"[주간 납품 등록] 현재 퀘스트 {len(added)}건이 납품 목표 목록에 등록되었습니다.")
                 else:
@@ -1124,6 +1386,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 else:
                     cur = max(prev_cur, eff_cur)
                 entry = delivery_target_store.add_or_update(item_name, goal, cur, quest_title)
+                invalidate_plan_caches()
                 add_log("success", f"[납품 목표 등록] '{item_name}' (목표: {goal}개 / 현재: {cur}개) 등록 완료")
                 self._send_json({"status": "success", "target": entry})
             except Exception as e:
@@ -1141,6 +1404,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     self._send_error("올바른 아이템명을 입력해주세요.", 400)
                     return
                 entry = delivery_target_store.update_current(item_name, current)
+                invalidate_plan_caches()
                 if entry:
                     add_log("info", f"[보유 수량 수정] '{item_name}' 보유 수량이 {entry['current']}/{entry['goal']}개로 갱신되었습니다.")
                     self._send_json({"status": "success", "target": entry})
@@ -1153,6 +1417,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/reset_delivery_targets_current":
             try:
                 reset_count = delivery_target_store.reset_all_current()
+                invalidate_plan_caches()
                 add_log("info", f"[보유 수량 초기화] 등록된 {reset_count}개 납품 품목의 보유 수량이 모두 0개로 초기화되었습니다.")
                 self._send_json({"status": "success", "reset_count": reset_count})
             except Exception as e:
@@ -1167,6 +1432,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 item_name = str(req_json.get("item_name", "")).strip()
                 if item_name:
                     delivery_target_store.delete(item_name)
+                    invalidate_plan_caches()
                     add_log("info", f"[납품 목표 삭제] '{item_name}' 항목이 목표 목록에서 제거되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
@@ -1176,6 +1442,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/clear_delivery_targets":
             try:
                 delivery_target_store.clear()
+                invalidate_plan_caches()
                 add_log("info", "[납품 목표 초기화] 모든 등록된 납품 목표가 삭제되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
@@ -1206,6 +1473,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 else:
                     cur = max(prev_cur, eff_cur)
                 entry = custom_target_store.add_or_update(item_name, goal, cur, quest_title="개별 지정 제작")
+                invalidate_plan_caches()
                 add_log("success", f"[개별 제작 등록] '{item_name}' (목표: {goal}개 / 현재: {cur}개) 등록 완료")
                 self._send_json({"status": "success", "target": entry})
             except Exception as e:
@@ -1223,6 +1491,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     self._send_error("올바른 아이템명을 입력해주세요.", 400)
                     return
                 entry = custom_target_store.update_current(item_name, current)
+                invalidate_plan_caches()
                 if entry:
                     add_log("info", f"[개별 보유 수량 수정] '{item_name}' 보유 수량이 {entry['current']}/{entry['goal']}개로 갱신되었습니다.")
                     self._send_json({"status": "success", "target": entry})
@@ -1240,6 +1509,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 item_name = str(req_json.get("item_name", "")).strip()
                 if item_name:
                     custom_target_store.delete(item_name)
+                    invalidate_plan_caches()
                     add_log("info", f"[개별 제작 삭제] '{item_name}' 항목이 목표 목록에서 제거되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
@@ -1249,6 +1519,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/clear_custom_targets":
             try:
                 custom_target_store.clear()
+                invalidate_plan_caches()
                 add_log("info", "[개별 제작 초기화] 모든 등록된 개별 제작 목표가 삭제되었습니다.")
                 self._send_json({"status": "success"})
             except Exception as e:
@@ -1258,6 +1529,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/reset_custom_targets_current":
             try:
                 reset_count = custom_target_store.reset_all_current()
+                invalidate_plan_caches()
                 add_log("info", f"[개별 제작 수량 초기화] 등록된 {reset_count}개 목표의 보유 수량이 모두 0개로 초기화되었습니다.")
                 self._send_json({"status": "success", "reset_count": reset_count})
             except Exception as e:
@@ -1267,6 +1539,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/sync_custom_targets_inventory":
             try:
                 sync_count = custom_target_store.clear_all_overrides()
+                invalidate_plan_caches()
                 add_log("info", f"[인벤토리 동기화] 등록된 {sync_count}개 개별 제작 목표의 수동 수량이 해제되어 실제 인벤토리와 다시 동기화됩니다.")
                 self._send_json({"status": "success", "sync_count": sync_count})
             except Exception as e:
@@ -1294,6 +1567,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         if k_str and v_int > 0:
                             clean_ingredients[k_str] = v_int
                 manager_instance.update_recipe(item_name, clean_ingredients)
+                invalidate_plan_caches()
                 add_log("success", f"[레시피 갱신] '{item_name}' 제작 레시피 저장 완료: {clean_ingredients}")
                 self._send_json({"status": "success", "item_name": item_name, "ingredients": clean_ingredients})
             except Exception as e:
@@ -1366,6 +1640,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         delivery_target_store.add_or_update(item_name, goal, cur, quest_title)
                         loaded_count += 1
                 mode_str = " (보유 수량 0개로 초기화)" if reset_current else " (기존 보유 수량 승계)"
+                invalidate_plan_caches()
                 add_log("success", f"[프리셋 불러오기] '{preset_name}' ({loaded_count}개 항목) 프리셋이 등록되었습니다.{mode_str}")
                 self._send_json({"status": "success", "loaded_count": loaded_count, "reset_current": reset_current})
             except Exception as e:
@@ -1394,6 +1669,173 @@ class RequestHandler(BaseHTTPRequestHandler):
 
             threading.Thread(target=collect_worker, daemon=True).start()
             self._send_json({"status": "started"})
+            return
+
+        if path == "/api/import_selected_quests":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                items = req_json.get("items", [])
+                if not isinstance(items, list) or not items:
+                    self._send_error("가져올 퀘스트 항목을 1개 이상 선택해주세요.", 400)
+                    return
+
+                imported_delivery = 0
+                imported_custom = 0
+                for it in items:
+                    if not isinstance(it, dict):
+                        continue
+                    item_name = str(it.get("item_name") or "").strip()
+                    goal = int(it.get("goal") or 1)
+                    if not item_name or goal <= 0:
+                        continue
+                    cur = int(it.get("current") or 0)
+                    if not is_busy:
+                        try:
+                            cur = max(cur, manager_instance.get_effective_owned(item_name))
+                        except Exception:
+                            pass
+                    q_title = str(it.get("quest_title") or "퀘스트 선택 가져오기").strip()
+                    target_mode = str(it.get("target_mode") or "delivery").strip()
+                    if target_mode == "custom":
+                        custom_target_store.add_or_update(item_name, goal, cur, quest_title=q_title)
+                        imported_custom += 1
+                    else:
+                        delivery_target_store.add_or_update(item_name, goal, cur, quest_title=q_title)
+                        imported_delivery += 1
+
+                invalidate_plan_caches()
+                add_log("success", f"[퀘스트 선택 가져오기] 주간 납품 {imported_delivery}건, 지정 제작 {imported_custom}건 등록 완료")
+                self._send_json({
+                    "status": "success",
+                    "imported_delivery": imported_delivery,
+                    "imported_custom": imported_custom
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/safety_stocks":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                action = str(req_json.get("action") or "save").strip()
+                cur_stocks = dict(settings_store.get("safety_stocks") or {})
+
+                if action == "save":
+                    item_name = str(req_json.get("item_name") or "").strip()
+                    min_qty = int(req_json.get("min_qty") or 0)
+                    if not item_name or min_qty <= 0:
+                        self._send_error("올바른 아이템명과 최소 유지 수량을 입력해주세요.", 400)
+                        return
+                    cur_stocks[item_name] = min_qty
+                    settings_store.update({"safety_stocks": cur_stocks})
+                    add_log("success", f"[안전 재고 설정] '{item_name}' 최소 유지 재고 {min_qty}개로 저장")
+                    self._send_json({"status": "success", "stocks": manager_instance.get_safety_stocks_status()})
+                elif action == "delete":
+                    item_name = str(req_json.get("item_name") or "").strip()
+                    if item_name in cur_stocks:
+                        del cur_stocks[item_name]
+                        settings_store.update({"safety_stocks": cur_stocks})
+                        add_log("info", f"[안전 재고 삭제] '{item_name}' 안전 재고 항목 제거")
+                    self._send_json({"status": "success", "stocks": manager_instance.get_safety_stocks_status()})
+                elif action == "apply":
+                    added = manager_instance.apply_safety_stocks_to_custom()
+                    invalidate_plan_caches()
+                    if added:
+                        names = ", ".join([f"{a['item_name']}(+{a['deficit']}개)" for a in added])
+                        add_log("success", f"[안전 재고 자동 보충] 부족분 {len(added)}건을 지정 제작 목표에 일괄 추가했습니다: {names}")
+                    else:
+                        add_log("info", "[안전 재고 자동 보충] 모든 상비약/요리 안전 재고가 이미 충분합니다.")
+                    self._send_json({"status": "success", "added": added, "stocks": manager_instance.get_safety_stocks_status()})
+                else:
+                    self._send_error("알 수 없는 action입니다.", 400)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/execute_social_or_music":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                action = str(req_json.get("action") or "").strip()
+                if action == "play_music":
+                    title = str(req_json.get("title") or "").strip()
+                    res = cli_instance.play_music_score(title if title else None)
+                    add_log("success", f"[악보 연주] '{title or '기본 악보'}' 연주 시작 요청 완료")
+                    self._send_json({"status": "success", "result": res})
+                elif action == "change_instrument":
+                    name = str(req_json.get("name") or "").strip()
+                    if not name:
+                        self._send_error("변경할 악기 이름을 선택해주세요.", 400)
+                        return
+                    res = cli_instance.change_instrument(name)
+                    add_log("success", f"[악기 변경] '{name}' 장착 요청 완료")
+                    self._send_json({"status": "success", "result": res})
+                elif action == "stand_up":
+                    res = cli_instance.stand_up()
+                    add_log("info", "[캐릭터 제어] 자리에서 일어나기(stand_up) 실행")
+                    self._send_json({"status": "success", "result": res})
+                elif action == "stop_action":
+                    res = cli_instance.stop_action()
+                    add_log("info", "[캐릭터 제어] 현재 행동 중지(stop_action) 실행")
+                    self._send_json({"status": "success", "result": res})
+                else:
+                    self._send_error("지원하지 않는 동작입니다.", 400)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/execute_smart_fishing":
+            if is_busy:
+                self._send_error("이미 다른 작업이 진행 중입니다.", 409)
+                return
+
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                fish_name = str(req_json.get("fish_name") or "고등어").strip()
+                target_count = int(req_json.get("target_count") or 30)
+                max_minutes = int(req_json.get("max_minutes") or 30)
+
+                manager_instance.reset_abort()
+                is_busy = True
+                current_task_info = f"[스마트 자동 낚시] '{fish_name}' 목표 {target_count}마리 (최대 {max_minutes}분) 진행 중..."
+
+                def fishing_worker():
+                    global is_busy, current_task_info, last_execution_summary, last_summary_id
+                    try:
+                        def update_task_status(msg):
+                            global current_task_info
+                            current_task_info = msg
+
+                        res = manager_instance.execute_smart_fishing(
+                            fish_name=fish_name,
+                            target_count=target_count,
+                            max_minutes=max_minutes,
+                            callback=add_log,
+                            status_reporter=update_task_status
+                        )
+                        if isinstance(res, dict) and "summary" in res:
+                            with status_lock:
+                                last_execution_summary = res["summary"]
+                                last_summary_id += 1
+                        if not manager_instance.abort_requested:
+                            manager_instance.try_auto_play_music(callback=add_log)
+                    except Exception as err:
+                        add_log("error", f"스마트 낚시 오류: {str(err)}")
+                    finally:
+                        is_busy = False
+                        current_task_info = ""
+
+                threading.Thread(target=fishing_worker, daemon=True).start()
+                self._send_json({"status": "started", "fish_name": fish_name, "target_count": target_count, "max_minutes": max_minutes})
+            except Exception as e:
+                self._send_error(e)
             return
 
         self._send_data(404, b"Not Found", "text/plain")
@@ -1713,11 +2155,26 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-variant-numeric: tabular-nums;
     }
     .cli-spinner {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--text-bright);
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .cli-spinner .spinner-bracket {
       display: inline-block;
-      width: 3ch;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+    .cli-spinner .spinner-char {
+      display: inline-block;
+      width: 1.2ch;
       text-align: center;
       font-family: var(--font-mono);
-      font-weight: 700;
       color: var(--text-bright);
     }
     .cli-gauge {
@@ -2323,7 +2780,67 @@ HTML_PAGE = r"""<!DOCTYPE html>
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
-      min-height: 110px;
+      min-height: 92px;
+    }
+    .facility-card.facility-idle {
+      min-height: 68px;
+    }
+    .hide-satisfied-rows tr.row-satisfied {
+      display: none !important;
+    }
+    /* Custom Autocomplete Dropdown & Search Enhancements */
+    .ac-wrapper {
+      position: relative;
+    }
+    .ac-dropdown {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 2px);
+      background: var(--bg-panel);
+      border: 1px solid var(--invert-bg);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+      z-index: 1200;
+      max-height: 240px;
+      overflow-y: auto;
+      display: none;
+    }
+    .ac-item {
+      padding: 6px 10px;
+      font-size: var(--fs-sm);
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--line-subtle);
+    }
+    .ac-item:last-child {
+      border-bottom: none;
+    }
+    .ac-item:hover,
+    .ac-item.active {
+      background: var(--bg-row-hover);
+      color: var(--text-bright);
+    }
+    .search-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      font-size: 11px;
+      background: var(--btn-boxed-bg);
+      color: var(--text-muted);
+      border: 1px solid var(--line-subtle);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.12s ease;
+    }
+    .search-chip:hover {
+      color: var(--text-bright);
+      border-color: var(--text-muted);
+      background: var(--btn-boxed-hover);
     }
     .facility-header {
       display: flex;
@@ -2964,7 +3481,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .mcb-running-desc {
       font-size: var(--fs-sm);
       color: var(--text-muted);
-      max-width: 280px;
+      max-width: 520px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -3084,7 +3601,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-top">
         <div class="logo-area">
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span class="badge">v1.2.1</span></h1>
+            <h1>모비노기 생활 지원도구 <span class="badge">v1.4.0</span></h1>
           </div>
         </div>
         <div class="header-actions">
@@ -3099,6 +3616,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </button>
           <button class="header-action-btn btn-settings" onclick="openCliModal()" title="게임 CLI 설치 경로 및 연결 설정">
             <span class="btn-label">연결 설정</span>
+          </button>
+          <button class="header-action-btn" onclick="openAiToolboxModal()" title="창고 털이 추천, 상비약 안전 재고, 스마트 낚시, 미션·악보·소셜 리모컨 등 AI 편의 도구함">
+            <span class="btn-label">AI 편의 도구함</span>
+          </button>
+          <button class="header-action-btn" onclick="openGuideModal()" title="처음 사용자를 위한 1분 퀵스타트, 주간 납품 18개 실전 튜토리얼 및 디스코드 웹훅 설정법">
+            <span class="btn-label">사용 가이드 &amp; 튜토리얼</span>
           </button>
           <button id="btn-show-summary" class="header-action-btn btn-summary" style="display: none;" onclick="openSummaryModal()" title="최근 완료된 작업의 채집, 가공, 제작, 날개 소모 결과를 확인합니다">
             <span class="btn-label">최근 작업 리포트</span>
@@ -3116,13 +3639,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-status-bar status-pills" id="status-pills">
         <div class="pill online" id="pill-status" onclick="openCliModal()" style="cursor: pointer;" title="클릭하여 연결 상태 및 설정 확인">커넥터 연결 확인 중</div>
         <span class="status-delim">|</span>
+        <div class="pill activity" id="pill-activity" title="인게임 캐릭터 실시간 활동 상태">상태: 대기 중</div>
+        <span class="status-delim">|</span>
         <div class="pill wings" id="pill-wings">날개 -</div>
         <span class="status-delim">|</span>
         <div class="pill weight" id="pill-weight">무게 -/-</div>
         <span class="status-delim">|</span>
-        <div class="pill sound" id="pill-sound" onclick="toggleSoundAlarmSetting()" style="cursor: pointer;" title="클릭하여 작업 완료 알림음 ON/OFF 전환">알람 소리: 꺼짐</div>
-        <span class="status-delim">|</span>
-        <div class="pill discord" id="pill-discord" onclick="openDiscordModal()" style="cursor: pointer;" title="클릭하여 디스코드 웹훅 알림 설정 열기">디스코드: 꺼짐</div>
+        <div class="pill" id="pill-env" title="현재 지역/채널, 에린 시간 및 포만감" style="color: var(--text-muted);">환경 확인 중</div>
       </div>
     </header>
 
@@ -3240,6 +3763,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <span class="cli-check-box" id="mcb-discord-icon" onclick="event.stopPropagation(); toggleDiscordAlarmSetting();" title="알림 켜기/끄기">□</span>
               <span id="mcb-discord-text">디스코드 알림</span>
             </button>
+            <button class="mcb-pill-btn" id="mcb-btn-auto-collect" onclick="toggleAutoCollectSetting()" title="[옵션 #3] 가공 완료 슬롯 발생 시 대기 상태이면 자동으로 수령합니다 (옵션 ON/OFF)">
+              <span class="cli-check-box" id="mcb-auto-collect-icon">□</span>
+              <span id="mcb-auto-collect-text">자동 수령</span>
+            </button>
+            <button class="mcb-pill-btn" id="mcb-btn-auto-music" onclick="toggleAutoPlayMusicSetting()" title="[옵션 #7] 작업 완료 후 대기 상태 진입 시 보유 악보를 자동 연주합니다 (옵션 ON/OFF)">
+              <span class="cli-check-box" id="mcb-auto-music-icon">□</span>
+              <span id="mcb-auto-music-text">대기 중 연주</span>
+            </button>
             <button class="mcb-pill-btn btn" id="mcb-btn-order" onclick="toggleAlterOrderSetting()" title="가공 순서 우선순위 (상위 티어 / 하위 티어 우선)">
               <span id="mcb-order-text">상위티어 우선</span>
             </button>
@@ -3257,7 +3788,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
           <!-- Running State: Live Text Spinner & Abort Button -->
           <div id="mcb-box-running" style="display: none; gap: 12px; align-items: center;">
-            <span class="cli-spinner">[/]</span>
             <div class="mcb-running-info">
               <div class="mcb-running-title" id="mcb-running-title">작업 진행 중...</div>
               <div class="mcb-running-desc" id="mcb-running-desc">실시간 상태 동기화 중</div>
@@ -3280,7 +3810,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span id="target-count-badge" class="badge delivery">0개 등록</span>
           </div>
           <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-            <button class="btn btn-sm" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 읽어 목록에 추가합니다">현재 퀘스트 등록</button>
+            <button class="btn btn-sm btn-solid-core" onclick="openQuestSelectModal('delivery')" title="인게임 추적 중인 모든 퀘스트 목록을 띄워 원하는 품목만 체크하여 가져옵니다">퀘스트 선택 가져오기</button>
+            <button class="btn btn-sm" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 즉시 목록에 추가합니다">현재 퀘스트 즉시 등록</button>
             <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" title="새 주간 퀘스트를 시작할 때 모든 등록 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">수량 0개로 초기화</button>
             <button class="btn btn-sm" onclick="clearDeliveryTargets()">전체 비우기</button>
             <button class="btn btn-sm" onclick="loadDeliveryTargets()">새로고침</button>
@@ -3297,9 +3828,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div id="delivery-targets-expanded-content" style="margin-top: 14px;">
           <!-- Quick Manual Add Input Form -->
           <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line);">
-            <div style="flex: 2; min-width: 170px;">
-              <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (직접 입력)</label>
-              <input type="text" id="target-input-item" class="input-text" placeholder="예: 론 엣지소드S, 비늘 갑옷 장갑S" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
+            <div class="ac-wrapper" style="flex: 2; min-width: 170px;">
+              <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (초성·부분 검색 지원)</label>
+              <input type="text" id="target-input-item" class="input-text" autocomplete="off" placeholder="예: 론 엣지소드S (또는 ㄹㅇㅈ)" style="width: 100%;" oninput="onItemInputAutocomplete(this, 'ac-target-input-item')" onkeydown="handleAutocompleteKeydown(event, this, 'ac-target-input-item', addManualTarget)">
+              <div id="ac-target-input-item" class="ac-dropdown"></div>
             </div>
             <div style="flex: 1; min-width: 80px;">
               <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
@@ -3371,7 +3903,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <h4 style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">&gt;</span>전체 통합 필요 1차 가공품 &amp; 채집 분석표</h4>
               <span id="batch-status-text" style="font-size: var(--fs-sm); color: var(--text-muted);">계산 중...</span>
             </div>
-            <div id="batch-tasks-container" style="display: none;"></div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button type="button" class="mcb-pill-btn" id="btn-hide-satisfied-delivery" onclick="toggleHideSatisfiedBom()" title="이미 보유량이 충분한 완료 재료를 표에서 숨기고 부족한 재료만 표시합니다" style="font-size: var(--fs-sm);">
+                <span class="cli-check-box" id="icon-hide-satisfied-delivery">□</span>
+                <span>완료 재료 숨김</span>
+              </button>
+              <div id="batch-tasks-container" style="display: none;"></div>
+            </div>
           </div>
           <div class="bom-table-container">
             <table class="bom-table">
@@ -3495,6 +4033,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span id="custom-target-count-badge" class="badge">0개 등록</span>
           </div>
           <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+            <button class="btn btn-sm btn-solid-core" onclick="openQuestSelectModal('custom')" title="인게임 추적 중인 퀘스트 목록을 띄워 원하는 품목만 체크하여 지정 제작에 가져옵니다">퀘스트 선택 가져오기</button>
+            <button class="btn btn-sm" onclick="openAiToolboxModal('zero_gather')" title="채집 없이 보유 재료만으로 즉시 제작 가능한 품목을 추천합니다">창고 털이 추천</button>
+            <button class="btn btn-sm" onclick="openAiToolboxModal('safety_stock')" title="전투 식량·물약 안전 재고 부족분을 원클릭 보충합니다">상비약 보충</button>
             <button class="btn btn-sm" onclick="resetAllCustomTargetsCurrent()" title="모든 개별 제작 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">수량 0개로 초기화</button>
             <button class="btn btn-sm" onclick="syncCustomTargetsInventory()" title="게임 내 인벤토리/창고 실제 보유량으로 수량을 다시 동기화합니다">인벤 동기화</button>
             <button class="btn btn-sm" onclick="openRecipeManagerModal()" title="아이템별 1회 제작 소요 재료를 확인하고 수정합니다">레시피 도감/수정</button>
@@ -3510,7 +4051,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <span><span class="sym-prefix">&gt;</span>제작할 아이템 직접 등록 (원하는 품목과 수량을 등록하면 아래 플래너가 모든 하위 재료를 일괄 계산합니다)</span>
             </div>
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-              <input type="text" id="custom-input-item" class="input-text" placeholder="아이템명 (예: 론 엣지소드S, 은 펜던트, 실크 로브 등)" style="flex: 2; min-width: 200px;" onkeydown="if(event.key==='Enter') addManualCustomTarget()">
+              <div class="ac-wrapper" style="flex: 2; min-width: 200px;">
+                <input type="text" id="custom-input-item" class="input-text" autocomplete="off" placeholder="아이템명 입력 (예: 론 엣지소드S, 은 펜던트 또는 초성 ㄹㅇㅈ)" style="width: 100%;" oninput="onItemInputAutocomplete(this, 'ac-custom-input-item')" onkeydown="handleAutocompleteKeydown(event, this, 'ac-custom-input-item', addManualCustomTarget)">
+                <div id="ac-custom-input-item" class="ac-dropdown"></div>
+              </div>
               <div style="display: flex; align-items: center; gap: 6px;">
                 <span style="font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap;">목표 수량:</span>
                 <input type="number" id="custom-input-count" class="input-number" value="1" min="1" max="999" style="width: 75px; text-align: center;" onkeydown="if(event.key==='Enter') addManualCustomTarget()">
@@ -3564,23 +4108,27 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <h4 style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">&gt;</span>개별 제작 통합 필요 1차 가공품 &amp; 채집 분석표</h4>
               <span id="custom-batch-status-text" style="font-size: var(--fs-sm); color: var(--text-muted);">계산 중...</span>
             </div>
+            <div>
+              <button type="button" class="mcb-pill-btn" id="btn-hide-satisfied-custom" onclick="toggleHideSatisfiedBom()" title="이미 보유량이 충분한 완료 재료를 표에서 숨기고 부족한 재료만 표시합니다" style="font-size: var(--fs-sm);">
+                <span class="cli-check-box" id="icon-hide-satisfied-custom">□</span>
+                <span>완료 재료 숨김</span>
+              </button>
+            </div>
           </div>
           <div class="bom-table-container">
             <table class="bom-table">
               <thead>
                 <tr>
-                  <th style="min-width: 130px;">재료명</th>
+                  <th style="min-width: 140px;">재료명</th>
                   <th style="min-width: 70px; text-align: center;">구분/시설</th>
-                  <th style="min-width: 75px; text-align: right;">총 소요</th>
-                  <th style="min-width: 105px; text-align: center;">가방(창고)</th>
-                  <th style="min-width: 80px; text-align: right;">부족 수량</th>
-                  <th style="min-width: 90px; text-align: center;">가공 필요</th>
-                  <th style="min-width: 130px;">가공 상태</th>
+                  <th style="min-width: 80px; text-align: right;">총 소요</th>
+                  <th style="min-width: 110px; text-align: center;">가방(창고)</th>
+                  <th style="min-width: 140px;">상태</th>
                 </tr>
               </thead>
               <tbody id="custom-batch-materials-tbody">
                 <tr>
-                  <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">개별 제작 목표를 등록하면 전체 소요 자재가 분석됩니다.</td>
+                  <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">개별 제작 목표를 등록하면 전체 소요 자재가 분석됩니다.</td>
                 </tr>
               </tbody>
             </table>
@@ -3627,7 +4175,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="card-title">
             <span><span class="sym-prefix">//</span>실시간 실행 콘솔</span>
             <div id="busy-box" style="display: none;" class="busy-indicator">
-              <span class="cli-spinner">[/]</span>
+              <span class="cli-spinner"><span class="spinner-bracket">[</span><span class="spinner-char">/</span><span class="spinner-bracket">]</span></span>
               <span id="busy-text">작업 진행 중...</span>
               <button class="btn btn-sm" onclick="abortQuickAlter()">중지</button>
             </div>
@@ -3642,16 +4190,36 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div>
         <div class="card">
           <div class="card-title">
-            <span><span class="sym-prefix">//</span>레시피 &amp; 재료 즉시 조회</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span><span class="sym-prefix">//</span>레시피 &amp; 재료 스마트 조회</span>
+              <span class="badge-dim" id="catalog-count-badge">초성·역방향 검색</span>
+            </div>
+            <button class="btn btn-sm" onclick="openRecipeManagerModal()" title="아이템 제작 레시피 도감 열기">레시피 수정</button>
           </div>
-          <div class="form-row">
-            <input type="text" id="search-query" class="input-text" style="flex: 1;" placeholder="아이템명 또는 재료명 입력 (예: 목재, 가죽, 론)" onkeydown="if(event.key==='Enter') doSearch()">
-            <button class="btn btn-sm" onclick="doSearch()">검색</button>
+          <div class="form-row" style="margin-bottom: 8px;">
+            <div class="ac-wrapper" style="flex: 1;">
+              <input type="text" id="search-query" class="input-text" autocomplete="off" style="width: 100%;" placeholder="아이템·재료명 또는 초성 입력 (예: ㄹㅇㅈ, 목재+, 특수강괴)" oninput="onSearchQueryInput(this)" onkeydown="handleAutocompleteKeydown(event, this, 'ac-search-query', doSearch)">
+              <div id="ac-search-query" class="ac-dropdown"></div>
+            </div>
+            <button class="btn btn-sm" onclick="doSearch()">조회</button>
           </div>
-          <div id="search-results" style="margin-top: 12px; max-height: 180px; overflow-y: auto; font-size: var(--fs-md);"></div>
+          <div id="search-quick-chips" style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 11px; color: var(--text-dim);">빠른 조회:</span>
+            <span class="search-chip" onclick="quickSearchItem('론 엣지소드S')">론 엣지소드S</span>
+            <span class="search-chip" onclick="quickSearchItem('특수강괴')">특수강괴</span>
+            <span class="search-chip" onclick="quickSearchItem('상급 목재+')">상급 목재+</span>
+            <span class="search-chip" onclick="quickSearchItem('최상급 가죽')">최상급 가죽</span>
+            <span class="search-chip" onclick="quickSearchItem('나무 진액')">나무 진액</span>
+          </div>
+          <div id="search-results" style="margin-top: 8px; max-height: 270px; overflow-y: auto; font-size: var(--fs-sm);">
+            <div style="color: var(--text-muted); padding: 8px 0;">
+              <span class="sym-prefix">&gt;</span>아이템명이나 초성(예: <code class="mono-num">ㄹㅇㅈ</code>, <code class="mono-num">ㅊㅅㄱㅁㅈ</code>)을 입력하면 <strong>1회 제작/가공 재료, 가방·창고 보유량, 해당 재료가 쓰이는 상위 품목(사용처)</strong>을 즉시 확인할 수 있습니다.
+            </div>
+          </div>
         </div>
       </div>
     </div>
+    <datalist id="all-items-datalist"></datalist>
   </div>
 
   <!-- Execution Summary Modal -->
@@ -3853,7 +4421,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
           <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); white-space: nowrap;">대상 아이템:</span>
-          <input type="text" id="recipe-modal-item-name" class="input-text" style="flex: 1;" placeholder="예: 삶은 달걀">
+          <input type="text" id="recipe-modal-item-name" list="all-items-datalist" class="input-text" style="flex: 1;" placeholder="예: 삶은 달걀" onkeydown="if(event.key==='Enter') loadRecipeForCurrentInput()">
           <button type="button" class="btn btn-sm btn-boxed" onclick="loadRecipeForCurrentInput()">조회</button>
         </div>
 
@@ -3904,8 +4472,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span class="sym-prefix">&gt;</span>디스코드 웹훅 URL
           </label>
           <input type="text" id="discord-webhook-url-input" class="input-text mono-num" style="width: 100%; box-sizing: border-box;" placeholder="https://discord.com/api/webhooks/...">
-          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 6px;">
-            * 디스코드 채널 설정 &gt; 연동 &gt; 웹훅 만들기 &gt; [웹훅 URL 복사]를 붙여넣으세요.
+          <div style="margin-top: 10px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px dashed var(--line); font-size: var(--fs-sm); border-radius: 2px;">
+            <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 6px;">💡 디스코드 웹훅 생성 3단계 (처음이신가요?)</div>
+            <ol style="margin: 0; padding-left: 18px; color: var(--text-muted); line-height: 1.6;">
+              <li>알림을 받고 싶은 <strong>디스코드 채널 우클릭</strong> &gt; <strong>[채널 편집]</strong> 선택</li>
+              <li>왼쪽 메뉴의 <strong>[연동]</strong> &gt; <strong>[웹훅 만들기]</strong> (또는 [웹훅 보기]) 클릭</li>
+              <li>생성된 웹훅 항목에서 <strong>[웹훅 URL 복사]</strong>를 누른 후 위 입력창에 붙여넣기!</li>
+            </ol>
+            <div style="margin-top: 6px; color: var(--text-dim); font-size: 11px;">
+              * URL을 붙여넣고 아래 <strong>[테스트 전송]</strong>을 눌러 채널에 메시지가 잘 오는지 즉시 확인해 보세요.
+            </div>
           </div>
         </div>
 
@@ -3930,6 +4506,378 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
   </div>
+
+  <!-- Interactive User Guide & Tutorial Modal -->
+  <div class="modal-overlay" id="guide-modal-overlay" onclick="handleGuideModalOverlayClick(event)">
+    <div class="modal-dialog" style="max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h3 style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">//</span>사용 가이드 &amp; 단계별 실전 튜토리얼</h3>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;"><span class="sym-prefix">&gt;</span>처음 사용자를 위한 원스톱 안내서 및 핵심 기능 활용법</div>
+        </div>
+        <button class="btn btn-sm" onclick="closeGuideModal()">닫기</button>
+      </div>
+
+      <!-- Guide Tabs Navigation -->
+      <div style="display: flex; gap: 4px; padding: 10px 16px 0 16px; border-bottom: 1px solid var(--line); background: var(--bg-panel); overflow-x: auto;">
+        <button class="btn btn-sm guide-tab-btn active" id="gtab-btn-quick" onclick="switchGuideTab('quick')">1. 시작 전 필수 설정</button>
+        <button class="btn btn-sm guide-tab-btn" id="gtab-btn-tutorial" onclick="switchGuideTab('tutorial')">2. 주간 납품 18개 실전 튜토리얼</button>
+        <button class="btn btn-sm guide-tab-btn" id="gtab-btn-discord" onclick="switchGuideTab('discord')">3. 디스코드 웹훅 알림</button>
+        <button class="btn btn-sm guide-tab-btn" id="gtab-btn-tips" onclick="switchGuideTab('tips')">4. 7슬롯 가공 &amp; 개별 제작</button>
+      </div>
+
+      <div class="modal-body" style="line-height: 1.7; overflow-y: auto; padding: 16px 20px; font-size: var(--fs-md);">
+        
+        <!-- Tab 1: Quickstart -->
+        <div id="gtab-pane-quick" class="guide-tab-pane">
+          <div style="font-weight: 700; color: var(--text-bright); font-size: var(--fs-lg); margin-bottom: 8px;">
+            <span class="sym-prefix">&gt;</span>프로그램 실행 전 꼭 확인해야 할 3가지
+          </div>
+          <p style="color: var(--text-muted); margin-top: 0;">
+            모비노기 생활 지원도구는 마비노기 모바일 PC 클라이언트가 자체 지원하는 넥슨 공식 AI 에이전트 CLI와 연동하여 동작합니다.
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px;">
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line); border-left: 3px solid var(--text-bright);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">① [인게임 설정] AI 에이전트 켜기 (가장 중요)</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                게임 실행 후 <strong>[환경설정] → [기타] (또는 게임 설정)</strong>에서 <strong>[MM AI 에이전트 활성화]</strong>를 반드시 <strong>ON</strong>으로 켜주세요.<br>
+                <span style="color: var(--text-dim); font-size: 11px;">* 이 옵션이 켜져 있어야 게임 클라이언트가 백그라운드 통신 포트를 열어줍니다.</span>
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line); border-left: 3px solid var(--text-bright);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">② 게임 창을 '최소화(_)'하지 마세요!</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                유니티(Unity) 엔진 특성상 작업 표시줄로 창을 최소화하면 게임 엔진의 프레임과 통신이 일시 정지됩니다.<br>
+                <strong>전체 창모드로 두시거나 다른 작업 창 뒤에 겹쳐두시면</strong> 백그라운드에서도 채집과 가공이 멈춤 없이 완벽하게 진행됩니다.
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line); border-left: 3px solid var(--text-bright);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">③ 프로그램 실행 및 대시보드 자동 연결</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                압축을 푼 폴더의 <strong>'모비노기_생활_지원도구.exe'</strong>를 실행하면 브라우저 대시보드가 자동으로 열립니다.<br>
+                상단 헤더에 내 캐릭터 <strong>직업과 레벨(예: 화염술사 (Lv.100))</strong> 및 <strong>보유 날개 수량</strong>이 초록 불로 정상 표시되는지 확인하세요!
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Tutorial (Weekly Delivery 18 items) -->
+        <div id="gtab-pane-tutorial" class="guide-tab-pane" style="display: none;">
+          <div style="font-weight: 700; color: var(--text-bright); font-size: var(--fs-lg); margin-bottom: 8px;">
+            <span class="sym-prefix">&gt;</span>실전 튜토리얼: 주간 납품 18개 한 번에 끝내기
+          </div>
+          <p style="color: var(--text-muted); margin-top: 0;">
+            프로그램에 기본 등록되어 있는 <strong>18개 주간 핵심 의뢰 항목</strong>을 기준으로, 채집부터 가공, 완제품 제작까지 완전 자동 완수하는 5단계 실전 가이드입니다.
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 14px;">
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">1단계. 18개 기본 목표 확인하기</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                대시보드 첫 번째 탭 <strong>[주간 납품]</strong>에 로터스 힐링 완드, 론 엣지소드S, 양털, 달걀, 우유 등 18개 의뢰 목록이 기본 세팅되어 있습니다.<br>
+                만약 목표 수량을 변경하고 싶다면 각 항목의 숫자를 클릭하여 손쉽게 수정할 수 있습니다.
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">2단계. [인벤토리 수량 동기화] 클릭</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                상단 버튼의 <strong>[인벤토리 수량 동기화]</strong>를 누르면 캐릭터 가방뿐만 아니라 <strong>개인 창고, 계정 공용 창고</strong>에 있는 보유량까지 1초 만에 합산 계산하여 이미 가지고 있는 수량은 제외하고 <strong>'정확히 부족한 수량만'</strong> 스마트하게 산출합니다.
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">3단계. [목표 완수 모드] 체크 확인</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                상단 마스터 커맨드 바의 <strong>[■ 목표 완수 모드]</strong>를 켜두시면 재료가 모자랄 때 멈추지 않고, <strong>원자재 자동 필드 채집 → 7슬롯 가공대 일괄 가공 → 완제품 제작</strong>까지 100% 끝날 때까지 알아서 연속 실행합니다.
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">4단계. [주간 납품 일괄 실행] 클릭!</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                우측의 <strong>[주간 납품 일괄 실행]</strong> 버튼을 누르면 즉시 파이프라인이 가동됩니다.<br>
+                하단 콘솔 창에서 캐릭터가 나무를 베고, 가공품을 수령하고, 대장간에서 장비를 제작하는 전 과정을 실시간 로그로 확인할 수 있습니다.
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">5단계. 매주 목요일 초기화 시 팁!</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                새로운 주간이 시작되면 납품 탭의 <strong>[새 주간 시작 (수량 초기화)]</strong> 버튼을 한 번만 클릭하세요.<br>
+                목표 목록을 다시 입력할 필요 없이 진행도가 깔끔하게 0으로 리셋되어 즉시 새로운 한 주 작업을 시작할 수 있습니다.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Discord Webhook -->
+        <div id="gtab-pane-discord" class="guide-tab-pane" style="display: none;">
+          <div style="font-weight: 700; color: var(--text-bright); font-size: var(--fs-lg); margin-bottom: 8px;">
+            <span class="sym-prefix">&gt;</span>디스코드 웹훅 알림 연동 가이드
+          </div>
+          <p style="color: var(--text-muted); margin-top: 0;">
+            납품이나 대량 가공을 켜두고 자리를 비우거나 외출하더라도, <strong>모든 작업이 끝나면 스마트폰 디스코드로 완료 보고서(작업 시간, 날개 소모량, 완성 아이템 요약)</strong>가 즉시 도착합니다.
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px;">
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">1. 디스코드에서 웹훅 URL 만들기 (10초 소요)</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                ① 본인의 디스코드 서버에서 알림을 받고 싶은 채널(예: #알림 또는 개인 봇 채널)을 우클릭합니다.<br>
+                ② <strong>[채널 편집] → [연동] → [웹훅 만들기]</strong> 버튼을 누릅니다.<br>
+                ③ 생성된 웹훅의 <strong>[웹훅 URL 복사]</strong> 버튼을 클릭합니다.
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">2. 대시보드에 URL 등록 및 테스트</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                ① 대시보드 상단 상태 바의 <strong>[디스코드: 꺼짐]</strong> 또는 마스터 바의 <strong>[디스코드 알림]</strong> 버튼을 클릭합니다.<br>
+                ② 복사한 URL을 입력창에 붙여넣고, <strong>[목표 완수 모드 완료 시 알림 활성화]</strong>를 체크합니다.<br>
+                ③ 하단의 <strong>[테스트 전송]</strong>을 눌러 내 디스코드 채널에 '연동 성공' 메시지가 도착하는지 확인 후 <strong>[저장]</strong>을 누르면 끝!
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">3. 도착하는 알림 리포트 내용 미리보기</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                • <strong>총 소요 시간:</strong> 작업 시작부터 완수까지 걸린 정확한 시간 안내<br>
+                • <strong>날개 소모량:</strong> 시작 전후 날개 변화량 측정<br>
+                • <strong>완성 아이템:</strong> 달성 완료된 장비/소모품 목록 및 수량<br>
+                • <strong>가공/채집 실적:</strong> 몇 번의 가공과 채집을 수행했는지 요약 통계 제공
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: 7-Slot Altering & Individual Crafting -->
+        <div id="gtab-pane-tips" class="guide-tab-pane" style="display: none;">
+          <div style="font-weight: 700; color: var(--text-bright); font-size: var(--fs-lg); margin-bottom: 8px;">
+            <span class="sym-prefix">&gt;</span>7슬롯 가공대 &amp; 개별 제작 플래너 활용법
+          </div>
+          <p style="color: var(--text-muted); margin-top: 0;">
+            주간 납품 외에도 특정 재료를 대량으로 가공하거나 원하는 장비를 제작할 때 유용한 고급 기능들입니다.
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px;">
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">■ 7슬롯 빠른 가공대 탭</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                • 금속, 목재, 가죽, 옷감 등 4대 가공 시설의 <strong>남은 슬롯과 완료된 대기열을 실시간 1초 타이머로 동기화</strong>합니다.<br>
+                • 완료된 가공품이 있으면 우측의 <strong>[완료 가공품 수령]</strong> 버튼으로 모든 시설의 결과물을 한 번에 일괄 수령할 수 있습니다.<br>
+                • <strong>[7슬롯 빠른 가공 시작]</strong>을 누르면 슬롯 여유분에 맞춰 상위 티어 재료부터 빈틈없이 자동 등록합니다.
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">■ 개별 제작 &amp; 통합 플래너 탭 (3번째 탭)</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                • 만들고 싶은 장비나 소모품을 검색하여 여러 개 등록해 두면, <strong>하위 원자재 채집량과 중간 1차 가공품 소요량을 일괄 계산(BOM)</strong>해 줍니다.<br>
+                • 재료가 부족해도 알아서 벌목/양털 깎기/광석 채굴을 진행한 뒤 가공대를 거쳐 최종 완제품까지 연속 제작합니다.
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">■ 스마트 채집 &amp; 단계적 자동 폴백</div>
+              <div style="color: var(--text-muted); font-size: var(--fs-sm);">
+                • <strong>나무 진액은 뾰족 나무</strong>, <strong>통나무는 굵은 나무</strong> 등 최적의 타겟을 자동 선별합니다.<br>
+                • 캐릭터의 생활 채집 레벨이 부족하더라도 에러로 멈추지 않고 <strong>하위 자원으로 자동 폴백</strong>하여 안전하게 재료를 모읍니다.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; align-items: center; border-top: 1px solid var(--line); padding: 12px 20px;">
+        <button class="btn btn-sm btn-solid-core" onclick="closeGuideModal()">확인 (가이드 닫기)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Selective Quest Import Modal (#11) -->
+  <div class="modal-overlay" id="quest-select-modal-overlay" onclick="if(event.target && event.target.id==='quest-select-modal-overlay') closeQuestSelectModal()">
+    <div class="modal-dialog" style="max-width: 640px; max-height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h3 style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">//</span>인게임 퀘스트 선택 가져오기</h3>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;"><span class="sym-prefix">&gt;</span>추적 중인 퀘스트 목록을 확인하고 원하는 항목만 체크하여 등록하세요</div>
+        </div>
+        <button class="btn btn-sm" onclick="closeQuestSelectModal()">닫기</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; padding: 14px 18px; line-height: 1.6;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button type="button" class="btn btn-sm" onclick="toggleSelectAllQuests(true)">전체 선택</button>
+            <button type="button" class="btn btn-sm" onclick="toggleSelectAllQuests(false)">선택 해제</button>
+            <button type="button" class="btn btn-sm" onclick="loadSelectableQuests()">다시 스캔</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm);">
+            <span style="color: var(--text-muted);">가져올 위치 일괄 설정:</span>
+            <button type="button" class="btn btn-sm" onclick="setAllQuestImportModes('delivery')">주간 납품으로</button>
+            <button type="button" class="btn btn-sm" onclick="setAllQuestImportModes('custom')">지정 제작으로</button>
+          </div>
+        </div>
+        <div id="quest-select-list-container" style="display: flex; flex-direction: column; gap: 8px; min-height: 120px;">
+          <div style="color: var(--text-muted); font-size: var(--fs-sm); padding: 16px 0; text-align: center;">인게임 추적 퀘스트를 스캔 중입니다...</div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <span id="quest-select-summary-text" style="font-size: var(--fs-sm); color: var(--text-muted);">선택된 항목: 0건</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-sm" onclick="closeQuestSelectModal()">취소</button>
+          <button class="btn btn-sm btn-solid-core" onclick="importSelectedQuests()">선택 항목 가져오기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Convenience Toolbox Modal (#2, #5, #7, #8, #9) -->
+  <div class="modal-overlay" id="ai-toolbox-modal-overlay" onclick="if(event.target && event.target.id==='ai-toolbox-modal-overlay') closeAiToolboxModal()">
+    <div class="modal-dialog" style="max-width: 720px; max-height: 86vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h3 style="font-size: var(--fs-lg); font-weight: 700; color: var(--text-bright); margin: 0;"><span class="sym-prefix">//</span>AI 커넥터 스마트 편의 도구함</h3>
+          <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;"><span class="sym-prefix">&gt;</span>창고 털이 추천 · 상비약 자동 보충 · 스마트 낚시 · 미션 &amp; 악보 연주</div>
+        </div>
+        <button class="btn btn-sm" onclick="closeAiToolboxModal()">닫기</button>
+      </div>
+
+      <!-- Toolbox Tabs -->
+      <div style="display: flex; gap: 4px; padding: 10px 16px 0 16px; border-bottom: 1px solid var(--line); background: var(--bg-panel); overflow-x: auto;">
+        <button class="btn btn-sm toolbox-tab-btn active" id="ttab-btn-zero_gather" onclick="switchAiToolboxTab('zero_gather')">1. 창고 털이 추천</button>
+        <button class="btn btn-sm toolbox-tab-btn" id="ttab-btn-safety_stock" onclick="switchAiToolboxTab('safety_stock')">2. 상비약·요리 보충</button>
+        <button class="btn btn-sm toolbox-tab-btn" id="ttab-btn-fishing" onclick="switchAiToolboxTab('fishing')">3. 스마트 자동 낚시</button>
+        <button class="btn btn-sm toolbox-tab-btn" id="ttab-btn-social" onclick="switchAiToolboxTab('social')">4. 미션 &amp; 악보 연주</button>
+      </div>
+
+      <div class="modal-body" style="overflow-y: auto; padding: 16px 20px; line-height: 1.6;">
+        <!-- Tab 1: Zero-Gather Craft Recommender (#8) -->
+        <div id="ttab-pane-zero_gather" class="toolbox-tab-pane">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <div style="font-weight: 700; color: var(--text-bright); font-size: var(--fs-md);"><span class="sym-prefix">&gt;</span>채집 0회! 보유 재료만으로 즉시 제작·가공 가능한 품목</div>
+              <div style="font-size: var(--fs-sm); color: var(--text-muted);">현재 가방·개인창고·공용창고에 쌓여있는 재료를 분석하여 추가 채집 없이 바로 만들 수 있는 아이템을 추천합니다.</div>
+            </div>
+            <button class="btn btn-sm" onclick="loadZeroGatherRecommendations()">재고 다시 분석</button>
+          </div>
+          <div id="zero-gather-list-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;">
+            <div style="color: var(--text-muted); font-size: var(--fs-sm); padding: 16px 0; text-align: center;">창고 및 가방 재고를 스캔 중입니다...</div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Safety Stock Manager (#9) -->
+        <div id="ttab-pane-safety_stock" class="toolbox-tab-pane" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <div style="font-weight: 700; color: var(--text-bright); font-size: var(--fs-md);"><span class="sym-prefix">&gt;</span>전투 식량 · 회복 물약 · 붕대 안전 재고 자동 보충</div>
+              <div style="font-size: var(--fs-sm); color: var(--text-muted);">최소 유지 수량을 설정해 두면 현재 보유량(가방+창고)과 비교하여 부족한 수량만 지정 제작 목표에 원클릭 등록합니다.</div>
+            </div>
+            <button class="btn btn-sm btn-solid-core" onclick="applySafetyStocksToCustom()">부족분 일괄 제작 등록</button>
+          </div>
+
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; padding: 10px; background: var(--bg-panel); border: 1px solid var(--line);">
+            <input type="text" id="safety-stock-item-input" list="all-items-datalist" class="input-text" placeholder="소모품/요리 이름 (예: 상급 회복 물약, 감자전)" style="flex: 2; min-width: 180px;">
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="font-size: var(--fs-sm); color: var(--text-muted);">최소 유지:</span>
+              <input type="number" id="safety-stock-qty-input" class="input-number mono-num" value="10" min="1" max="999" style="width: 70px; text-align: center;">
+              <span style="font-size: var(--fs-sm); color: var(--text-muted);">개</span>
+            </div>
+            <button class="btn btn-sm" onclick="saveSafetyStockEntry()">+ 안전 재고 등록/수정</button>
+          </div>
+
+          <div id="safety-stock-list-container" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="color: var(--text-muted); font-size: var(--fs-sm); padding: 12px 0; text-align: center;">안전 재고 현황을 불러오는 중...</div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Smart Auto-Fishing (#5) -->
+        <div id="ttab-pane-fishing" class="toolbox-tab-pane" style="display: none;">
+          <div style="font-weight: 700; color: var(--text-bright); font-size: var(--fs-md); margin-bottom: 4px;">
+            <span class="sym-prefix">&gt;</span>스마트 자동 낚시 매니저 (목표 마릿수 · 제한 시간 · 가방 98% 안전 중단)
+          </div>
+          <p style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 0; margin-bottom: 12px;">
+            인게임 기본 낚시는 스스로 멈추지 않아 가방이 가득 차거나 날개가 소진될 수 있습니다. 목표 수량 또는 제한 시간에 도달하거나 가방 무게가 98%에 이르면 자동으로 낚시를 안전 종료합니다.
+          </p>
+
+          <div style="padding: 14px; background: var(--bg-panel); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+              <div style="flex: 2; min-width: 180px;">
+                <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">대상 물고기 / 낚시터 아이템명</label>
+                <input type="text" id="fishing-item-input" class="input-text" value="고등어" placeholder="예: 고등어, 연어, 은어, 갈치" style="width: 100%;">
+              </div>
+              <div style="flex: 1; min-width: 100px;">
+                <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">목표 획득 수량</label>
+                <input type="number" id="fishing-count-input" class="input-number mono-num" value="30" min="1" max="500" style="width: 100%;">
+              </div>
+              <div style="flex: 1; min-width: 100px;">
+                <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">최대 제한 시간(분)</label>
+                <input type="number" id="fishing-minutes-input" class="input-number mono-num" value="30" min="1" max="180" style="width: 100%;">
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+              <span style="font-size: var(--fs-sm); color: var(--text-muted);">빠른 어종 선택:</span>
+              <button type="button" class="btn btn-sm" onclick="document.getElementById('fishing-item-input').value='고등어'">고등어</button>
+              <button type="button" class="btn btn-sm" onclick="document.getElementById('fishing-item-input').value='연어'">연어</button>
+              <button type="button" class="btn btn-sm" onclick="document.getElementById('fishing-item-input').value='은어'">은어</button>
+              <button type="button" class="btn btn-sm" onclick="document.getElementById('fishing-item-input').value='청어'">청어</button>
+              <button type="button" class="btn btn-sm" onclick="document.getElementById('fishing-item-input').value='메기'">메기</button>
+              <button type="button" class="btn btn-sm" onclick="document.getElementById('fishing-item-input').value='붕어'">붕어</button>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
+              <button type="button" class="btn btn-sm btn-danger-abort" onclick="abortMasterPipeline()">현재 작업 중지</button>
+              <button type="button" class="btn btn-solid-core" onclick="startSmartFishing()">스마트 자동 낚시 시작</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Missions & Music Score (#2, #7) -->
+        <div id="ttab-pane-social" class="toolbox-tab-pane" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <!-- Music & Instrument Remote -->
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                <span style="font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>악보 연주 &amp; 악기 설정 (대기 중 자동 연주 옵션 연동)</span>
+                <button class="btn btn-sm" onclick="loadMusicAndSocialData()">목록 새로고침</button>
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px;">
+                <select id="remote-music-select" class="input-text" style="flex: 2; min-width: 180px;">
+                  <option value="">기본 연주 (보유 악보 자동 선택)</option>
+                </select>
+                <button class="btn btn-sm btn-solid-core" onclick="triggerRemoteMusicPlay()">즉시 악보 연주</button>
+                <button class="btn btn-sm" onclick="savePreferredAutoMusic()">대기 연주곡으로 저장</button>
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <select id="remote-instrument-select" class="input-text" style="flex: 2; min-width: 180px;">
+                  <option value="">보유 악기 목록 확인 중...</option>
+                </select>
+                <button class="btn btn-sm" onclick="triggerRemoteInstrumentChange()">악기 장착 변경</button>
+                <button class="btn btn-sm" onclick="triggerRemoteCharacterAction('stand_up')">일어나기(stand_up)</button>
+                <button class="btn btn-sm" onclick="triggerRemoteCharacterAction('stop_action')">행동 중지</button>
+              </div>
+            </div>
+
+            <!-- Daily / Weekly Missions Progress -->
+            <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>일일 / 주간 미션 진행 현황</span>
+                <button class="btn btn-sm" onclick="loadMissionsData()">미션 새로고침</button>
+              </div>
+              <div id="missions-list-box" style="font-size: var(--fs-sm); color: var(--text-muted); max-height: 220px; overflow-y: auto;">미션 데이터를 불러오는 중...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display: flex; justify-content: flex-end;">
+        <button class="btn btn-sm btn-solid-core" onclick="closeAiToolboxModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
 
   <script>
     // Global Error Handlers (Reports browser errors to server logs)
@@ -3969,11 +4917,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
     // ==========================================
     // Modern CLI Text Helpers (Gauge & Spinner)
     // ==========================================
-    const CLI_SPINNER_FRAMES = ['[/]', '[-]', '[\\]', '[|]'];
+    const CLI_SPINNER_CHARS = ['/', '-', '\\', '|'];
     let cliSpinnerFrameIdx = 0;
 
     function getCurrentSpinnerText() {
-      return CLI_SPINNER_FRAMES[cliSpinnerFrameIdx % CLI_SPINNER_FRAMES.length];
+      const ch = CLI_SPINNER_CHARS[cliSpinnerFrameIdx % CLI_SPINNER_CHARS.length];
+      return `<span class="spinner-bracket">[</span><span class="spinner-char">${ch}</span><span class="spinner-bracket">]</span>`;
     }
 
     function renderGaugeCells(filled, len = 5) {
@@ -4031,11 +4980,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     setInterval(function() {
-      cliSpinnerFrameIdx = (cliSpinnerFrameIdx + 1) % CLI_SPINNER_FRAMES.length;
-      const frame = CLI_SPINNER_FRAMES[cliSpinnerFrameIdx];
+      if (document.hidden) return;
+      cliSpinnerFrameIdx = (cliSpinnerFrameIdx + 1) % CLI_SPINNER_CHARS.length;
+      const ch = CLI_SPINNER_CHARS[cliSpinnerFrameIdx];
       const spinners = document.querySelectorAll('.cli-spinner');
       for (let i = 0; i < spinners.length; i++) {
-        spinners[i].textContent = frame;
+        const s = spinners[i];
+        const charEl = s.querySelector('.spinner-char');
+        if (charEl) {
+          charEl.textContent = ch;
+        } else {
+          s.innerHTML = `<span class="spinner-bracket">[</span><span class="spinner-char">${ch}</span><span class="spinner-bracket">]</span>`;
+        }
       }
     }, 250);
 
@@ -4067,6 +5023,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (typeof closeCliModal === 'function') closeCliModal();
         if (typeof closeRecipeModal === 'function') closeRecipeModal();
         if (typeof closeDiscordModal === 'function') closeDiscordModal();
+        if (typeof closeGuideModal === 'function') closeGuideModal();
+        if (typeof closeQuestSelectModal === 'function') closeQuestSelectModal();
+        if (typeof closeAiToolboxModal === 'function') closeAiToolboxModal();
       }
     });
 
@@ -4532,6 +5491,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
     let currentSoundAlarmEnabled = (safeGetStorage('mabi_sound_alarm_enabled', 'false') === 'true');
     let currentDiscordWebhookUrl = safeGetStorage('mabi_discord_webhook_url', '');
     let currentDiscordAlarmEnabled = (safeGetStorage('mabi_discord_alarm_enabled', 'false') === 'true');
+    let currentAutoCollectEnabled = (safeGetStorage('mabi_auto_collect_enabled', 'false') === 'true');
+    let currentAutoPlayMusicEnabled = (safeGetStorage('mabi_auto_play_music_enabled', 'false') === 'true');
+    let currentAutoPlayMusicTitle = safeGetStorage('mabi_auto_play_music_title', '');
+    let lastAutoCollectTriggerTime = 0;
     let currentIsWeightOver = false;
     let currentWeightRatio = 0;
 
@@ -4579,6 +5542,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
           if (d.discord_alarm_enabled !== undefined) {
             currentDiscordAlarmEnabled = !!d.discord_alarm_enabled;
             safeSetStorage('mabi_discord_alarm_enabled', String(currentDiscordAlarmEnabled));
+          }
+          if (d.auto_collect_enabled !== undefined) {
+            currentAutoCollectEnabled = !!d.auto_collect_enabled;
+            safeSetStorage('mabi_auto_collect_enabled', String(currentAutoCollectEnabled));
+          }
+          if (d.auto_play_music_enabled !== undefined) {
+            currentAutoPlayMusicEnabled = !!d.auto_play_music_enabled;
+            safeSetStorage('mabi_auto_play_music_enabled', String(currentAutoPlayMusicEnabled));
+          }
+          if (d.auto_play_music_title !== undefined) {
+            currentAutoPlayMusicTitle = d.auto_play_music_title || '';
+            safeSetStorage('mabi_auto_play_music_title', currentAutoPlayMusicTitle);
           }
           updateMasterCommandBar();
         }
@@ -4820,6 +5795,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (orderText) orderText.innerText = currentAlterOrder === 'low_tier' ? '가공: 하위티어 우선' : '가공: 상위티어 우선';
       if (startIcon) startIcon.innerText = '';
 
+      const autoColIcon = document.getElementById('mcb-auto-collect-icon');
+      const autoColText = document.getElementById('mcb-auto-collect-text');
+      if (autoColIcon) {
+        autoColIcon.innerText = currentAutoCollectEnabled ? '■' : '□';
+        autoColIcon.style.color = currentAutoCollectEnabled ? 'var(--text-bright)' : 'var(--text-dim)';
+      }
+      if (autoColText) autoColText.innerText = currentAutoCollectEnabled ? '자동 수령 ON' : '자동 수령';
+
+      const autoMusIcon = document.getElementById('mcb-auto-music-icon');
+      const autoMusText = document.getElementById('mcb-auto-music-text');
+      if (autoMusIcon) {
+        autoMusIcon.innerText = currentAutoPlayMusicEnabled ? '■' : '□';
+        autoMusIcon.style.color = currentAutoPlayMusicEnabled ? 'var(--text-bright)' : 'var(--text-dim)';
+      }
+      if (autoMusText) autoMusText.innerText = currentAutoPlayMusicEnabled ? '대기 연주 ON' : '대기 중 연주';
+
       if (currentMainMode === 'delivery') {
         if (badgeMode) {
           badgeMode.className = 'badge';
@@ -4842,7 +5833,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
               if (craftableCount > 0) parts.push(`<strong style="color:var(--text-main);">즉시 제작 가능 <span class="mono-num">${craftableCount}</span>건</strong>`);
               if (alterCount > 0) parts.push(`가공 등록 <span class="mono-num">${alterCount}</span>슬롯`);
               if (neededRaw.length > 0) parts.push(`채집 필요 <span class="mono-num">${neededRaw.length}</span>종`);
+              if (cachedBatchPlan.estimated_wings > 0) parts.push(`예상 날개 <span class="mono-num">약 ${cachedBatchPlan.estimated_wings}개</span>`);
               briefing.innerHTML = parts.join(' | ') || '주간 납품 계획 준비 완료';
+              if (cachedBatchPlan.preflight_warnings && cachedBatchPlan.preflight_warnings.length > 0) {
+                briefing.innerHTML += ` <span style="color:#F59E0B; font-weight:700; margin-left:6px;" title="${cachedBatchPlan.preflight_warnings.join('\n')}">[!] 사전점검 주의 ${cachedBatchPlan.preflight_warnings.length}건</span>`;
+              }
               if (btnStart) btnStart.disabled = isCurrentlyBusy || (taskCount === 0);
             }
           } else {
@@ -4871,7 +5866,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
               if (craftableCount > 0) parts.push(`<strong style="color:var(--text-main);">즉시 제작 가능 <span class="mono-num">${craftableCount}</span>건</strong>`);
               if (alterCount > 0) parts.push(`가공 등록 <span class="mono-num">${alterCount}</span>슬롯`);
               if (neededRaw.length > 0) parts.push(`채집 필요 <span class="mono-num">${neededRaw.length}</span>종`);
+              if (cachedCustomPlan.estimated_wings > 0) parts.push(`예상 날개 <span class="mono-num">약 ${cachedCustomPlan.estimated_wings}개</span>`);
               briefing.innerHTML = parts.join(' | ') || '지정 제작 계획 준비 완료';
+              if (cachedCustomPlan.preflight_warnings && cachedCustomPlan.preflight_warnings.length > 0) {
+                briefing.innerHTML += ` <span style="color:#F59E0B; font-weight:700; margin-left:6px;" title="${cachedCustomPlan.preflight_warnings.join('\n')}">[!] 사전점검 주의 ${cachedCustomPlan.preflight_warnings.length}건</span>`;
+              }
               if (btnStart) btnStart.disabled = isCurrentlyBusy || (targetCount === 0);
             }
           } else {
@@ -4974,6 +5973,517 @@ HTML_PAGE = r"""<!DOCTYPE html>
       } catch (e) {}
     }
 
+    async function toggleAutoCollectSetting() {
+      currentAutoCollectEnabled = !currentAutoCollectEnabled;
+      safeSetStorage('mabi_auto_collect_enabled', String(currentAutoCollectEnabled));
+      updateMasterCommandBar();
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auto_collect_enabled: currentAutoCollectEnabled })
+        });
+      } catch (e) {}
+    }
+
+    async function toggleAutoPlayMusicSetting() {
+      currentAutoPlayMusicEnabled = !currentAutoPlayMusicEnabled;
+      safeSetStorage('mabi_auto_play_music_enabled', String(currentAutoPlayMusicEnabled));
+      updateMasterCommandBar();
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auto_play_music_enabled: currentAutoPlayMusicEnabled })
+        });
+      } catch (e) {}
+    }
+
+    // ==========================================
+    // Selective Quest Import Modal JS (#11)
+    // ==========================================
+    let cachedSelectableQuests = [];
+    let defaultQuestImportMode = 'delivery';
+
+    function openQuestSelectModal(defaultMode = 'delivery') {
+      defaultQuestImportMode = defaultMode || 'delivery';
+      const overlay = document.getElementById('quest-select-modal-overlay');
+      if (overlay) overlay.classList.add('active');
+      loadSelectableQuests();
+    }
+
+    function closeQuestSelectModal() {
+      const overlay = document.getElementById('quest-select-modal-overlay');
+      if (overlay) overlay.classList.remove('active');
+    }
+
+    async function loadSelectableQuests() {
+      const container = document.getElementById('quest-select-list-container');
+      const sumText = document.getElementById('quest-select-summary-text');
+      if (!container) return;
+      container.innerHTML = '<div style="color: var(--text-muted); font-size: var(--fs-sm); padding: 16px 0; text-align: center;"><span class="sym-prefix">&gt;</span>인게임 퀘스트 추적창을 스캔하고 있습니다...</div>';
+      try {
+        const res = await fetch('/api/selectable_quests');
+        const data = await res.json();
+        const quests = data.quests || [];
+        cachedSelectableQuests = quests.map((q, idx) => ({
+          ...q,
+          _idx: idx,
+          _checked: q.is_delivery_quest ? true : (defaultQuestImportMode === 'custom'),
+          _targetMode: q.is_delivery_quest ? 'delivery' : defaultQuestImportMode
+        }));
+        renderSelectableQuestsList();
+      } catch (e) {
+        container.innerHTML = `<div style="color: var(--text-main); font-size: var(--fs-sm); padding: 12px;">[!] 퀘스트 스캔 실패: ${e}</div>`;
+        if (sumText) sumText.innerText = '스캔 오류';
+      }
+    }
+
+    function renderSelectableQuestsList() {
+      const container = document.getElementById('quest-select-list-container');
+      const sumText = document.getElementById('quest-select-summary-text');
+      if (!container) return;
+      if (cachedSelectableQuests.length === 0) {
+        container.innerHTML = '<div style="color: var(--text-muted); font-size: var(--fs-sm); padding: 18px 0; text-align: center;"><span class="sym-prefix">&gt;</span>인게임 우측 퀘스트 추적창에서 납품/제작/채집 목표가 포함된 퀘스트를 찾지 못했습니다.<br>게임에서 가져올 퀘스트를 추적 활성화한 뒤 [다시 스캔]을 눌러주세요.</div>';
+        if (sumText) sumText.innerText = '감지된 퀘스트 항목: 0건';
+        return;
+      }
+
+      let html = '';
+      cachedSelectableQuests.forEach((q, idx) => {
+        const catBadge = q.is_delivery_quest ? '<span class="badge">주간/납품</span>' : `<span class="badge-dim">${q.category || '일반'}</span>`;
+        const regTags = [];
+        if (q.already_in_delivery) regTags.push('<span class="badge-dim" style="font-size:10px;">납품 등록됨</span>');
+        if (q.already_in_custom) regTags.push('<span class="badge-dim" style="font-size:10px;">지정제작 등록됨</span>');
+        const checkSym = q._checked ? '■' : '□';
+
+        html += `
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; background: var(--bg-panel); border: 1px solid ${q._checked ? 'var(--text-bright)' : 'var(--line)'}; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; min-width: 220px;">
+              <input type="checkbox" style="display:none;" ${q._checked ? 'checked' : ''} onchange="onToggleQuestSelectItem(${idx}, this.checked)">
+              <span class="cli-check-box" style="color: ${q._checked ? 'var(--text-bright)' : 'var(--text-dim)'}; font-size: 15px;">${checkSym}</span>
+              <div>
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  ${catBadge}
+                  <strong style="color: var(--text-bright); font-size: var(--fs-md);">${q.item_name}</strong>
+                  <span class="mono-num" style="color: var(--text-muted); font-size: var(--fs-sm);">(보유 ${q.current} / 목표 ${q.goal}개)</span>
+                  ${regTags.join(' ')}
+                </div>
+                <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">
+                  <span class="sym-prefix">&gt;</span>${q.quest_title} <span style="color: var(--text-dim);">— ${q.raw_target || ''}</span>
+                </div>
+              </div>
+            </label>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <select class="input-text" style="padding: 3px 6px; font-size: var(--fs-sm);" onchange="onChangeQuestImportMode(${idx}, this.value)">
+                <option value="delivery" ${q._targetMode === 'delivery' ? 'selected' : ''}>주간 납품으로</option>
+                <option value="custom" ${q._targetMode === 'custom' ? 'selected' : ''}>지정 제작으로</option>
+              </select>
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+      const selectedCnt = cachedSelectableQuests.filter(x => x._checked).length;
+      if (sumText) sumText.innerText = `선택된 항목: ${selectedCnt} / ${cachedSelectableQuests.length}건`;
+    }
+
+    function onToggleQuestSelectItem(idx, checked) {
+      if (cachedSelectableQuests[idx]) {
+        cachedSelectableQuests[idx]._checked = !!checked;
+        renderSelectableQuestsList();
+      }
+    }
+
+    function onChangeQuestImportMode(idx, mode) {
+      if (cachedSelectableQuests[idx]) {
+        cachedSelectableQuests[idx]._targetMode = mode;
+      }
+    }
+
+    function toggleSelectAllQuests(checked) {
+      cachedSelectableQuests.forEach(q => { q._checked = !!checked; });
+      renderSelectableQuestsList();
+    }
+
+    function setAllQuestImportModes(mode) {
+      cachedSelectableQuests.forEach(q => { q._targetMode = mode; });
+      renderSelectableQuestsList();
+    }
+
+    async function importSelectedQuests() {
+      const selected = cachedSelectableQuests.filter(q => q._checked);
+      if (selected.length === 0) {
+        alert('가져올 퀘스트 항목을 1개 이상 체크해주세요.');
+        return;
+      }
+      const items = selected.map(q => ({
+        item_name: q.item_name,
+        goal: q.goal,
+        current: q.current,
+        quest_title: q.quest_title,
+        target_mode: q._targetMode || 'delivery'
+      }));
+      try {
+        const res = await fetch('/api/import_selected_quests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('가져오기 실패: ' + d.error);
+        } else {
+          closeQuestSelectModal();
+          pollLogs();
+          loadDeliveryTargets();
+          loadBatchPlan();
+          loadCustomTargets();
+          loadCustomPlan();
+          alert(`[가져오기 완료] 주간 납품 ${d.imported_delivery || 0}건, 지정 제작 ${d.imported_custom || 0}건이 등록되었습니다.`);
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    // ==========================================
+    // AI Convenience Toolbox Modal JS (#2, #5, #7, #8, #9, #13)
+    // ==========================================
+    function openAiToolboxModal(defaultTab = 'zero_gather') {
+      const overlay = document.getElementById('ai-toolbox-modal-overlay');
+      if (overlay) {
+        overlay.classList.add('active');
+        switchAiToolboxTab(defaultTab);
+      }
+    }
+
+    function closeAiToolboxModal() {
+      const overlay = document.getElementById('ai-toolbox-modal-overlay');
+      if (overlay) overlay.classList.remove('active');
+    }
+
+    function switchAiToolboxTab(tabKey) {
+      const tabs = ['zero_gather', 'safety_stock', 'fishing', 'social'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`ttab-btn-${t}`);
+        const pane = document.getElementById(`ttab-pane-${t}`);
+        if (btn) btn.classList.toggle('active', t === tabKey);
+        if (pane) pane.style.display = (t === tabKey) ? 'block' : 'none';
+      });
+      if (tabKey === 'zero_gather') loadZeroGatherRecommendations();
+      else if (tabKey === 'safety_stock') loadSafetyStocksStatus();
+      else if (tabKey === 'social') {
+        loadMusicAndSocialData();
+        loadMissionsData();
+      }
+    }
+
+    async function loadZeroGatherRecommendations() {
+      const box = document.getElementById('zero-gather-list-container');
+      if (!box) return;
+      box.innerHTML = '<div style="color: var(--text-muted); font-size: var(--fs-sm); padding: 14px 0; text-align: center;"><span class="sym-prefix">&gt;</span>가방·창고 보유 재고를 스캔하여 즉시 제작 가능 품목을 계산 중입니다...</div>';
+      try {
+        const res = await fetch('/api/zero_gather_recommendations');
+        const data = await res.json();
+        const recs = data.recommendations || [];
+        if (recs.length === 0) {
+          box.innerHTML = '<div style="color: var(--text-muted); font-size: var(--fs-sm); padding: 14px 0; text-align: center;">현재 채집 없이 보유 재료만으로 즉시 제작 가능한 품목이 없습니다.</div>';
+          return;
+        }
+        box.innerHTML = recs.slice(0, 35).map(r => {
+          const safeName = (r.item_name || '').replace(/'/g, "\\'");
+          const ingText = Object.entries(r.ingredients || {}).map(([k, v]) => `${k} ${v}개`).join(', ');
+          const badge = r.type === 'craft' ? '<span class="badge">즉시 제작</span>' : `<span class="badge-dim">${r.category}</span>`;
+          return `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; background: var(--bg-panel); border: 1px solid var(--line); flex-wrap: wrap;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  ${badge}
+                  <strong style="color: var(--text-bright); font-size: var(--fs-md);">${r.item_name}</strong>
+                  <span class="mono-num" style="color: var(--text-main); font-weight: 700;">최대 ${r.max_craftable}회 가능</span>
+                  <span class="mono-num" style="color: var(--text-muted); font-size: var(--fs-sm);">(현재 보유: ${r.owned_now}개)</span>
+                </div>
+                <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px;">
+                  <span class="sym-prefix">&gt;</span>1회 소요 재료: ${ingText}
+                </div>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn btn-sm" onclick="quickAddCustomTarget('${safeName}', ${ (r.owned_now || 0) + 1 }); alert('\\'${safeName}\\' 1개 추가 제작이 지정 제작에 등록되었습니다.');">+1개 제작 등록</button>
+                <button class="btn btn-sm btn-solid-core" onclick="quickAddCustomTarget('${safeName}', ${ (r.owned_now || 0) + r.max_craftable }); closeAiToolboxModal(); switchMainMode('custom_craft');">최대(${r.max_craftable}회) 등록</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        box.innerHTML = `<div style="color: var(--text-main); font-size: var(--fs-sm);">[!] 조회 실패: ${e}</div>`;
+      }
+    }
+
+    async function loadSafetyStocksStatus() {
+      const box = document.getElementById('safety-stock-list-container');
+      if (!box) return;
+      try {
+        const res = await fetch('/api/safety_stocks');
+        const data = await res.json();
+        renderSafetyStocksList(data.stocks || []);
+      } catch (e) {
+        box.innerHTML = `<div style="color: var(--text-main); font-size: var(--fs-sm);">[!] 안전 재고 조회 실패: ${e}</div>`;
+      }
+    }
+
+    function renderSafetyStocksList(stocks) {
+      const box = document.getElementById('safety-stock-list-container');
+      if (!box) return;
+      if (!stocks || stocks.length === 0) {
+        box.innerHTML = '<div style="color: var(--text-muted); font-size: var(--fs-sm); padding: 12px 0; text-align: center;">등록된 안전 재고 품목이 없습니다. 위 입력창에서 상비약이나 전투 식량을 추가하세요.</div>';
+        return;
+      }
+      box.innerHTML = stocks.map(s => {
+        const safeName = (s.item_name || '').replace(/'/g, "\\'");
+        const isOk = s.is_satisfied || s.deficit === 0;
+        const statusTag = isOk
+          ? '<span class="badge">재고 충분</span>'
+          : `<span class="badge-dim mono-num" style="color: var(--text-bright); font-weight: 700;">${s.deficit}개 부족</span>`;
+        return `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--bg-panel); border: 1px solid var(--line); flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              ${statusTag}
+              <strong style="color: var(--text-bright);">${s.item_name}</strong>
+              <span class="mono-num" style="font-size: var(--fs-sm); color: var(--text-muted);">현재 보유 ${s.owned}개 / 최소 유지 ${s.min_qty}개</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn btn-sm" onclick="deleteSafetyStockEntry('${safeName}')">삭제</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function saveSafetyStockEntry() {
+      const nameEl = document.getElementById('safety-stock-item-input');
+      const qtyEl = document.getElementById('safety-stock-qty-input');
+      if (!nameEl || !qtyEl) return;
+      const item_name = nameEl.value.trim();
+      const min_qty = parseInt(qtyEl.value, 10);
+      if (!item_name || isNaN(min_qty) || min_qty <= 0) {
+        alert('올바른 아이템명과 최소 유지 수량을 입력해주세요.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/safety_stocks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save', item_name, min_qty })
+        });
+        const d = await res.json();
+        if (d.error) alert('저장 실패: ' + d.error);
+        else {
+          nameEl.value = '';
+          renderSafetyStocksList(d.stocks || []);
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function deleteSafetyStockEntry(item_name) {
+      try {
+        const res = await fetch('/api/safety_stocks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', item_name })
+        });
+        const d = await res.json();
+        if (!d.error) renderSafetyStocksList(d.stocks || []);
+      } catch (e) {}
+    }
+
+    async function applySafetyStocksToCustom() {
+      try {
+        const res = await fetch('/api/safety_stocks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'apply' })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('보충 등록 실패: ' + d.error);
+        } else {
+          renderSafetyStocksList(d.stocks || []);
+          const added = d.added || [];
+          if (added.length > 0) {
+            loadCustomTargets();
+            loadCustomPlan();
+            closeAiToolboxModal();
+            switchMainMode('custom_craft');
+            alert(`부족한 안전 재고 ${added.length}종이 [지정 제작] 목표에 자동 등록되었습니다.`);
+          } else {
+            alert('모든 안전 재고 품목이 이미 최소 유지 수량 이상 보유 중입니다!');
+          }
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function startSmartFishing() {
+      if (!checkWeightSafetyConfirm()) return;
+      const fishEl = document.getElementById('fishing-item-input');
+      const cntEl = document.getElementById('fishing-count-input');
+      const minEl = document.getElementById('fishing-minutes-input');
+      const fish_name = (fishEl ? fishEl.value.trim() : '') || '고등어';
+      const target_count = parseInt(cntEl ? cntEl.value : '30', 10) || 30;
+      const max_minutes = parseInt(minEl ? minEl.value : '30', 10) || 30;
+
+      if (!confirm(`[스마트 자동 낚시]\n• 대상 어종: ${fish_name}\n• 목표 수량: +${target_count}마리 획득 시 자동 종료\n• 최대 시간: ${max_minutes}분 경과 또는 가방 무게 98% 도달 시 자동 안전 종료\n\n시작하시겠습니까?`)) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/execute_smart_fishing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fish_name, target_count, max_minutes })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('스마트 낚시 시작 실패: ' + d.error);
+        } else {
+          closeAiToolboxModal();
+          pollLogs();
+          updateStatus();
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function loadMusicAndSocialData() {
+      try {
+        const res = await fetch('/api/music_and_social');
+        const d = await res.json();
+        const musSel = document.getElementById('remote-music-select');
+        if (musSel) {
+          const scores = d.scores || d.music_scores || [];
+          let html = '<option value="">기본 연주 (보유 악보 자동 선택)</option>';
+          scores.forEach(s => {
+            const title = s.DisplayTitle || s.Title || s.Name || s.DisplayName || String(s);
+            const selected = (title === currentAutoPlayMusicTitle) ? 'selected' : '';
+            html += `<option value="${title.replace(/"/g, '&quot;')}" ${selected}>${title}</option>`;
+          });
+          musSel.innerHTML = html;
+        }
+        const instSel = document.getElementById('remote-instrument-select');
+        if (instSel) {
+          const insts = d.instruments || [];
+          if (insts.length === 0) {
+            instSel.innerHTML = '<option value="">보유 악기 없음</option>';
+          } else {
+            instSel.innerHTML = insts.map(i => {
+              const name = i.Name || i.DisplayName || String(i);
+              return `<option value="${name.replace(/"/g, '&quot;')}">${name}</option>`;
+            }).join('');
+          }
+        }
+      } catch (e) {
+        console.warn('loadMusicAndSocialData error:', e);
+      }
+    }
+
+    async function loadMissionsData() {
+      const box = document.getElementById('missions-list-box');
+      if (!box) return;
+      try {
+        const res = await fetch('/api/missions');
+        const d = await res.json();
+        const daily = d.daily || [];
+        const weekly = d.weekly || [];
+        if (daily.length === 0 && weekly.length === 0) {
+          box.innerHTML = '<span class="sym-prefix">&gt;</span>조회된 일일/주간 미션 정보가 없습니다.';
+          return;
+        }
+        let html = '';
+        const renderList = (arr, tag) => {
+          arr.slice(0, 12).forEach(m => {
+            const title = m.Title || m.Name || m.Description || '미션';
+            const cur = m.CurrentCount ?? m.Progress ?? 0;
+            const goal = m.TargetCount ?? m.Goal ?? 1;
+            const done = m.IsCompleted || (goal > 0 && cur >= goal);
+            html += `<div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid var(--line-subtle);"><span>[${tag}] ${title}</span><span class="mono-num" style="font-weight:700; color:${done ? 'var(--text-dim)' : 'var(--text-bright)'};">${done ? '완료' : `${cur}/${goal}`}</span></div>`;
+          });
+        };
+        renderList(daily, '일일');
+        renderList(weekly, '주간');
+        box.innerHTML = html;
+      } catch (e) {
+        box.innerHTML = `[!] 미션 조회 실패: ${e}`;
+      }
+    }
+
+    async function triggerRemoteMusicPlay() {
+      const sel = document.getElementById('remote-music-select');
+      const title = sel ? sel.value : '';
+      try {
+        const res = await fetch('/api/execute_social_or_music', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'play_music', title })
+        });
+        const d = await res.json();
+        if (d.error) alert('악보 연주 실패: ' + d.error);
+        else pollLogs();
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function savePreferredAutoMusic() {
+      const sel = document.getElementById('remote-music-select');
+      const title = sel ? sel.value : '';
+      currentAutoPlayMusicTitle = title;
+      safeSetStorage('mabi_auto_play_music_title', title);
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auto_play_music_title: title })
+        });
+        alert(`대기 중 자동 연주 악보가 '${title || '기본 연주'}'(으)로 저장되었습니다.`);
+      } catch (e) {}
+    }
+
+    async function triggerRemoteInstrumentChange() {
+      const sel = document.getElementById('remote-instrument-select');
+      const name = sel ? sel.value : '';
+      if (!name) return;
+      try {
+        const res = await fetch('/api/execute_social_or_music', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'change_instrument', name })
+        });
+        const d = await res.json();
+        if (d.error) alert('악기 변경 실패: ' + d.error);
+        else pollLogs();
+      } catch (e) {}
+    }
+
+    async function triggerRemoteCharacterAction(action) {
+      try {
+        const res = await fetch('/api/execute_social_or_music', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action })
+        });
+        const d = await res.json();
+        if (d.error) alert('실행 실패: ' + d.error);
+        else {
+          pollLogs();
+          updateStatus();
+        }
+      } catch (e) {}
+    }
+
     function openDiscordModal() {
       const overlay = document.getElementById('discord-modal-overlay');
       const urlInput = document.getElementById('discord-webhook-url-input');
@@ -5025,6 +6535,53 @@ HTML_PAGE = r"""<!DOCTYPE html>
     function handleDiscordModalOverlayClick(e) {
       if (e.target && e.target.id === 'discord-modal-overlay') {
         closeDiscordModal();
+      }
+    }
+
+    function openGuideModal(defaultTab = 'quick') {
+      const overlay = document.getElementById('guide-modal-overlay');
+      if (overlay) {
+        overlay.classList.add('active');
+        switchGuideTab(defaultTab);
+      }
+    }
+
+    function closeGuideModal() {
+      const overlay = document.getElementById('guide-modal-overlay');
+      if (overlay) {
+        overlay.classList.remove('active');
+      }
+    }
+
+    function handleGuideModalOverlayClick(e) {
+      if (e.target && e.target.id === 'guide-modal-overlay') {
+        closeGuideModal();
+      }
+    }
+
+    function switchGuideTab(tabKey) {
+      const tabs = ['quick', 'tutorial', 'discord', 'tips'];
+      for (const t of tabs) {
+        const btn = document.getElementById(`gtab-btn-${t}`);
+        const pane = document.getElementById(`gtab-pane-${t}`);
+        if (btn) {
+          if (t === tabKey) {
+            btn.classList.add('active');
+            btn.style.color = 'var(--text-bright)';
+            btn.style.borderColor = 'var(--text-bright)';
+            btn.style.fontWeight = '700';
+            btn.style.background = 'var(--bg-card)';
+          } else {
+            btn.classList.remove('active');
+            btn.style.color = 'var(--text-muted)';
+            btn.style.borderColor = 'transparent';
+            btn.style.fontWeight = '500';
+            btn.style.background = 'transparent';
+          }
+        }
+        if (pane) {
+          pane.style.display = (t === tabKey) ? 'block' : 'none';
+        }
       }
     }
 
@@ -5475,6 +7032,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
         renderAlteringQueue();
         loadDeliveryAlarms();
         updateMasterCommandBar();
+
+        // Option #3: Auto-collect completed altering works when idle
+        if (currentAutoCollectEnabled && !isCurrentlyBusy && !currentIsWeightOver && window.cachedAlteringCompletedTotal > 0) {
+          if (Date.now() - lastAutoCollectTriggerTime > 25000) {
+            lastAutoCollectTriggerTime = Date.now();
+            fetch('/api/collect_all_completed_altering', { method: 'POST' }).then(() => {
+              pollLogs();
+              updateStatus();
+            }).catch(() => {});
+          }
+        }
       } catch (err) {
         console.error('Error loading altering queue:', err);
       } finally {
@@ -5552,15 +7120,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (itemsAtFac.length === 0) {
           itemsHtml = '<div style="color: var(--text-dim); font-size: var(--fs-sm); padding: 8px 0; text-align: center;">작업 없음</div>';
         } else {
-          itemsAtFac.forEach(w => {
+          itemsAtFac.forEach((w, wIdx) => {
             const remSec = getWorkRemainingSeconds(w);
             let timeStr = '';
             if (w.IsCompleted || remSec === 0) {
               timeStr = '<span class="badge mono-num">완료</span>';
             } else if (w.State === 'InProgress' || remSec > 0) {
-              timeStr = `<span class="mono-num" style="color: var(--text-main); font-weight: 700;">${formatRemaining(remSec)}</span>`;
+              timeStr = `<span class="mono-num work-countdown" data-fac="${fac.name}" data-widx="${wIdx}" data-state="${w.State || ''}" style="color: var(--text-main); font-weight: 700;">${formatRemaining(remSec)}</span>`;
             } else {
-              timeStr = `<span class="mono-num" style="color: var(--text-muted); font-size: var(--fs-sm);">대기 (${formatRemaining(remSec)})</span>`;
+              timeStr = `<span class="mono-num work-countdown" data-fac="${fac.name}" data-widx="${wIdx}" data-state="${w.State || ''}" style="color: var(--text-muted); font-size: var(--fs-sm);">대기 (${formatRemaining(remSec)})</span>`;
             }
 
             const bellBtn = (!w.IsCompleted && remSec > 0)
@@ -5580,9 +7148,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
 
         gridHtml += `
-          <div class="facility-card">
+          <div class="facility-card ${itemsAtFac.length === 0 ? 'facility-idle' : ''}">
             <div class="facility-header">
-              <span class="facility-title">${formatFacilityShort(fac.name)}</span>
+              <span class="facility-title">${formatFacilityShort(fac.name)} <span class="badge-dim mono-num" style="font-size:11px; font-weight:500;">${itemsAtFac.length}/7슬롯</span></span>
               ${collectBtn}
             </div>
             <div class="facility-items">
@@ -5699,24 +7267,97 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     }
 
+    function updateAlteringCountdownOnly() {
+      const works = window.cachedAlteringWorks || [];
+      if (works.length === 0) return;
+
+      // If any work just reached 0 seconds, trigger full renderAlteringQueue once to update '완료' button & badges
+      let stateTransitioned = false;
+      works.forEach(w => {
+        if (!w.IsCompleted && !w._localCompletedNoted && getWorkRemainingSeconds(w) === 0) {
+          w._localCompletedNoted = true;
+          stateTransitioned = true;
+        }
+      });
+      if (stateTransitioned) {
+        renderAlteringQueue();
+        return;
+      }
+
+      const grouped = {};
+      ALL_FACILITIES.forEach(f => { grouped[f.name] = []; });
+      works.forEach(w => {
+        const fn = w.FacilityName || '';
+        if (!grouped[fn]) grouped[fn] = [];
+        grouped[fn].push(w);
+      });
+
+      // Update countdown spans in-place without destroying DOM/buttons
+      const countdownEls = document.querySelectorAll('.work-countdown');
+      for (let i = 0; i < countdownEls.length; i++) {
+        const el = countdownEls[i];
+        const fac = el.getAttribute('data-fac') || '';
+        const wIdx = parseInt(el.getAttribute('data-widx') || '0', 10);
+        const list = grouped[fac] || [];
+        const w = list[wIdx];
+        if (!w) continue;
+        const remSec = getWorkRemainingSeconds(w);
+        if (w.State === 'InProgress' || remSec > 0) {
+          el.textContent = formatRemaining(remSec);
+        } else {
+          el.textContent = `대기 (${formatRemaining(remSec)})`;
+        }
+      }
+
+      // Update collapsed quick summary bar text
+      let quickSummaryParts = [];
+      ALL_FACILITIES.forEach(f => {
+        const list = grouped[f.name] || [];
+        if (list.length > 0) {
+          const incomplete = list.filter(w => !w.IsCompleted && getWorkRemainingSeconds(w) > 0);
+          const totalSec = incomplete.reduce((sum, w) => sum + getWorkRemainingSeconds(w), 0);
+          const hasComp = list.some(w => w.IsCompleted || (getWorkRemainingSeconds(w) === 0 && !w.IsCompleted));
+          const facShort = f.name.replace(' 가공 시설', '');
+
+          if (totalSec > 0) {
+            const compTag = hasComp ? ' <span style="color:var(--text-main);font-size:var(--fs-sm);">(일부완료)</span>' : '';
+            quickSummaryParts.push(`${facShort}: <span class="mono-num" style="color:var(--text-main);font-weight:700;">${formatRemaining(totalSec)}</span>${compTag}`);
+          } else if (hasComp) {
+            quickSummaryParts.push(`${facShort}: <span style="color:var(--text-main);font-weight:700;">=== 완료 ===</span>`);
+          }
+        }
+      });
+      const quickSummaryEl = document.getElementById('altering-quick-summary');
+      if (quickSummaryEl) {
+        quickSummaryEl.innerHTML = quickSummaryParts.length > 0
+          ? quickSummaryParts.join(' &nbsp;|&nbsp; ')
+          : '현재 대기 중인 가공 작업이 없습니다.';
+      }
+    }
+
     // 1-second Alarm Ticker (triggers strictly for registered alarms)
     window.tickAlarms = function tickAlarms() {
       const now = Date.now();
       let changed = false;
+      let hasActiveUnnotified = false;
       Object.keys(activeAlarms).forEach(k => {
         const al = activeAlarms[k];
-        if (!al.notified && now >= al.targetTimestamp) {
-          al.notified = true;
-          changed = true;
-          playChime();
-          showPushNotification(`[${al.facility}] 마지막 가공 완료`, `[${al.facility}] 모든 가공 작업이 완료되었습니다. (${al.item}) 지금 바로 수령하세요.`);
-          document.title = `[${al.facility} 가공 완료] 모비노기 생활 지원도구`;
-          setTimeout(() => { document.title = '모비노기 생활 지원도구'; }, 8000);
+        if (!al.notified) {
+          if (now >= al.targetTimestamp) {
+            al.notified = true;
+            changed = true;
+            playChime();
+            showPushNotification(`[${al.facility}] 마지막 가공 완료`, `[${al.facility}] 모든 가공 작업이 완료되었습니다. (${al.item}) 지금 바로 수령하세요.`);
+            document.title = `[${al.facility} 가공 완료] 모비노기 생활 지원도구`;
+            setTimeout(() => { document.title = '모비노기 생활 지원도구'; }, 8000);
+          } else {
+            hasActiveUnnotified = true;
+          }
         }
       });
-      if (changed) renderAlarms();
-      if (window.cachedAlteringWorks && window.cachedAlteringWorks.length > 0) {
-        renderAlteringQueue();
+      if (changed || (!document.hidden && hasActiveUnnotified)) renderAlarms();
+      if (!document.hidden && window.cachedAlteringWorks && window.cachedAlteringWorks.length > 0) {
+        updateAlteringCountdownOnly();
       }
     };
 
@@ -6032,10 +7673,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
                   <span class="cli-gauge">${gaugeStr}</span>
                   <span style="color: var(--text-muted);">보유:</span>
                   <button class="btn btn-sm" onclick="adjustTargetCurrent('${safeName}', ${t.current}, -1)" title="1개 감소">-</button>
-                  <strong class="mono-num" style="color: var(--text-main); cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 입력">${t.current}</strong>
+                  <strong class="mono-num" style="color: var(--text-main); cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 수정">${t.current}</strong>
                   <button class="btn btn-sm" onclick="adjustTargetCurrent('${safeName}', ${t.current}, 1)" title="1개 증가">+</button>
                   <span class="mono-num" style="color: var(--text-muted);">/ ${t.goal}개</span>
-                  <button class="btn btn-sm" onclick="promptEditCurrent('${safeName}', ${t.current})" title="보유 수량 직접 수정">수정</button>
                   <button class="btn btn-sm" onclick="updateTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">0개로</button>
                   ${t.storage_count > 0 ? `<small class="mono-num" style="color: var(--text-muted); font-size: var(--fs-sm);">(가방 ${t.inventory_count || 0} + 창고 ${t.storage_count})</small>` : ''}
                 </div>
@@ -6365,6 +8005,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const statusText = document.getElementById('batch-status-text');
 
         if (tbody) {
+          applyHideSatisfiedBomUI();
           let rowsHtml = '';
           if (reqs.length > 0) {
             reqs.forEach(r => {
@@ -6387,10 +8028,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const storeCnt = r.storage_count || 0;
               const bagStorageText = `<span class="mono-num">${invCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${storeCnt}개)</span>`;
               const facShort = formatFacilityShort(r.facility);
+              const lockTag = r.is_locked ? ` <span class="badge-dim" style="color:#F59E0B;" title="인게임 잠금 설정된 재료">[잠금주의]</span>` : '';
+              const warnTag = r.readiness_warning ? ` <span class="badge-dim" style="color:#EF4444;" title="${r.readiness_warning}">[설비/스킬 부족]</span>` : '';
 
               rowsHtml += `
                 <tr class="row-alter ${isSatisfied ? 'row-satisfied' : ''}">
-                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot dot-alter"></span>${r.item_name}</td>
+                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot dot-alter"></span>${r.item_name}${lockTag}${warnTag}</td>
                   <td style="text-align:center; white-space:nowrap;"><span class="badge-dim">${facShort}</span></td>
                   <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${r.total_needed}개</td>
                   <td style="text-align:center; white-space:nowrap;">${bagStorageText}</td>
@@ -6423,10 +8066,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 ? '<span class="badge-dim">기타</span>'
                 : '<span class="badge-dim">채집</span>';
               const rowClass = isSpecial ? 'row-special' : 'row-gather';
+              const rmLockTag = rm.is_locked ? ` <span class="badge-dim" style="color:#F59E0B;" title="인게임 잠금 설정된 재료">[잠금주의]</span>` : '';
 
               rowsHtml += `
                 <tr class="${rowClass} ${isRmSatisfied ? 'row-satisfied' : ''}">
-                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot ${isSpecial ? 'dot-special' : 'dot-gather'}"></span>${rm.item_name}</td>
+                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot ${isSpecial ? 'dot-special' : 'dot-gather'}"></span>${rm.item_name}${rmLockTag}</td>
                   <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
                   <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
                   <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
@@ -6701,9 +8345,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <div style="display: flex; align-items: center; gap: 4px;">
                   <span style="color: var(--text-muted);">보유:</span>
                   <button class="btn btn-sm" onclick="adjustCustomTargetCurrent('${safeName}', ${t.current}, -1)" title="1개 감소">-</button>
-                  <strong class="mono-num" style="color: var(--text-main); cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCustomCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 입력">${t.current}</strong>
+                  <strong class="mono-num" style="color: var(--text-main); cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCustomCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 수정">${t.current}</strong>
                   <button class="btn btn-sm" onclick="adjustCustomTargetCurrent('${safeName}', ${t.current}, 1)" title="1개 증가">+</button>
-                  <button class="btn btn-sm" onclick="promptEditCustomCurrent('${safeName}', ${t.current})" title="보유 수량 직접 수정">수정</button>
                   <button class="btn btn-sm" onclick="updateCustomTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">0개로</button>
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px;">
@@ -6970,7 +8613,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       row.className = 'recipe-modal-row';
       row.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border-line);';
       row.innerHTML = `
-        <input type="text" class="recipe-row-name" value="${(name || '').replace(/"/g, '&quot;')}" placeholder="재료명 (예: 달걀, 물이 든 병)" style="flex: 2; padding: 6px 10px;">
+        <input type="text" list="all-items-datalist" class="recipe-row-name" value="${(name || '').replace(/"/g, '&quot;')}" placeholder="재료명 (예: 달걀, 물이 든 병)" style="flex: 2; padding: 6px 10px;">
         <div style="display: flex; align-items: center; gap: 4px;">
           <input type="number" class="recipe-row-qty mono-num" value="${count || 1}" min="1" max="999" style="width: 65px; padding: 6px 8px; text-align: center;">
           <span style="font-size: var(--fs-sm); color: var(--text-muted);">개</span>
@@ -7021,6 +8664,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           if (msgEl) msgEl.innerText = '> === 저장 완료 ===';
           closeRecipeModal();
           pollLogs();
+          loadItemCatalog();
           loadCustomTargets();
           loadCustomPlan();
           loadDeliveryTargets();
@@ -7031,6 +8675,30 @@ HTML_PAGE = r"""<!DOCTYPE html>
       } catch (e) {
         alert('저장 요청 실패: ' + e);
       }
+    }
+
+    let hideSatisfiedBomRows = (safeGetStorage('mabi_hide_satisfied_bom', 'false') === 'true');
+
+    function applyHideSatisfiedBomUI() {
+      const b1 = document.getElementById('bom-table-body');
+      const b2 = document.getElementById('custom-batch-materials-tbody');
+      if (b1) b1.classList.toggle('hide-satisfied-rows', hideSatisfiedBomRows);
+      if (b2) b2.classList.toggle('hide-satisfied-rows', hideSatisfiedBomRows);
+
+      const ic1 = document.getElementById('icon-hide-satisfied-delivery');
+      const ic2 = document.getElementById('icon-hide-satisfied-custom');
+      [ic1, ic2].forEach(ic => {
+        if (ic) {
+          ic.innerText = hideSatisfiedBomRows ? '■' : '□';
+          ic.style.color = hideSatisfiedBomRows ? 'var(--text-bright)' : 'var(--text-dim)';
+        }
+      });
+    }
+
+    function toggleHideSatisfiedBom() {
+      hideSatisfiedBomRows = !hideSatisfiedBomRows;
+      safeSetStorage('mabi_hide_satisfied_bom', String(hideSatisfiedBomRows));
+      applyHideSatisfiedBomUI();
     }
 
     async function loadCustomPlan() {
@@ -7045,9 +8713,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const summaryText = document.getElementById('custom-plan-summary-text');
 
         if (!tbody) return;
+        applyHideSatisfiedBomUI();
 
         if (plan.error) {
-          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-main); padding: 20px;">[!] 오류: ${plan.error}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-main); padding: 20px;">[!] 오류: ${plan.error}</td></tr>`;
           if (statusText) statusText.innerText = '계획 로드 실패';
           return;
         }
@@ -7056,7 +8725,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const rawMaterials = plan.raw_materials || [];
 
         if (materials.length === 0 && rawMaterials.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;"><span class="sym-prefix">&gt;</span>등록된 지정 제작 목표가 없습니다. 위에서 목표를 추가하세요.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;"><span class="sym-prefix">&gt;</span>등록된 지정 제작 목표가 없습니다. 위에서 목표를 추가하세요.</td></tr>`;
           if (statusText) statusText.innerText = '등록된 목표 없음';
           if (btnExec) {
             btnExec.disabled = true;
@@ -7081,33 +8750,29 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const isSatisfied = (m.status === 'satisfied' || (deficit === 0 && worksNeeded === 0));
           let statusBadge = '';
           if (isSatisfied) {
-            statusBadge = '<span style="font-weight:700;">=== 재료 준비 완료 ===</span>' + compBadge;
+            statusBadge = '<span style="font-weight:700; white-space:nowrap;">=== 준비 완료 ===</span>' + compBadge;
           } else if (m.status === 'ready_to_collect' || (compCnt > 0 && worksNeeded === 0)) {
-            statusBadge = `<span class="badge mono-num">수령 가능 (${compCnt}회)</span>`;
+            statusBadge = `<span class="badge mono-num" style="white-space:nowrap;">수령 가능 (${compCnt}회)</span>`;
           } else if (m.status === 'in_queue' || (queuedCnt > 0 && worksNeeded === 0)) {
-            statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700;">대기열 (${queuedCnt}회)</span>` + compBadge;
+            statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">대기열 (${queuedCnt}회)</span>` + compBadge;
           } else if (worksNeeded > 0) {
-            statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700;">> ${shortFac} ${worksNeeded}회 등록 필요</span>` + queuedBadge + compBadge;
+            statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">> ${worksNeeded}회 가공 필요</span>` + queuedBadge + compBadge;
           } else {
-            statusBadge = '<span style="font-weight:700;">=== 준비 완료 ===</span>';
+            statusBadge = '<span style="font-weight:700; white-space:nowrap;">=== 준비 완료 ===</span>';
           }
 
           const invCnt = m.inventory_count || 0;
           const storeCnt = m.storage_count || 0;
           const bagStorageText = `<span class="mono-num">${invCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${storeCnt}개)</span>`;
+          const mLockTag = m.is_locked ? ` <span class="badge-dim" style="color:#F59E0B;" title="인게임 잠금 설정된 재료">[잠금주의]</span>` : '';
+          const mWarnTag = m.readiness_warning ? ` <span class="badge-dim" style="color:#EF4444;" title="${m.readiness_warning}">[설비/스킬 부족]</span>` : '';
 
           rowsHtml += `
             <tr class="row-alter ${isSatisfied ? 'row-satisfied' : ''}">
-              <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot dot-alter"></span>${m.item_name}</td>
+              <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot dot-alter"></span>${m.item_name}${mLockTag}${mWarnTag}</td>
               <td style="text-align:center; white-space:nowrap;"><span class="badge-dim">${shortFac}</span></td>
               <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${m.total_needed}개</td>
               <td style="text-align:center; white-space:nowrap;">${bagStorageText}</td>
-              <td class="mono-num" style="font-weight:700; color:${deficit > 0 ? 'var(--text-main)' : 'var(--text-muted)'}; text-align:right; white-space:nowrap;">
-                ${deficit > 0 ? `-${deficit}개` : '0개'}
-              </td>
-              <td class="mono-num" style="text-align:center; font-weight:700; color:${worksNeeded > 0 ? 'var(--text-main)' : 'var(--text-dim)'}; white-space:nowrap;">
-                ${worksNeeded > 0 ? `+${worksNeeded}회` : '-'}
-              </td>
               <td style="white-space:nowrap;">${statusBadge}</td>
             </tr>
           `;
@@ -7144,10 +8809,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
                 <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
                 <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
-                <td class="mono-num" style="font-weight:700; color:${rm.deficit > 0 ? 'var(--text-main)' : 'var(--text-muted)'}; text-align:right; white-space:nowrap;">
-                  ${rm.deficit > 0 ? `-${rm.deficit}개` : '0개'}
-                </td>
-                <td style="text-align:center; color:var(--text-dim); white-space:nowrap;">-</td>
                 <td style="white-space:nowrap;">${statusBadge}</td>
               </tr>
             `;
@@ -7401,18 +9062,42 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         if (data.connected && data.character) {
           const char = data.character;
-          const realmName = char.RealmName || '서버';
-          const levelNum = char.Level || 0;
+          const jobName = char.EnabledCombatJobDisplayName || char.CombatJobDisplayName || char.JobDisplayName || char.CombatJob || char.Job || '캐릭터';
+          const realmName = char.RealmName || '';
+          const levelNum = String(char.Level ?? 0).trim();
+          const charLabel = `${jobName} (Lv.<span style="font-variant-numeric: tabular-nums;">${levelNum}</span>)`;
+          const fullDesc = `${jobName} (Lv.${levelNum})${realmName ? ` [${realmName} 서버]` : ''}`;
+
           if (statusPill) {
             if (currentlyBusy) {
               statusPill.className = "pill warning";
-              statusPill.innerHTML = `<span class="cli-spinner">${getCurrentSpinnerText()}</span> ${realmName} (Lv.<span class="mono-num">${levelNum}</span>)`;
-              statusPill.title = data.current_task || '작업 진행 중';
+              statusPill.innerHTML = `<span class="cli-spinner">${getCurrentSpinnerText()}</span> ${charLabel}`;
+              statusPill.title = `${fullDesc} | ${data.current_task || '작업 진행 중'}`;
             } else {
               statusPill.className = "pill online";
-              statusPill.innerHTML = `${realmName} (Lv.<span class="mono-num">${levelNum}</span>)`;
-              statusPill.title = "정상 연결됨 (클릭하여 설정 확인)";
+              statusPill.innerHTML = charLabel;
+              statusPill.title = `${fullDesc} | 정상 연결됨 (클릭하여 설정 확인)`;
             }
+          }
+          const activityPill = document.getElementById('pill-activity');
+          if (activityPill) {
+            const act = data.activity || {};
+            let actText = '대기 중';
+            if (currentlyBusy && data.current_task) {
+              if (data.current_task.includes('채집')) actText = '자동 채집 중';
+              else if (data.current_task.includes('가공') || data.current_task.includes('수령')) actText = '시설 가공·수령 중';
+              else if (data.current_task.includes('제작')) actText = '아이템 제작 중';
+              else actText = '파이프라인 가동 중';
+            } else if (act.IsGathering) {
+              actText = `채집 중${act.TargetName ? ' (' + act.TargetName + ')' : ''}`;
+            } else if (act.IsCrafting) {
+              actText = '제작 중';
+            } else if (act.IsMoving || act.IsAutoMoving) {
+              actText = '이동 중';
+            } else if (act.CurrentState && act.CurrentState !== 'Idle' && act.CurrentState !== 'None') {
+              actText = String(act.CurrentState);
+            }
+            activityPill.innerHTML = `상태: <span style="color: ${currentlyBusy || actText !== '대기 중' ? 'var(--text-bright)' : 'var(--text-muted)'}; font-weight: ${currentlyBusy || actText !== '대기 중' ? '700' : '400'};">${actText}</span>`;
           }
           if (cliAlertBanner) cliAlertBanner.style.display = 'none';
           if (wingsPill) {
@@ -7441,6 +9126,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
           if (wasWeightOver !== currentIsWeightOver) {
             updateMasterCommandBar();
+          }
+          const envPill = document.getElementById('pill-env');
+          if (envPill) {
+            const env = data.environment || {};
+            const region = char.CurrentRegionDisplayName || char.RegionDisplayName || env.RegionName || env.MapName || '';
+            const chNum = char.ChannelNumber || env.ChannelNumber || '';
+            const erinnTime = env.ErinnNow || env.ErinnTime || '';
+            const weather = env.WeatherDisplayName || env.Weather || '';
+            const satiety = char.SatietyValue ?? char.Satiety;
+            let envParts = [];
+            if (region) envParts.push(`${region}${chNum ? ' ' + chNum + 'ch' : ''}`);
+            if (erinnTime) envParts.push(`에린 ${erinnTime}`);
+            if (weather) envParts.push(weather);
+            if (satiety !== undefined && satiety !== null) envParts.push(`포만감 ${satiety}`);
+            envPill.innerHTML = envParts.length > 0 ? envParts.join(' · ') : '에린 환경 연동됨';
           }
         } else {
           const errCode = data.error_code || '';
@@ -7587,35 +9287,517 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     }
 
+    let lastRenderedLogSig = '';
     async function pollLogs() {
       try {
         const res = await fetch('/api/logs');
         const data = await res.json();
         const logsEl = document.getElementById('console-logs');
         if (logsEl && data.logs && data.logs.length > 0) {
+          const lastItem = data.logs[data.logs.length - 1];
+          const sig = `${data.logs.length}|${lastItem.time}|${lastItem.message}`;
+          if (sig === lastRenderedLogSig) return;
+          const wasAtBottom = (logsEl.scrollHeight - logsEl.scrollTop - logsEl.clientHeight) < 40;
+          lastRenderedLogSig = sig;
           logsEl.innerHTML = data.logs.map(l => {
             const cls = `log-${l.level || 'info'}`;
             return `<div class="log-line ${cls}"><span class="log-time">[${l.time}]</span> ${l.message}</div>`;
           }).join('');
-          logsEl.scrollTop = logsEl.scrollHeight;
+          if (wasAtBottom) {
+            logsEl.scrollTop = logsEl.scrollHeight;
+          }
         }
       } catch (err) {}
     }
 
-    async function doSearch() {
-      const qEl = document.getElementById('search-query');
-      if (!qEl) return;
-      const q = qEl.value.trim();
+    // ==========================================
+    // Korean Chosung (초성) & Smart Recipe/Material Search + Autocomplete
+    // ==========================================
+    const CHOSUNG_LIST = [
+      'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ',
+      'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+    ];
+    window.allItemCatalog = [];
+    window.allItemMap = {};
+    let searchDebounceTimer = null;
+    let recentSearches = [];
+    try {
+      recentSearches = JSON.parse(safeGetStorage('mabi_recent_searches', '[]')) || [];
+    } catch (e) {
+      recentSearches = [];
+    }
+
+    function extractChosung(str) {
+      if (!str) return '';
+      let result = '';
+      for (let i = 0; i < str.length; i++) {
+        const code = str.charCodeAt(i) - 0xAC00;
+        if (code >= 0 && code < 11172) {
+          const chosungIdx = Math.floor(code / 588);
+          result += CHOSUNG_LIST[chosungIdx];
+        } else {
+          result += str.charAt(i).toLowerCase();
+        }
+      }
+      return result;
+    }
+
+    function matchItemQuery(itemObj, rawQuery) {
+      if (!rawQuery) return 0;
+      const q = rawQuery.trim().toLowerCase();
+      const qNoSpace = q.replace(/\s+/g, '');
+      const nameLower = itemObj.nameLower;
+      const nameNoSpace = itemObj.nameNoSpace;
+      const chosung = itemObj.chosung;
+      const chosungNoSpace = itemObj.chosungNoSpace;
+
+      if (nameLower === q || nameNoSpace === qNoSpace) return 100;
+      if (nameLower.startsWith(q) || nameNoSpace.startsWith(qNoSpace)) return 85;
+      if (chosungNoSpace.startsWith(qNoSpace)) return 75;
+      if (nameLower.includes(q) || nameNoSpace.includes(qNoSpace)) return 65;
+      if (chosung.includes(q) || chosungNoSpace.includes(qNoSpace)) return 50;
+      return 0;
+    }
+
+    async function loadItemCatalog() {
+      try {
+        const res = await fetch('/api/recipes_all');
+        const data = await res.json();
+        const recipes = data.recipes || {};
+        const alterRecipes = data.alter_recipes || {};
+        const gatherables = data.gatherables || [];
+        const nonGatherables = data.non_gatherables || [];
+
+        const catalogMap = {};
+
+        function registerCatalogItem(name, catLabel, descText, ingredientsObj) {
+          if (!name) return;
+          const clean = name.trim();
+          if (!clean) return;
+          if (!catalogMap[clean]) {
+            const nameLower = clean.toLowerCase();
+            const chosung = extractChosung(clean);
+            catalogMap[clean] = {
+              name: clean,
+              nameLower: nameLower,
+              nameNoSpace: nameLower.replace(/\s+/g, ''),
+              chosung: chosung,
+              chosungNoSpace: chosung.replace(/\s+/g, ''),
+              category: catLabel,
+              desc: descText || '',
+              ingredients: ingredientsObj || null
+            };
+          } else {
+            if (catLabel && !catalogMap[clean].category.includes(catLabel)) {
+              catalogMap[clean].category += '/' + catLabel;
+            }
+            if (descText && !catalogMap[clean].desc) {
+              catalogMap[clean].desc = descText;
+            }
+            if (ingredientsObj && !catalogMap[clean].ingredients) {
+              catalogMap[clean].ingredients = ingredientsObj;
+            }
+          }
+        }
+
+        Object.entries(recipes).forEach(([rName, ings]) => {
+          const ingSummary = Object.entries(ings || {}).map(([k, v]) => `${k} ${v}`).join(', ');
+          registerCatalogItem(rName, '제작', ingSummary, ings);
+          Object.keys(ings || {}).forEach(ingName => {
+            registerCatalogItem(ingName, '재료', '', null);
+          });
+        });
+
+        Object.entries(alterRecipes).forEach(([aName, aInfo]) => {
+          const facShort = (aInfo.facility || '가공').replace(' 가공 시설', '').replace(' 시설', '');
+          const ingSummary = Object.entries(aInfo.ingredients || {}).map(([k, v]) => `${k} ${v}`).join(', ');
+          registerCatalogItem(aName, `${facShort} 가공`, ingSummary, aInfo.ingredients);
+          Object.keys(aInfo.ingredients || {}).forEach(ingName => {
+            registerCatalogItem(ingName, '재료', '', null);
+          });
+        });
+
+        gatherables.forEach(gName => {
+          registerCatalogItem(gName, '채집', '필드 채집 원자재', null);
+        });
+
+        nonGatherables.forEach(sName => {
+          registerCatalogItem(sName, '특수/상점', '상점 구매 또는 사냥 획득', null);
+        });
+
+        const list = Object.values(catalogMap).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+        window.allItemCatalog = list;
+        window.allItemMap = catalogMap;
+
+        const dl = document.getElementById('all-items-datalist');
+        if (dl) {
+          dl.innerHTML = list.map(item => `<option value="${item.name.replace(/"/g, '&quot;')}">${item.category}${item.desc ? ' · ' + item.desc : ''}</option>`).join('');
+        }
+        const badge = document.getElementById('catalog-count-badge');
+        if (badge) {
+          badge.innerText = `${list.length}종 DB · 초성 검색`;
+        }
+        renderRecentSearchChips();
+      } catch (e) {
+        console.warn('loadItemCatalog error:', e);
+      }
+    }
+
+    function renderRecentSearchChips() {
+      const box = document.getElementById('search-quick-chips');
+      if (!box) return;
+      const defaults = ['론 엣지소드S', '특수강괴', '상급 목재+', '최상급 가죽', '나무 진액'];
+      const combined = [...recentSearches];
+      defaults.forEach(d => {
+        if (!combined.includes(d) && combined.length < 7) combined.push(d);
+      });
+      const label = recentSearches.length > 0 ? '최근·추천:' : '빠른 조회:';
+      let html = `<span style="font-size: 11px; color: var(--text-dim);">${label}</span>`;
+      combined.slice(0, 6).forEach(name => {
+        const safe = name.replace(/'/g, "\\'");
+        html += `<span class="search-chip" onclick="quickSearchItem('${safe}')">${name}</span>`;
+      });
+      box.innerHTML = html;
+    }
+
+    function saveRecentSearch(q) {
+      if (!q || q.length < 2) return;
+      recentSearches = [q, ...recentSearches.filter(x => x !== q)].slice(0, 6);
+      safeSetStorage('mabi_recent_searches', JSON.stringify(recentSearches));
+      renderRecentSearchChips();
+    }
+
+    function getAutocompleteMatches(query, maxCount = 10) {
+      if (!query || !query.trim()) return [];
+      const scored = [];
+      for (let i = 0; i < window.allItemCatalog.length; i++) {
+        const it = window.allItemCatalog[i];
+        const score = matchItemQuery(it, query);
+        if (score > 0) {
+          scored.push({ item: it, score: score });
+        }
+      }
+      scored.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (a.item.name.length !== b.item.name.length) return a.item.name.length - b.item.name.length;
+        return a.item.name.localeCompare(b.item.name, 'ko');
+      });
+      return scored.slice(0, maxCount).map(s => s.item);
+    }
+
+    function closeAllAutocompleteDropdowns() {
+      document.querySelectorAll('.ac-dropdown').forEach(el => {
+        el.style.display = 'none';
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.ac-wrapper')) {
+        closeAllAutocompleteDropdowns();
+      }
+    });
+
+    function onItemInputAutocomplete(inputEl, dropdownId) {
+      const dd = document.getElementById(dropdownId);
+      if (!dd || !inputEl) return;
+      const q = inputEl.value.trim();
+      if (!q) {
+        dd.style.display = 'none';
+        return;
+      }
+      const matches = getAutocompleteMatches(q, 8);
+      if (matches.length === 0) {
+        dd.style.display = 'none';
+        return;
+      }
+      let html = '';
+      matches.forEach((m, idx) => {
+        const subDesc = m.desc ? `<span style="color:var(--text-dim); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">${m.desc}</span>` : '';
+        html += `
+          <div class="ac-item ${idx === 0 ? 'active' : ''}" data-value="${m.name.replace(/"/g, '&quot;')}" onmousedown="selectAutocompleteItem('${inputEl.id}', '${dropdownId}', this.getAttribute('data-value'))">
+            <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+              <strong style="color:var(--text-bright); white-space:nowrap;">${m.name}</strong>
+              ${subDesc}
+            </div>
+            <span class="badge-dim" style="font-size:10px; flex-shrink:0;">${m.category}</span>
+          </div>
+        `;
+      });
+      dd.innerHTML = html;
+      dd.style.display = 'block';
+    }
+
+    function selectAutocompleteItem(inputId, dropdownId, value) {
+      const inputEl = document.getElementById(inputId);
+      const dd = document.getElementById(dropdownId);
+      if (inputEl) inputEl.value = value;
+      if (dd) dd.style.display = 'none';
+      if (inputId === 'search-query') {
+        doSearch();
+      }
+    }
+
+    function handleAutocompleteKeydown(event, inputEl, dropdownId, enterActionFn) {
+      const dd = document.getElementById(dropdownId);
+      const isVisible = dd && dd.style.display === 'block';
+      const items = isVisible ? Array.from(dd.querySelectorAll('.ac-item')) : [];
+
+      if (event.key === 'ArrowDown' && isVisible && items.length > 0) {
+        event.preventDefault();
+        let idx = items.findIndex(el => el.classList.contains('active'));
+        items.forEach(el => el.classList.remove('active'));
+        idx = (idx + 1) % items.length;
+        items[idx].classList.add('active');
+        items[idx].scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      if (event.key === 'ArrowUp' && isVisible && items.length > 0) {
+        event.preventDefault();
+        let idx = items.findIndex(el => el.classList.contains('active'));
+        items.forEach(el => el.classList.remove('active'));
+        idx = (idx - 1 + items.length) % items.length;
+        items[idx].classList.add('active');
+        items[idx].scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      if (event.key === 'Escape' && isVisible) {
+        dd.style.display = 'none';
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (isVisible && items.length > 0) {
+          const activeEl = dd.querySelector('.ac-item.active') || items[0];
+          if (activeEl) {
+            const val = activeEl.getAttribute('data-value');
+            if (val && inputEl.value.trim() !== val) {
+              inputEl.value = val;
+              dd.style.display = 'none';
+              if (inputEl.id === 'search-query' && typeof enterActionFn === 'function') {
+                enterActionFn();
+              }
+              return;
+            }
+          }
+          dd.style.display = 'none';
+        }
+        if (typeof enterActionFn === 'function') {
+          enterActionFn();
+        }
+      }
+    }
+
+    function onSearchQueryInput(inputEl) {
+      onItemInputAutocomplete(inputEl, 'ac-search-query');
+      const q = inputEl.value.trim();
       if (!q) return;
+
+      // Instant local preview even while typing (including Korean Chosung!)
+      const matches = getAutocompleteMatches(q, 5);
+      if (matches.length > 0) {
+        renderInstantCatalogPreview(q, matches);
+      }
+
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        doSearch(q, false);
+      }, 280);
+    }
+
+    function quickSearchItem(itemName) {
+      if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = null;
+      }
+      const qEl = document.getElementById('search-query');
+      if (qEl) qEl.value = itemName;
+      closeAllAutocompleteDropdowns();
+      doSearch(itemName, true);
+    }
+
+    async function quickAddDeliveryFromSearch(itemName) {
+      try {
+        const res = await fetch('/api/add_delivery_target', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_name: itemName, goal: 1 })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('추가 실패: ' + d.error);
+        } else {
+          loadDeliveryTargets();
+          loadBatchPlan();
+          alert(`'${itemName}' 품목이 주간 납품 목표에 추가되었습니다.`);
+        }
+      } catch (e) {
+        alert('요청 오류: ' + e);
+      }
+    }
+
+    function renderInstantCatalogPreview(q, matches) {
       const resEl = document.getElementById('search-results');
       if (!resEl) return;
-      resEl.innerHTML = '<span style="color:var(--text-muted);"><span class="sym-prefix">&gt;</span>검색 중...</span>';
+      let html = `<div style="font-size:11px; color:var(--text-dim); margin-bottom:6px;"><span class="sym-prefix">&gt;</span>'${q}' 실시간 매칭 (${matches.length}건) — 항목을 클릭하면 상세 재료 및 창고 재고를 조회합니다:</div>`;
+      matches.forEach(m => {
+        const safe = m.name.replace(/'/g, "\\'");
+        html += `
+          <div style="padding: 6px 8px; border: 1px solid var(--border-line); margin-bottom: 5px; display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer;" onclick="quickSearchItem('${safe}')">
+            <div style="min-width:0;">
+              <strong style="color:var(--text-bright);">${m.name}</strong>
+              <span class="badge-dim" style="font-size:10px; margin-left:6px;">${m.category}</span>
+              ${m.desc ? `<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">소요 재료: ${m.desc}</div>` : ''}
+            </div>
+            <span style="font-size:11px; color:var(--text-dim); white-space:nowrap;">상세 보기 &gt;</span>
+          </div>
+        `;
+      });
+      resEl.innerHTML = html;
+    }
+
+    async function doSearch(overrideQuery, shouldSaveRecent = true) {
+      if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = null;
+      }
+      const qEl = document.getElementById('search-query');
+      if (!qEl && !overrideQuery) return;
+      let rawQ = (overrideQuery || (qEl ? qEl.value : '')).trim();
+      if (!rawQ) return;
+
+      closeAllAutocompleteDropdowns();
+
+      // Only replace rawQ with the top catalog match when the user typed Korean Chosung (e.g., ㄹㅇㅈ)
+      // so broad substring searches (e.g., "소드", "통나무", "갑옷") still list all matching items!
+      let resolvedQ = rawQ;
+      if (/[ㄱ-ㅎ]/.test(rawQ) && !window.allItemMap[rawQ]) {
+        const matches = getAutocompleteMatches(rawQ, 1);
+        if (matches.length > 0) {
+          resolvedQ = matches[0].name;
+        }
+      }
+
+      if (shouldSaveRecent) {
+        saveRecentSearch(resolvedQ);
+      }
+
+      const resEl = document.getElementById('search-results');
+      if (!resEl) return;
+      resEl.innerHTML = '<span style="color:var(--text-muted);"><span class="sym-prefix">&gt;</span>상세 레시피 및 인벤토리/창고 재고 조회 중...</span>';
+
       try {
-        const res = await fetch(`/api/search_recipe?name=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/search_recipe?name=${encodeURIComponent(resolvedQ)}`);
         const d = await res.json();
-        let html = `<div style="padding: 6px; border: 1px solid var(--border-line); margin-bottom: 8px;">`;
-        html += `<strong>'${d.item_name}'</strong> - <span class="mono-num">가방: ${d.owned_bag}개 | 개인창고: ${d.owned_char_storage || 0}개 | 공용창고: ${d.owned_account_storage || 0}개 (총 ${d.owned_all || 0}개)</span><br>`;
-        html += `<span class="mono-num"><span class="sym-prefix">&gt;</span>제작: ${d.craft.length}건 | 가공: ${d.alter.length}건 | 채집: ${d.gather.length}건</span></div>`;
+        if (d.error) {
+          resEl.innerHTML = `<span style="color:var(--text-main);">[!] ${d.error}</span>`;
+          return;
+        }
+
+        const safeTarget = (d.item_name || resolvedQ).replace(/'/g, "\\'");
+        let html = '';
+
+        // 1. Header Card: Stock & Quick Action Buttons
+        const stockLine = d.cli_live_ok
+          ? `가방: <strong style="color:var(--text-bright);">${d.owned_bag}개</strong> | 개인창고: ${d.owned_char_storage || 0}개 | 공용창고: ${d.owned_account_storage || 0}개 (총 <strong style="color:var(--text-bright);">${d.owned_all || 0}개</strong>)`
+          : `<span style="color:var(--text-dim);">${d.is_busy ? '작업 진행 중 (실시간 창고 조회 생략 · 로컬 도감 표시)' : '게임 미연결 (로컬 레시피 도감 표시)'}</span>`;
+
+        html += `
+          <div style="padding: 8px 10px; background: var(--bg-sub-panel); border: 1px solid var(--border-line); margin-bottom: 8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:4px;">
+              <strong style="font-size:var(--fs-md); color:var(--text-bright);">// ${d.item_name}</strong>
+              <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-sm btn-boxed" onclick="quickAddCustomTarget('${safeTarget}', 1); switchMainMode('custom_craft');" title="지정 제작 탭에 이 품목 1개 추가">+ 지정 제작</button>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="quickAddDeliveryFromSearch('${safeTarget}')" title="주간 납품 목표에 이 품목 추가">+ 납품 추가</button>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="openRecipeModal('${safeTarget}')" title="1회 제작 레시피 확인 및 수정">레시피 수정</button>
+              </div>
+            </div>
+            <div class="mono-num" style="font-size:12px; color:var(--text-muted);"><span class="sym-prefix">&gt;</span>${stockLine}</div>
+          </div>
+        `;
+
+        // 2. Local Craft Recipes (1회 제작 재료 상세 + 클릭 시 하위 재료 연쇄 검색)
+        const localCrafts = d.local_crafts || [];
+        if (localCrafts.length > 0) {
+          html += `<div style="margin-bottom: 8px;"><div style="font-weight:700; color:var(--text-bright); margin-bottom:4px; font-size:12px;"><span class="sym-prefix">&gt;</span>제작 레시피 (${localCrafts.length}건) <span style="font-weight:400; color:var(--text-dim); font-size:11px;">*재료 클릭 시 연쇄 조회</span></div>`;
+          localCrafts.slice(0, 8).forEach(c => {
+            const cSafe = c.name.replace(/'/g, "\\'");
+            const ingChips = Object.entries(c.ingredients || {}).map(([k, v]) => {
+              const kSafe = k.replace(/'/g, "\\'");
+              return `<span class="search-chip" onclick="quickSearchItem('${kSafe}')" title="'${k}' 상세 조회">${k} <strong class="mono-num" style="color:var(--text-bright);">${v}</strong></span>`;
+            }).join(' ');
+            html += `
+              <div style="padding: 6px 8px; border: 1px solid var(--line-subtle); margin-bottom: 4px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <strong style="color:var(--text-main); cursor:pointer;" onclick="quickSearchItem('${cSafe}')">${c.name}</strong>
+                  <div style="display:flex; gap:4px;">
+                    <button type="button" class="btn btn-sm btn-boxed" style="font-size:11px; padding:1px 5px !important;" onclick="quickAddCustomTarget('${cSafe}', 1)">+제작목표</button>
+                    <button type="button" class="btn btn-sm btn-boxed" style="font-size:11px; padding:1px 5px !important;" onclick="openRecipeModal('${cSafe}')">편집</button>
+                  </div>
+                </div>
+                <div style="display:flex; gap:4px; flex-wrap:wrap; align-items:center;">
+                  <span style="font-size:11px; color:var(--text-dim);">1회 재료:</span>
+                  ${ingChips || '<span style="font-size:11px; color:var(--text-dim);">등록된 재료 없음</span>'}
+                </div>
+              </div>
+            `;
+          });
+          html += `</div>`;
+        }
+
+        // 3. Alter Recipes (시설 가공법 상세)
+        const localAlters = d.local_alters || [];
+        if (localAlters.length > 0) {
+          html += `<div style="margin-bottom: 8px;"><div style="font-weight:700; color:var(--text-bright); margin-bottom:4px; font-size:12px;"><span class="sym-prefix">&gt;</span>시설 가공 레시피 (${localAlters.length}건)</div>`;
+          localAlters.slice(0, 8).forEach(a => {
+            const ingChips = Object.entries(a.ingredients || {}).map(([k, v]) => {
+              const kSafe = k.replace(/'/g, "\\'");
+              return `<span class="search-chip" onclick="quickSearchItem('${kSafe}')" title="'${k}' 상세 조회">${k} <strong class="mono-num" style="color:var(--text-bright);">${v}</strong></span>`;
+            }).join(' ');
+            html += `
+              <div style="padding: 6px 8px; border: 1px solid var(--line-subtle); margin-bottom: 4px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <div>
+                    <strong style="color:var(--text-main);">${a.name}</strong>
+                    <span class="badge-dim mono-num" style="font-size:10px; margin-left:4px;">T${a.tier} · ${a.facility} (1회 ${a.produced}개 생산)</span>
+                  </div>
+                </div>
+                <div style="display:flex; gap:4px; flex-wrap:wrap; align-items:center;">
+                  <span style="font-size:11px; color:var(--text-dim);">1회 가공 재료:</span>
+                  ${ingChips}
+                </div>
+              </div>
+            `;
+          });
+          html += `</div>`;
+        }
+
+        // 4. Reverse Ingredient Lookup ("이 재료가 쓰이는 상위 제작/가공 품목")
+        const usedIn = d.used_in || [];
+        if (usedIn.length > 0) {
+          html += `<div style="margin-bottom: 6px;"><div style="font-weight:700; color:var(--text-bright); margin-bottom:4px; font-size:12px;"><span class="sym-prefix">&gt;</span>이 재료가 사용되는 상위 품목 (${usedIn.length}건)</div>`;
+          html += `<div style="display:flex; gap:4px; flex-wrap:wrap;">`;
+          usedIn.slice(0, 18).forEach(u => {
+            const uSafe = u.target.replace(/'/g, "\\'");
+            html += `<span class="search-chip" onclick="quickSearchItem('${uSafe}')" title="클릭하여 '${u.target}' 조회 (${u.ingredient} ${u.qty}개 소요)"><strong style="color:var(--text-main);">${u.target}</strong> <span class="mono-num" style="color:var(--text-dim);">(${u.category}·${u.qty}개)</span></span>`;
+          });
+          html += `</div></div>`;
+        }
+
+        // 5. Gatherable / Special Notice
+        const localGathers = d.local_gathers || [];
+        const localSpecials = d.local_specials || [];
+        if (localGathers.length > 0 || localSpecials.length > 0) {
+          const tags = [
+            ...localGathers.map(g => `<span class="search-chip" onclick="quickSearchItem('${g.replace(/'/g, "\\'")}')">[채집] ${g}</span>`),
+            ...localSpecials.map(s => `<span class="search-chip" onclick="quickSearchItem('${s.replace(/'/g, "\\'")}')">[상점/특수] ${s}</span>`)
+          ].join(' ');
+          html += `<div style="margin-top:4px; font-size:11px; color:var(--text-muted);"><span class="sym-prefix">&gt;</span>채집/특수 분류: ${tags}</div>`;
+        }
+
+        if (localCrafts.length === 0 && localAlters.length === 0 && usedIn.length === 0 && localGathers.length === 0 && localSpecials.length === 0) {
+          html += `<div style="font-size:12px; color:var(--text-muted); padding:4px 0;"><span class="sym-prefix">&gt;</span>인게임 검색 결과 — 제작: ${d.craft.length}건 | 가공: ${d.alter.length}건 | 채집: ${d.gather.length}건</div>`;
+        }
+
         resEl.innerHTML = html;
       } catch (e) {
         resEl.innerHTML = `<span style="color:var(--text-main);">[!] 검색 오류: ${e}</span>`;
@@ -7700,19 +9882,31 @@ HTML_PAGE = r"""<!DOCTYPE html>
       try { loadSettings(); } catch(e) { console.error('loadSettings error:', e); }
       try { updateMasterCommandBar(); } catch(e) { console.error('updateMasterCommandBar error:', e); }
       try { loadPresets(); } catch(e) { console.error('loadPresets error:', e); }
+      try { loadItemCatalog(); } catch(e) { console.error('loadItemCatalog error:', e); }
+      try { applyHideSatisfiedBomUI(); } catch(e) {}
       try { fetchUserDataInfo(); } catch(e) { console.error('fetchUserDataInfo error:', e); }
       try { pollLogs(); } catch(e) { console.error('pollLogs error:', e); }
 
       // Status executes first immediately
       try { updateStatus(); } catch(e) { console.error('updateStatus error:', e); }
 
-      // Stagger heavy queries to prevent simultaneous CLI subprocess flood on boot
-      setTimeout(() => { try { loadDeliveryTargets(); } catch(e) {} }, 150);
-      setTimeout(() => { try { loadCustomTargets(); } catch(e) {} }, 300);
-      setTimeout(() => { try { loadAlteringQueue(); } catch(e) {} }, 500);
-      setTimeout(() => { try { loadQuickAlterPlan(); } catch(e) {} }, 750);
-      setTimeout(() => { try { loadBatchPlan(); } catch(e) {} }, 1000);
-      setTimeout(() => { try { loadCustomPlan(); } catch(e) {} }, 1300);
+      // Stagger background queries so active mode renders first without duplicate requests
+      setTimeout(() => {
+        try {
+          if (currentMainMode !== 'delivery') loadDeliveryTargets();
+        } catch(e) {}
+      }, 250);
+      setTimeout(() => {
+        try {
+          if (currentMainMode !== 'custom_craft') loadCustomTargets();
+        } catch(e) {}
+      }, 450);
+      setTimeout(() => { try { loadAlteringQueue(); } catch(e) {} }, 600);
+      setTimeout(() => {
+        try {
+          if (currentMainMode !== 'quick_alter') loadQuickAlterPlan();
+        } catch(e) {}
+      }, 950);
 
       setInterval(() => { try { updateStatus(); } catch(e) {} }, 3000);
       setInterval(() => {

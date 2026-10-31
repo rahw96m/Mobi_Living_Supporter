@@ -1,6 +1,6 @@
 {
-  "주간 납품1": {
-    "name": "주간 납품1",
+  "주간 납품": {
+    "name": "주간 납품",
     "items": [
       {
         "item_name": "로터스 힐링 완드",
@@ -86,9 +86,14 @@
         "item_name": "우유",
         "goal": 30,
         "quest_title": "우유 구하기"
+      },
+      {
+        "item_name": "양털",
+        "goal": 60,
+        "quest_title": "양털 구하기"
       }
     ],
-    "created_at": 1790603022447,
-    "updated_at": 1790603022447
+    "created_at": 1791680960037,
+    "updated_at": 1791680960037
   }
 }
