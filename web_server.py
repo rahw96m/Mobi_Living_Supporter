@@ -4394,51 +4394,63 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .top-mode-switcher {
       display: inline-flex;
       align-items: center;
-      border: 1px solid var(--line);
-      background: var(--bg-sub-panel);
-      margin-left: 14px;
+      gap: 6px;
+      margin-left: 12px;
     }
     .top-mode-btn {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 14px;
+      padding: 5px 12px;
       font-size: var(--fs-md);
-      font-weight: 700;
+      font-weight: 600;
       color: var(--text-muted);
       background: transparent;
-      border: none;
-      border-right: 1px solid var(--line);
+      border: 1px solid var(--line);
+      border-radius: 0;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: all 0.12s ease;
       font-family: var(--font-sans);
     }
-    .top-mode-btn:last-child {
-      border-right: none;
+    .top-mode-btn::before, .top-mode-btn::after {
+      content: none !important;
+      display: none !important;
     }
     .top-mode-btn:hover {
       color: var(--text-bright);
-      background: var(--bg-elevated);
+      border-color: var(--text-muted);
     }
     .top-mode-btn.active {
-      background: var(--invert-bg);
-      color: var(--invert-text);
+      background: var(--invert-bg) !important;
+      color: var(--invert-text) !important;
+      border-color: var(--invert-bg) !important;
+      font-weight: 700;
+      box-shadow: var(--badge-shadow) !important;
     }
     .top-mode-pill {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 1px 6px;
-      border: 1px solid currentColor;
-      opacity: 0.9;
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      padding: 0 5px;
+      border-radius: 0;
+      border: none;
+      background: var(--tab-pill-bg);
+      color: var(--text-muted);
       font-family: var(--font-mono);
     }
+    .top-mode-btn.active .top-mode-pill {
+      background: var(--invert-text) !important;
+      color: var(--invert-bg) !important;
+    }
 
-    /* Homework Support Specific Layouts */
+    /* Homework Support Specific Layouts (Monochrome Living Support Style) */
+    #hw-character-tabs-list {
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
     .hw-checklist-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
-      margin-bottom: 16px;
+      gap: 16px;
+      margin-bottom: 18px;
     }
     @media (max-width: 1024px) {
       .hw-checklist-grid {
@@ -4447,16 +4459,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     .hw-cat-card {
       background: var(--bg-panel);
-      border-top: 2px solid var(--line);
+      border-top: 2px solid var(--invert-bg);
       border-bottom: 1px solid var(--line);
-      padding: 14px 16px;
+      padding: 16px 18px;
       display: flex;
       flex-direction: column;
       gap: 10px;
+      box-shadow: var(--panel-shadow);
     }
-    .hw-cat-card.cat-daily { border-top-color: #60A5FA; }
-    .hw-cat-card.cat-focus { border-top-color: #FBBF24; }
-    .hw-cat-card.cat-weekly { border-top-color: #A78BFA; }
 
     .hw-task-list {
       display: flex;
@@ -4476,19 +4486,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
       user-select: none;
     }
     .hw-task-row:hover {
-      border-color: var(--line-focus);
-      background: var(--bg-elevated);
+      border-color: var(--text-muted);
+      background: var(--bg-row-hover);
     }
     .hw-task-row.done {
-      opacity: 0.65;
+      opacity: 0.55;
     }
     .hw-task-row.done .hw-task-name {
       text-decoration: line-through;
-      color: var(--text-muted);
+      color: var(--text-dim);
+      font-weight: 500;
     }
     .hw-task-row.current-step {
-      border-left: 3px solid #FBBF24;
-      background: rgba(251, 191, 36, 0.08);
+      border-color: var(--invert-bg);
+      border-left: 3px solid var(--invert-bg);
+      background: var(--bg-elevated);
     }
     .hw-task-left {
       display: flex;
@@ -4500,11 +4512,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .hw-task-check {
       font-family: var(--font-mono);
       font-weight: 700;
-      font-size: 14px;
+      font-size: 13px;
       color: var(--text-bright);
     }
     .hw-task-row.done .hw-task-check {
-      color: #34D399;
+      color: var(--text-muted);
     }
     .hw-task-name {
       font-size: var(--fs-md);
@@ -4515,7 +4527,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       white-space: nowrap;
     }
     .hw-progress-bar-wrap {
-      height: 6px;
+      height: 5px;
       background: var(--bg-sub-panel);
       border: 1px solid var(--line-subtle);
       overflow: hidden;
@@ -4525,9 +4537,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: var(--invert-bg);
       transition: width 0.25s ease;
     }
-    .hw-cat-card.cat-daily .hw-progress-bar-fill { background: #60A5FA; }
-    .hw-cat-card.cat-focus .hw-progress-bar-fill { background: #FBBF24; }
-    .hw-cat-card.cat-weekly .hw-progress-bar-fill { background: #A78BFA; }
 
     .hw-matrix-cell {
       text-align: center;
@@ -4538,14 +4547,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: 700;
     }
     .hw-matrix-cell:hover {
-      background: var(--bg-elevated) !important;
+      background: var(--table-hover-bg) !important;
     }
     .hw-matrix-cell.done {
-      color: #34D399;
-      background: rgba(52, 211, 153, 0.08);
+      color: var(--text-bright);
+      background: var(--bg-sub-panel);
     }
     .hw-matrix-cell.todo {
       color: var(--text-muted);
+      font-weight: 500;
     }
     .hw-matrix-cell.excluded {
       color: var(--text-dim);
@@ -4645,15 +4655,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </header>
 
     <!-- Hourly Omen Barrier Active Alert Banner -->
-    <div id="omen-barrier-banner" style="display: none; margin-bottom: 14px; padding: 10px 16px; background: rgba(251, 191, 36, 0.12); border-top: 2px solid #FBBF24; border-bottom: 1px solid var(--line);">
+    <div id="omen-barrier-banner" style="display: none; margin-bottom: 14px; padding: 10px 16px; background: var(--bg-panel); border-top: 2px solid var(--invert-bg); border-bottom: 1px solid var(--line);">
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <span class="mono-num" style="font-weight: 700; color: #FBBF24; font-size: var(--fs-md);">[🔥 결계 진행 시간]</span>
+          <span class="badge mono-num">결계 진행 시간</span>
           <span id="omen-barrier-banner-text" style="font-size: var(--fs-md); color: var(--text-bright); font-weight: 600;">현재 정각 불길한 소환의 결계가 열려 있습니다! (매시간 00분 ~ 05분)</span>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
-          <button type="button" class="btn btn-sm" onclick="switchTopAppMode('homework')">숙제 탭 열기</button>
-          <button type="button" class="btn btn-sm" onclick="dismissOmenBarrierBanner()">이번 시간 닫기</button>
+          <button type="button" class="btn btn-sm btn-boxed" onclick="switchTopAppMode('homework')">숙제 탭 열기</button>
+          <button type="button" class="btn btn-sm btn-boxed" onclick="dismissOmenBarrierBanner()">이번 시간 닫기</button>
         </div>
       </div>
     </div>
@@ -5268,7 +5278,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
 
           <div class="mcb-right" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <button type="button" class="btn" id="btn-hw-rollback" onclick="rollbackHomeworkStep()" title="방금 완료한 숙제 단계를 이전 상태로 되돌립니다">
+            <button type="button" class="btn btn-boxed" id="btn-hw-rollback" onclick="rollbackHomeworkStep()" title="방금 완료한 숙제 단계를 이전 상태로 되돌립니다">
               ↩ 되돌리기
             </button>
             <button type="button" class="btn btn-mcb-start" id="btn-hw-complete-step" onclick="completeCurrentHomeworkStep()" title="현재 순서의 숙제를 즉시 완료 처리하고 다음 순서로 넘어갑니다">
@@ -5279,21 +5289,25 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
 
       <!-- Unified Multi-Character Profile Bar (Shared with Weekly Delivery) -->
-      <div class="card" id="hw-character-bar-card" style="padding: 12px 16px; margin-bottom: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;">
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>다중 캐릭터 프로필 (숙제 &amp; 주간 납품 통합)</span>
-            <span id="hw-recommended-focus-badge" class="badge" style="color: #FBBF24; border-color: rgba(251, 191, 36, 0.4);">★ 집중 추천: 확인 중</span>
-            <span id="hw-ingame-match-badge" style="font-size: var(--fs-sm); color: var(--text-muted);"></span>
+      <div class="card" id="hw-character-bar-card" style="margin-bottom: 16px;">
+        <div class="card-title" style="margin-bottom: 0;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <span><span class="sym-prefix">//</span>다중 캐릭터 숙제 &amp; 납품 통합 프로필</span>
+            <span id="hw-recommended-focus-badge" class="badge-dim mono-num">★ 집중 추천: 확인 중</span>
+            <span id="hw-ingame-match-badge" class="badge-dim mono-num" style="display: none;"></span>
           </div>
-          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-            <button type="button" class="btn btn-sm" onclick="linkActiveCharacterToIngame()" title="현재 선택된 캐릭터 프로필에 현재 인게임 접속 캐릭터의 고유 스펙(생활력/매력/직업)을 연동합니다">현재 접속 캐릭터와 연동</button>
-            <button type="button" class="btn btn-sm" onclick="refreshHomeworkLiveMissions()" title="인게임 스펙, 재화, 일일/주간 미션, 진행 퀘스트를 즉시 새로고침합니다">인게임 정보 새로고침</button>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+            <button type="button" class="btn btn-sm btn-boxed" onclick="linkActiveCharacterToIngame()" title="현재 선택된 탭을 지금 게임에 접속 중인 캐릭터와 연동합니다">현 캐릭터 연동</button>
+            <button type="button" class="btn btn-sm btn-boxed" onclick="promptRenameActiveCharacter()" title="현재 선택된 캐릭터 탭의 이름을 변경합니다">이름변경</button>
+            <button type="button" class="btn btn-sm btn-boxed" onclick="promptAddCharacterProfile()" title="새로운 캐릭터 프로필을 추가합니다">+ 캐릭터 추가</button>
+            <button type="button" class="btn btn-sm" onclick="refreshHomeworkLiveMissions()" title="인게임 스펙, 재화, 일일/주간 미션, 진행 퀘스트를 즉시 새로고침합니다">새로고침</button>
             <button type="button" class="btn btn-sm" onclick="switchHomeworkSubTab('settings')">캐릭터·숙제 편집</button>
           </div>
         </div>
-        <div class="character-tabs-scroll" id="hw-character-tabs-list">
-          <!-- Populated by renderHomeworkCharacterBar() -->
+        <div class="char-profile-section" id="hw-character-bar">
+          <div class="char-tabs-list" id="hw-character-tabs-list">
+            <!-- Populated by renderHomeworkCharacterBar() -->
+          </div>
         </div>
       </div>
 
@@ -5306,15 +5320,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="hw-checklist-grid">
           <!-- Column 1: 일일 숙제 -->
           <div class="hw-cat-card cat-daily">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
               <div>
-                <div style="font-size: var(--fs-md); font-weight: 700; color: #60A5FA;"><span class="sym-prefix">//</span>일일 숙제</div>
-                <div style="font-size: 11px; color: var(--text-muted);">매일 오전 06:00 자동 초기화</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>일일 숙제</span>
+                  <span class="badge-dim">매일 06:00 초기화</span>
+                </div>
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
-                <span id="hw-daily-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0 (0%)</span>
-                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('daily', true)">전체완료</button>
-                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('daily', false)">초기화</button>
+                <span id="hw-daily-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0</span>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('daily', true)">전체완료</button>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('daily', false)">초기화</button>
               </div>
             </div>
             <div class="hw-progress-bar-wrap">
@@ -5325,18 +5341,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           <!-- Column 2: 집중 숙제 -->
           <div class="hw-cat-card cat-focus">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
               <div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span style="font-size: var(--fs-md); font-weight: 700; color: #FBBF24;"><span class="sym-prefix">//</span>집중 숙제</span>
-                  <span id="hw-focus-last-date" class="badge" style="font-size: 10px;">기록 없음</span>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>집중 숙제</span>
+                  <span id="hw-focus-last-date" class="badge-dim mono-num">기록 없음</span>
                 </div>
-                <div style="font-size: 11px; color: var(--text-muted);">권장 로테이션 · 완료 시 완료일 자동 기록</div>
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
-                <span id="hw-focus-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0 (0%)</span>
-                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('focus', true)">전체완료</button>
-                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('focus', false)">초기화</button>
+                <span id="hw-focus-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0</span>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('focus', true)">전체완료</button>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('focus', false)">초기화</button>
               </div>
             </div>
             <div class="hw-progress-bar-wrap">
@@ -5347,15 +5362,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           <!-- Column 3: 주간 숙제 -->
           <div class="hw-cat-card cat-weekly">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
               <div>
-                <div style="font-size: var(--fs-md); font-weight: 700; color: #A78BFA;"><span class="sym-prefix">//</span>주간 숙제</div>
-                <div style="font-size: 11px; color: var(--text-muted);">매주 월요일 오전 06:00 자동 초기화</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>주간 숙제</span>
+                  <span class="badge-dim">월요일 06:00 초기화</span>
+                </div>
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
-                <span id="hw-weekly-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0 (0%)</span>
-                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('weekly', true)">전체완료</button>
-                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('weekly', false)">초기화</button>
+                <span id="hw-weekly-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0</span>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('weekly', true)">전체완료</button>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('weekly', false)">초기화</button>
               </div>
             </div>
             <div class="hw-progress-bar-wrap">
@@ -5373,7 +5390,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <span><span class="sym-prefix">//</span><span id="hw-memo-char-title">캐릭터</span> 개별 메모장 &amp; 주간 납품 연동</span>
               <div style="display: flex; gap: 6px; align-items: center;">
                 <span id="hw-memo-save-status" style="font-size: 11px; color: var(--text-muted);">자동 저장 지원</span>
-                <button type="button" class="btn btn-sm" onclick="saveActiveCharacterMemo()">메모 저장</button>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="saveActiveCharacterMemo()">메모 저장</button>
               </div>
             </div>
             <textarea id="hw-char-memo-input" class="input-text" rows="3" style="width: 100%; resize: vertical; font-family: var(--font-sans); line-height: 1.5;" placeholder="이 캐릭터의 장비 목표, 룬 정가 계획, 주간 특이사항 등을 자유롭게 적어두세요. (포커스 해제 시 자동 저장)" onblur="saveActiveCharacterMemo()"></textarea>
@@ -5387,7 +5404,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">생활 지원 탭의 주간 납품 캐릭터 프로필과 실시간 공유됩니다.</div>
               </div>
               <div style="display: flex; gap: 6px; align-items: center;">
-                <button type="button" class="btn btn-sm" onclick="switchTopAppMode('living')">⚒️ 주간 납품 탭으로 이동</button>
+                <button type="button" class="btn btn-sm btn-boxed" onclick="switchTopAppMode('living')">⚒️ 주간 납품 탭으로 이동</button>
               </div>
             </div>
           </div>
@@ -5396,7 +5413,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="card" style="margin-bottom: 0;">
             <div class="card-title">
               <span><span class="sym-prefix">//</span>캐릭터 스펙 &amp; 주요 재화 현황 (인게임 수집)</span>
-              <span id="hw-telemetry-updated-badge" class="badge">실시간 연동</span>
+              <span id="hw-telemetry-updated-badge" class="badge-dim mono-num">실시간 연동</span>
             </div>
             <div id="hw-telemetry-grid" class="hw-telemetry-grid">
               <!-- Populated by renderHomeworkTelemetry() -->
@@ -5409,7 +5426,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="card-title">
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <span><span class="sym-prefix">//</span>인게임 실시간 미션 · 주간 의뢰 · 진행 퀘스트 트래커</span>
-              <span id="hw-live-missions-badge" class="badge">CLI 실시간 수집</span>
+              <span id="hw-live-missions-badge" class="badge-dim">CLI 실시간 수집</span>
             </div>
             <div style="display: flex; gap: 6px; align-items: center;">
               <button type="button" class="btn btn-sm" onclick="refreshHomeworkLiveMissions()">새로고침</button>
@@ -5418,9 +5435,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="hw-checklist-grid" style="margin-bottom: 0;">
             <!-- Col 1: 인게임 일일 미션 -->
             <div style="background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); padding: 10px 12px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-subtle);">
                 <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>인게임 일일 미션 [N]</span>
-                <span id="hw-live-daily-count" class="badge">0건</span>
+                <span id="hw-live-daily-count" class="badge-dim mono-num">0건</span>
               </div>
               <div id="hw-live-daily-missions-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);">
                 <div style="color: var(--text-muted);">게임 연결 시 실시간 일일 미션 진행도가 표시됩니다.</div>
@@ -5429,9 +5446,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
             <!-- Col 2: 인게임 주간 미션 -->
             <div style="background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); padding: 10px 12px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-subtle);">
                 <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>인게임 주간 미션 &amp; 어비스/길드</span>
-                <span id="hw-live-weekly-count" class="badge">0건</span>
+                <span id="hw-live-weekly-count" class="badge-dim mono-num">0건</span>
               </div>
               <div id="hw-live-weekly-missions-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);">
                 <div style="color: var(--text-muted);">게임 연결 시 실시간 주간 미션 진행도가 표시됩니다.</div>
@@ -5440,9 +5457,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
             <!-- Col 3: 진행 중인 퀘스트 & 던전/사냥터 상태 -->
             <div style="background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); padding: 10px 12px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-subtle);">
                 <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>진행 중인 퀘스트 · 사냥터 · 던전</span>
-                <span id="hw-live-quests-count" class="badge">0건</span>
+                <span id="hw-live-quests-count" class="badge-dim mono-num">0건</span>
               </div>
               <div id="hw-live-quests-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);">
                 <div style="color: var(--text-muted);">게임 연결 시 진행 중인 퀘스트 및 던전 상태가 표시됩니다.</div>
@@ -12064,9 +12081,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       if (pill) {
         if (omen.is_active_window) {
-          pill.innerHTML = `<span style="color: #FBBF24; font-weight: 700;">🔥 ${omen.label}</span>`;
+          pill.innerHTML = `<span style="color: var(--text-bright); font-weight: 700;">[결계] ${omen.label}</span>`;
         } else if (omen.is_pre_alert) {
-          pill.innerHTML = `<span style="color: #60A5FA; font-weight: 700;">⚡ ${omen.label}</span>`;
+          pill.innerHTML = `<span style="color: var(--text-main); font-weight: 700;">⚡ ${omen.label}</span>`;
         } else {
           pill.innerHTML = `<span style="color: var(--text-muted);">⚡ ${omen.label}</span>`;
         }
@@ -12124,9 +12141,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (briefingEl && actChar) {
         const clsText = actChar.class ? `(${actChar.class})` : '';
         if (step && step.task_name) {
-          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span><strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <strong style="color: #FBBF24;">[${escapeHtml(step.cat_title)}] ${escapeHtml(step.task_name)}</strong> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
+          const gaugeStr = typeof makeTextGauge === 'function' ? makeTextGauge(step.cat_done, step.cat_total, 5) : '';
+          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span><strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <span class="badge" style="margin: 0 4px;">${escapeHtml(step.cat_title)}</span> <strong style="color: var(--text-bright);">${escapeHtml(step.task_name)}</strong> <span class="cli-gauge" style="margin-left: 4px;">${gaugeStr}</span> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
         } else {
-          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span><strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> <span style="color: #34D399; font-weight: 700;">모든 일일·집중·주간 숙제를 100% 완료했습니다!</span>`;
+          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span><strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> <span class="badge">=== 모든 숙제 100% 달성 ===</span>`;
         }
       }
 
@@ -12181,7 +12199,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       if (recBadge) {
         if (hw.recommended_focus_character) {
-          recBadge.innerText = `★ 집중 숙제 추천: ${hw.recommended_focus_character}`;
+          recBadge.innerText = `집중 추천: ${hw.recommended_focus_character}`;
           recBadge.style.display = 'inline-block';
         } else {
           recBadge.style.display = 'none';
@@ -12189,37 +12207,48 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
       if (matchBadge) {
         if (hw.matched_ingame_character) {
-          matchBadge.innerHTML = `<span style="color: #34D399; font-weight: 700;">● 인게임 감지: ${escapeHtml(hw.matched_ingame_character)}</span>`;
+          matchBadge.innerHTML = `<span class="char-ingame-dot" style="margin-right: 4px; vertical-align: middle;"></span>인게임 접속: ${escapeHtml(hw.matched_ingame_character)}`;
+          matchBadge.style.display = 'inline-block';
         } else {
+          matchBadge.style.display = 'none';
           matchBadge.innerHTML = '';
         }
       }
 
       let html = '';
       (hw.characters || []).forEach(c => {
-        const isActive = c.is_active;
-        const isIngame = (hw.matched_ingame_character && hw.matched_ingame_character === c.name);
+        const isActive = !!c.is_active;
+        const isIngame = !!(hw.matched_ingame_character && hw.matched_ingame_character === c.name);
         const dp = (c.progress && c.progress.daily) || { done: 0, total: 0, pct: 0 };
         const wp = (c.progress && c.progress.weekly) || { done: 0, total: 0, pct: 0 };
         const safeName = c.name.replace(/'/g, "\\'");
-        const recStar = c.is_recommended_focus ? `<span style="color: #FBBF24; font-weight: 700;" title="집중 숙제 권장 순서 캐릭터">★</span> ` : '';
-        const ingameDot = isIngame ? `<span class="char-ingame-dot" title="현재 인게임 접속 중인 캐릭터">●</span>` : '';
-        const delivMark = c.weekly_delivered ? `<span style="color: #34D399;" title="이번 주 주간 납품 완료">납품✓</span>` : `납품 ${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}`;
+        const ingameDot = isIngame
+          ? `<span class="char-ingame-dot" title="현재 인게임 접속 중인 캐릭터"></span>`
+          : '';
+        const subLabel = c.class
+          ? `<span class="char-tab-sub" style="font-size:11px; color:var(--text-dim); white-space:nowrap;">${escapeHtml(c.class)}</span>`
+          : '';
+        const recMark = c.is_recommended_focus
+          ? `<span class="char-tab-sub" style="font-size:10px; font-weight:700; color:var(--text-bright);" title="집중 숙제 권장 로테이션 캐릭터">[집중]</span>`
+          : '';
+        const deliveredTag = c.weekly_delivered
+          ? `<span class="char-delivered-badge" title="이번 주 납품 완료됨 (매주 월요일 오전 6시 초기화)">✓납품</span>`
+          : '';
+        const isDailyDone = dp.total > 0 && dp.done >= dp.total;
+        const doneTag = `<span class="char-tab-progress mono-num" style="font-size:11px; ${isDailyDone ? 'font-weight:700; color:var(--text-bright);' : 'color:var(--text-muted);'}">일${dp.done}/${dp.total}·주${wp.done}/${wp.total}</span>`;
 
         html += `
-          <button type="button" class="character-tab-btn ${isActive ? 'active' : ''} ${isIngame ? 'ingame-matched' : ''}" onclick="selectHomeworkCharacter('${safeName}')">
-            <div class="char-tab-top">
+          <button type="button" class="char-tab-btn ${isActive ? 'active' : ''}" onclick="selectHomeworkCharacter('${safeName}')" title="${escapeHtml(c.name)} (${escapeHtml(c.class || '미지정')}) — 일일 ${dp.done}/${dp.total} · 주간 ${wp.done}/${wp.total} · 납품 ${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}">
+            <span class="char-tab-left">
               ${ingameDot}
-              <span class="char-tab-name">${recStar}${escapeHtml(c.name)}</span>
-              ${c.class ? `<span class="char-tab-sub">${escapeHtml(c.class)}</span>` : ''}
-            </div>
-            <div class="char-tab-meta mono-num">
-              <span>일일 ${dp.done}/${dp.total}</span>
-              <span>·</span>
-              <span>주간 ${wp.done}/${wp.total}</span>
-              <span>·</span>
-              <span>${delivMark}</span>
-            </div>
+              <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(c.name)}</span>
+              ${subLabel}
+              ${recMark}
+            </span>
+            <span class="char-tab-right">
+              ${deliveredTag}
+              ${doneTag}
+            </span>
           </button>
         `;
       });
@@ -12248,7 +12277,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const txtEl = document.getElementById(cat.progTextId);
         const barEl = document.getElementById(cat.progBarId);
         const listEl = document.getElementById(cat.listId);
-        if (txtEl) txtEl.innerText = `${prog.done}/${prog.total} (${prog.pct}%)`;
+        if (txtEl) {
+          const gaugeStr = typeof makeTextGauge === 'function' ? makeTextGauge(prog.done, prog.total, 5) : '';
+          txtEl.innerHTML = `<span class="cli-gauge" style="margin-right: 4px;">${gaugeStr}</span>${prog.done}/${prog.total}`;
+        }
         if (barEl) barEl.style.width = `${prog.pct}%`;
         if (!listEl) return;
 
@@ -12264,8 +12296,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <span class="hw-task-name">${escapeHtml(item.name)}</span>
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
-                ${isStep ? '<span class="badge" style="color: #FBBF24; border-color: rgba(251,191,36,0.4); font-size: 10px;">▶ 현재 순서</span>' : ''}
-                <span class="mono-num" style="font-size: 11px; color: ${item.done ? '#34D399' : 'var(--text-muted)'};">${item.done ? '완료' : '대기'}</span>
+                ${isStep ? '<span class="badge" style="font-size: 10px;">▶ 현재 순서</span>' : ''}
+                <span class="mono-num" style="font-size: 11px; color: ${item.done ? 'var(--text-dim)' : 'var(--text-muted)'};">${item.done ? '완료' : '대기'}</span>
               </div>
             </div>
           `;
@@ -12282,7 +12314,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <span class="hw-task-check">${delivDone ? '■' : '□'}</span>
                 <span class="hw-task-name">⚒️ 주간 납품 (${delivCnt}/${delivTot} 품목)</span>
               </div>
-              <span class="badge" style="font-size: 10px;">생활 지원 연동 &gt;</span>
+              <span class="badge-dim" style="font-size: 10px;">생활 지원 &gt;</span>
             </div>
           `;
         }
@@ -12304,9 +12336,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const delivQuick = document.getElementById('hw-delivery-quick-status');
       if (delivQuick) {
         if (actChar.weekly_delivered) {
-          delivQuick.innerHTML = `<span style="color: #34D399; font-weight: 700;">이번 주 주간 납품 완료 ✓</span>`;
+          delivQuick.innerHTML = `<span class="badge">이번 주 주간 납품 완료 ✓</span>`;
         } else {
-          delivQuick.innerHTML = `<span style="color: var(--text-bright);">진행 중 (${actChar.delivery_completed_count || 0}/${actChar.delivery_target_count || 18} 품목 보유)</span>`;
+          const gaugeStr = typeof makeTextGauge === 'function' ? makeTextGauge(actChar.delivery_completed_count || 0, actChar.delivery_target_count || 18, 5) : '';
+          delivQuick.innerHTML = `<span class="cli-gauge" style="margin-right: 4px;">${gaugeStr}</span><span style="color: var(--text-bright);">${actChar.delivery_completed_count || 0}/${actChar.delivery_target_count || 18} 품목 보유</span>`;
         }
       }
     }
@@ -12325,8 +12358,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const isLiveMatched = (hw.matched_ingame_character === actChar.name);
 
       if (badge) {
+        badge.className = isLiveMatched ? 'badge mono-num' : 'badge-dim mono-num';
         badge.innerText = isLiveMatched
-          ? `● 현재 접속 중 (${st.updated_at || '실시간'})`
+          ? `현재 접속 중 (${st.updated_at || '실시간'})`
           : (st.updated_at ? `최근 기록: ${st.updated_at}` : '인게임 접속 시 자동 수집');
       }
 
@@ -12384,13 +12418,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const weight = st.max_weight > 0 ? `${st.bag_weight}/${st.max_weight}` : '-';
         const coinTrib = (st.silver_coin !== undefined || st.tribute !== undefined) ? `은동전 ${st.silver_coin ?? '-'} · 공물 ${st.tribute ?? '-'}` : '-';
         const safeName = c.name.replace(/'/g, "\\'");
-        const recStar = c.is_recommended_focus ? `<span style="color: #FBBF24; font-weight: 700;">★추천</span> ` : '';
+        const recStar = c.is_recommended_focus ? `<span class="badge-dim" style="font-size: 10px; margin-right: 4px;">집중추천</span>` : '';
         const delivHtml = c.weekly_delivered
-          ? `<span style="color: #34D399; font-weight: 700;">완료 ✓</span>`
-          : `<span class="mono-num">${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}</span>`;
+          ? `<span class="badge">완료 ✓</span>`
+          : `<span class="badge-dim mono-num">${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}</span>`;
+        const dGauge = typeof makeTextGauge === 'function' ? makeTextGauge(dp.done, dp.total, 5) : '';
+        const fGauge = typeof makeTextGauge === 'function' ? makeTextGauge(fp.done, fp.total, 5) : '';
+        const wGauge = typeof makeTextGauge === 'function' ? makeTextGauge(wp.done, wp.total, 5) : '';
 
         html += `
-          <tr style="${c.is_active ? 'background: rgba(255,255,255,0.04);' : ''}">
+          <tr style="${c.is_active ? 'background: var(--table-hover-bg);' : ''}">
             <td>
               <div style="font-weight: 700; color: var(--text-bright); cursor: pointer;" onclick="selectHomeworkCharacter('${safeName}'); switchHomeworkSubTab('main');">
                 ${recStar}${escapeHtml(c.name)} <span style="font-weight: 400; color: var(--text-muted); font-size: 12px;">(${escapeHtml(c.class || '-')})</span>
@@ -12406,21 +12443,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(coinTrib)}</div>
             </td>
             <td class="mono-num" style="text-align: center;">
-              <span style="color: ${dp.pct >= 100 ? '#34D399' : '#60A5FA'}; font-weight: 700;">${dp.done}/${dp.total} (${dp.pct}%)</span>
+              <div><span class="cli-gauge">${dGauge}</span></div>
+              <div style="font-size: 11px; color: ${dp.pct >= 100 ? 'var(--text-bright)' : 'var(--text-muted)'}; font-weight: 700;">${dp.done}/${dp.total} (${dp.pct}%)</div>
             </td>
             <td class="mono-num" style="text-align: center;">
-              <div style="color: ${fp.pct >= 100 ? '#34D399' : '#FBBF24'}; font-weight: 700;">${fp.done}/${fp.total} (${fp.pct}%)</div>
+              <div><span class="cli-gauge">${fGauge}</span> <span style="font-size: 11px; color: ${fp.pct >= 100 ? 'var(--text-bright)' : 'var(--text-muted)'}; font-weight: 700;">${fp.done}/${fp.total}</span></div>
               <div style="font-size: 11px; color: var(--text-muted);">${c.last_focus_completed || '기록 없음'}</div>
             </td>
             <td class="mono-num" style="text-align: center;">
-              <span style="color: ${wp.pct >= 100 ? '#34D399' : '#A78BFA'}; font-weight: 700;">${wp.done}/${wp.total} (${wp.pct}%)</span>
+              <div><span class="cli-gauge">${wGauge}</span></div>
+              <div style="font-size: 11px; color: ${wp.pct >= 100 ? 'var(--text-bright)' : 'var(--text-muted)'}; font-weight: 700;">${wp.done}/${wp.total} (${wp.pct}%)</div>
             </td>
             <td style="text-align: center;">${delivHtml}</td>
             <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-sm);" title="${escapeHtml(c.memo || '')}">
               ${escapeHtml(c.memo || '-')}
             </td>
             <td style="text-align: center; white-space: nowrap;">
-              <button type="button" class="btn btn-sm" onclick="selectHomeworkCharacter('${safeName}'); switchHomeworkSubTab('main');">열기</button>
+              <button type="button" class="btn btn-sm btn-boxed" onclick="selectHomeworkCharacter('${safeName}'); switchHomeworkSubTab('main');">열기</button>
             </td>
           </tr>
         `;
@@ -12466,8 +12505,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
         });
         bodyHtml += `<td style="text-align: center; white-space: nowrap;">
-          <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchWeeklyTaskAllChars('${safeTask}', true)">전체완료</button>
-          <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchWeeklyTaskAllChars('${safeTask}', false)">초기화</button>
+          <button type="button" class="btn btn-sm btn-boxed" onclick="batchWeeklyTaskAllChars('${safeTask}', true)">전체완료</button>
+          <button type="button" class="btn btn-sm btn-boxed" onclick="batchWeeklyTaskAllChars('${safeTask}', false)">초기화</button>
         </td></tr>`;
       });
 
@@ -12477,7 +12516,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const done = !!c.weekly_delivered;
         bodyHtml += `<td class="hw-matrix-cell ${done ? 'done' : 'todo'}" onclick="switchTopAppMode('living')" title="생활 지원 탭에서 관리">${done ? '■ 완료' : `□ ${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}`}</td>`;
       });
-      bodyHtml += `<td style="text-align: center;"><button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="switchTopAppMode('living')">납품 탭 이동</button></td></tr>`;
+      bodyHtml += `<td style="text-align: center;"><button type="button" class="btn btn-sm btn-boxed" onclick="switchTopAppMode('living')">납품 탭 이동</button></td></tr>`;
 
       tbody.innerHTML = bodyHtml;
     }
@@ -12991,9 +13030,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const max = m.GoalCount ?? m.TargetCount ?? m.MaxCount ?? 1;
               const claimed = !!(m.IsRewardReceived || m.IsRewardClaimed || m.RewardClaimed);
               const done = claimed || !!(m.IsCompleted || (max > 0 && cur >= max));
-              return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--line-subtle);">
-                <span style="color: ${done ? 'var(--text-muted)' : 'var(--text-bright)'}; ${claimed ? 'text-decoration: line-through;' : ''}">${done ? '■' : '□'} ${escapeHtml(String(title + desc))}</span>
-                <span class="mono-num" style="font-size: 11px; color: ${claimed ? '#34D399' : (done ? '#FBBF24' : 'var(--text-muted)')};">${claimed ? '보상수령✓' : `${cur}/${max}`}</span>
+              return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px dashed var(--line-subtle);">
+                <span style="color: ${done ? 'var(--text-dim)' : 'var(--text-bright)'}; ${claimed ? 'text-decoration: line-through;' : ''}">${done ? '■' : '□'} ${escapeHtml(String(title + desc))}</span>
+                <span class="mono-num" style="font-size: 11px; color: ${claimed ? 'var(--text-dim)' : (done ? 'var(--text-bright)' : 'var(--text-muted)')}; font-weight: ${done && !claimed ? '700' : '400'};">${claimed ? '보상수령✓' : `${cur}/${max}`}</span>
               </div>`;
             }).join('');
           }
@@ -13007,8 +13046,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
         let wHtml = '';
         if (abyssCnt !== null || guildReg) {
           wHtml += `<div style="padding: 6px 8px; background: var(--bg-panel); border: 1px solid var(--line-subtle); margin-bottom: 4px; font-size: 11px;">
-            ${abyssCnt !== null ? `<div><span class="sym-prefix">&gt;</span>어비스 주간 클리어 보상: <strong class="mono-num" style="color: #A78BFA;">${abyssCnt}회</strong></div>` : ''}
-            ${guildReg ? `<div><span class="sym-prefix">&gt;</span>길드 정기 협동(던전/심층/사냥터): <strong class="mono-num">${guildReg.Dungeon || 0} / ${guildReg.DeepDungeon || 0} / ${guildReg.HuntingGround || 0}</strong></div>` : ''}
+            ${abyssCnt !== null ? `<div><span class="sym-prefix">&gt;</span>어비스 주간 클리어 보상: <strong class="mono-num" style="color: var(--text-bright);">${abyssCnt}회</strong></div>` : ''}
+            ${guildReg ? `<div><span class="sym-prefix">&gt;</span>길드 정기 협동(던전/심층/사냥터): <strong class="mono-num" style="color: var(--text-bright);">${guildReg.Dungeon || 0} / ${guildReg.DeepDungeon || 0} / ${guildReg.HuntingGround || 0}</strong></div>` : ''}
           </div>`;
         }
         if (Array.isArray(wList) && wList.length > 0) {
@@ -13019,9 +13058,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
             const max = m.GoalCount ?? m.TargetCount ?? m.MaxCount ?? 1;
             const claimed = !!(m.IsRewardReceived || m.IsRewardClaimed || m.RewardClaimed);
             const done = claimed || !!(m.IsCompleted || (max > 0 && cur >= max));
-            return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--line-subtle);">
-              <span style="color: ${done ? 'var(--text-muted)' : 'var(--text-bright)'}; ${claimed ? 'text-decoration: line-through;' : ''}">${done ? '■' : '□'} ${escapeHtml(String(title + desc))}</span>
-              <span class="mono-num" style="font-size: 11px; color: ${claimed ? '#34D399' : (done ? '#FBBF24' : 'var(--text-muted)')};">${claimed ? '보상수령✓' : `${cur}/${max}`}</span>
+            return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px dashed var(--line-subtle);">
+              <span style="color: ${done ? 'var(--text-dim)' : 'var(--text-bright)'}; ${claimed ? 'text-decoration: line-through;' : ''}">${done ? '■' : '□'} ${escapeHtml(String(title + desc))}</span>
+              <span class="mono-num" style="font-size: 11px; color: ${claimed ? 'var(--text-dim)' : (done ? 'var(--text-bright)' : 'var(--text-muted)')}; font-weight: ${done && !claimed ? '700' : '400'};">${claimed ? '보상수령✓' : `${cur}/${max}`}</span>
             </div>`;
           }).join('');
         }
@@ -13036,7 +13075,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const dg = act.Dungeon || {};
           let qHtml = '';
           if (dg && dg.Name) {
-            qHtml += `<div style="padding: 6px 8px; background: rgba(96, 165, 250, 0.1); border-left: 3px solid #60A5FA; margin-bottom: 4px;">
+            qHtml += `<div style="padding: 6px 8px; background: var(--bg-panel); border-left: 3px solid var(--invert-bg); margin-bottom: 4px;">
               <strong>[던전/필드 진행]</strong> ${escapeHtml(dg.Name)} <span class="mono-num">(${escapeHtml(dg.State || '진행 중')})</span>
             </div>`;
           }
@@ -13045,8 +13084,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const qTitle = q.Title || q.Name || '퀘스트';
               const cat = q.CategoryDisplayName || q.Category || '';
               const objs = (q.Objectives || []).map(o => `${o.Description || ''} (${o.CurrentCount ?? 0}/${o.TargetCount ?? 1})`).join(', ');
-              return `<div style="padding: 4px 6px; border-bottom: 1px solid var(--line-subtle);">
-                <div style="font-weight: 600; color: var(--text-bright);">${cat ? `<span class="badge" style="font-size: 10px; margin-right: 4px;">${escapeHtml(cat)}</span>` : ''}${escapeHtml(qTitle)}</div>
+              return `<div style="padding: 4px 6px; border-bottom: 1px dashed var(--line-subtle);">
+                <div style="font-weight: 600; color: var(--text-bright);">${cat ? `<span class="badge-dim" style="font-size: 10px; margin-right: 4px;">${escapeHtml(cat)}</span>` : ''}${escapeHtml(qTitle)}</div>
                 ${objs ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${escapeHtml(objs)}</div>` : ''}
               </div>`;
             }).join('');
