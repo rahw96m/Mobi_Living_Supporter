@@ -630,6 +630,48 @@ class HomeworkManager:
             self.save_config()
             self.save_data()
 
+    def on_delivery_character_linked(self, char_info: Optional[Dict[str, Any]]):
+        """Called when the active character is explicitly linked to in-game character."""
+        if not char_info or not isinstance(char_info, dict):
+            return
+        with self._lock:
+            active_name = self.get_active_char_name()
+            self._live_telemetry["matched_char_name"] = active_name
+            self._prev_state["char_name"] = active_name
+            cdata = self.data.setdefault("characters", {}).setdefault(active_name, {})
+            cp = self._extract_stat_int(char_info.get("CombatScore") or char_info.get("CombatPower"))
+            ls = self._extract_stat_int(char_info.get("LivingScore"))
+            cs = self._extract_stat_int(char_info.get("AttractivenessScore"))
+            ds = self._extract_stat_int(char_info.get("DecorScore"))
+            lvl = self._extract_stat_int(char_info.get("Level"))
+            title = str(char_info.get("Title") or char_info.get("EquippedTitleName") or "").strip()
+            job_disp = str(char_info.get("EnabledCombatJobDisplayName") or "").strip()
+            for hc in self.config.get("characters", []):
+                if hc["name"] == active_name:
+                    if cp > 0:
+                        hc["combat_power"] = cp
+                        cdata["combat_power"] = cp
+                    if ls > 0:
+                        hc["living_score"] = ls
+                        cdata["living_score"] = ls
+                    if cs > 0:
+                        hc["attractiveness_score"] = cs
+                        cdata["attractiveness_score"] = cs
+                    if ds > 0:
+                        hc["decor_score"] = ds
+                        cdata["decor_score"] = ds
+                    if title:
+                        hc["title"] = title
+                        cdata["title"] = title
+                    if job_disp and hc.get("class") in ("", "미지정"):
+                        hc["class"] = job_disp
+                    break
+            if lvl > 0:
+                cdata["level"] = lvl
+            cdata["updated_at"] = datetime.now(KST_TZ).strftime("%H:%M:%S")
+            self.save_config()
+            self.save_data()
+
     # =========================================================================
     # 3. Auto-Reset (Daily 06:00 AM KST & Monday 06:00 AM KST)
     # =========================================================================
@@ -736,6 +778,15 @@ class HomeworkManager:
     # 5. Character Resolution (Smart Multi-Signal Matching)
     # =========================================================================
 
+    @staticmethod
+    def _extract_stat_int(val: Any) -> int:
+        if isinstance(val, dict):
+            val = val.get("Value", 0)
+        try:
+            return int(float(val or 0))
+        except Exception:
+            return 0
+
     def resolve_character(self, my_info: Optional[Dict[str, Any]]) -> Optional[str]:
         """
         Matches in-game `my_info` to a configured character name using:
@@ -776,9 +827,9 @@ class HomeworkManager:
                 or my_info.get("TitleName")
                 or ""
             ).strip()
-            combat_score = int(my_info.get("CombatScore") or my_info.get("CombatPower") or 0)
-            living_score = int(my_info.get("LivingScore") or 0)
-            charm_score = int(my_info.get("AttractivenessScore") or 0)
+            combat_score = self._extract_stat_int(my_info.get("CombatScore") or my_info.get("CombatPower"))
+            living_score = self._extract_stat_int(my_info.get("LivingScore"))
+            charm_score = self._extract_stat_int(my_info.get("AttractivenessScore"))
 
             # 2. Relative stat similarity (works even when the user changed combat job on the same character)
             if living_score > 0 and charm_score > 0:
@@ -1027,7 +1078,9 @@ class HomeworkManager:
                 pass
 
             with self._lock:
+                prev_matched = self._live_telemetry.get("matched_char_name") or ""
                 self._live_telemetry = {
+                    "matched_char_name": prev_matched,
                     "currencies": currencies,
                     "daily_missions": daily_missions,
                     "weekly_missions": weekly_missions,
@@ -1042,6 +1095,21 @@ class HomeworkManager:
 
         with self._lock:
             resolved_name = self.resolve_character(my_info)
+            if not resolved_name and self.delivery_store.matched_ingame_character_id:
+                dc_matched = self.delivery_store.characters.get(self.delivery_store.matched_ingame_character_id)
+                if dc_matched:
+                    bname, _ = extract_base_char_name(dc_matched.get("name", ""))
+                    if bname:
+                        resolved_name = bname
+
+            self._live_telemetry["matched_char_name"] = resolved_name or ""
+
+            if resolved_name:
+                deliv_cid = self._find_delivery_char_id_by_name(resolved_name)
+                if deliv_cid:
+                    with self.delivery_store._lock:
+                        self.delivery_store.matched_ingame_character_id = deliv_cid
+
             active_name = self.get_active_char_name()
 
             # Auto character switch if enabled
@@ -1067,13 +1135,14 @@ class HomeworkManager:
 
             target_char_name = resolved_name or active_name
             cdata = self.data.setdefault("characters", {}).setdefault(target_char_name, {})
+            cdata["updated_at"] = datetime.now(KST_TZ).strftime("%H:%M:%S")
 
             # Update character stats from my_info & inventory & currencies
-            cp = int(my_info.get("CombatScore") or my_info.get("CombatPower") or 0)
-            ls = int(my_info.get("LivingScore") or 0)
-            cs = int(my_info.get("AttractivenessScore") or 0)
-            ds = int(my_info.get("DecorScore") or 0)
-            lvl = int(my_info.get("Level") or 0)
+            cp = self._extract_stat_int(my_info.get("CombatScore") or my_info.get("CombatPower"))
+            ls = self._extract_stat_int(my_info.get("LivingScore"))
+            cs = self._extract_stat_int(my_info.get("AttractivenessScore"))
+            ds = self._extract_stat_int(my_info.get("DecorScore"))
+            lvl = self._extract_stat_int(my_info.get("Level"))
             title = str(my_info.get("Title") or my_info.get("EquippedTitleName") or "").strip()
             job_disp = str(my_info.get("EnabledCombatJobDisplayName") or "").strip()
 
@@ -1109,16 +1178,22 @@ class HomeworkManager:
                 cdata["level"] = lvl
                 stats_dirty = True
 
+            vitals = my_info.get("Vitals") if isinstance(my_info.get("Vitals"), dict) else {}
+            cur_w = 0.0
+            max_w = 0.0
             if inventory and isinstance(inventory, dict):
                 cur_w = float(inventory.get("CurrentInventoryWeightAsDecimal", 0) or inventory.get("CurrentInventoryWeight", 0) or 0)
                 max_w = float(inventory.get("MaxInventoryWeightAsDecimal", 0) or inventory.get("MaxInventoryWeight", 0) or 0)
-                if max_w > 0:
-                    pct = int(round((cur_w / max_w) * 100))
-                    w_str = f"{cur_w:.0f}/{max_w:.0f}"
-                    if cdata.get("bag_weight_pct") != pct or cdata.get("bag_weight_str") != w_str:
-                        cdata["bag_weight_pct"] = pct
-                        cdata["bag_weight_str"] = w_str
-                        stats_dirty = True
+            if max_w <= 0 and vitals:
+                cur_w = float(vitals.get("InventoryWeightCurrent", 0) or 0)
+                max_w = float(vitals.get("InventoryWeightMax", 0) or 0)
+            if max_w > 0:
+                pct = int(round((cur_w / max_w) * 100))
+                w_str = f"{cur_w:.0f}/{max_w:.0f}"
+                if cdata.get("bag_weight_pct") != pct or cdata.get("bag_weight_str") != w_str:
+                    cdata["bag_weight_pct"] = pct
+                    cdata["bag_weight_str"] = w_str
+                    stats_dirty = True
 
             if currencies and isinstance(currencies, list):
                 curr_map = {}

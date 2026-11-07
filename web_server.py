@@ -1682,6 +1682,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if not ok:
                     self._send_error(msg, 400)
                     return
+                homework_instance.on_delivery_character_linked(live_char or cached_character_info)
                 invalidate_plan_caches()
                 with status_lock:
                     cached_delivery_targets = None
@@ -1689,7 +1690,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_json({
                     "status": "success",
                     "message": msg,
-                    "characters_info": delivery_target_store.get_characters_summary()
+                    "characters_info": delivery_target_store.get_characters_summary(),
+                    "homework": homework_instance.get_dashboard_state()
                 })
             except Exception as e:
                 self._send_error(e)
@@ -5285,6 +5287,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span id="hw-ingame-match-badge" style="font-size: var(--fs-sm); color: var(--text-muted);"></span>
           </div>
           <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm" onclick="linkActiveCharacterToIngame()" title="현재 선택된 캐릭터 프로필에 현재 인게임 접속 캐릭터의 고유 스펙(생활력/매력/직업)을 연동합니다">현재 접속 캐릭터와 연동</button>
             <button type="button" class="btn btn-sm" onclick="refreshHomeworkLiveMissions()" title="인게임 스펙, 재화, 일일/주간 미션, 진행 퀘스트를 즉시 새로고침합니다">인게임 정보 새로고침</button>
             <button type="button" class="btn btn-sm" onclick="switchHomeworkSubTab('settings')">캐릭터·숙제 편집</button>
           </div>
@@ -9426,6 +9429,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           alert('캐릭터 연동 실패: ' + d.error);
         } else {
           if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          if (d.homework && typeof onHomeworkStateReceived === 'function') onHomeworkStateReceived(d.homework);
           pollLogs();
           loadDeliveryTargets();
           loadBatchPlan();
@@ -11079,9 +11083,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
 
         if (data.homework) {
-          onHomeworkStateReceived(data.homework, data.omen_barrier, data);
+          try {
+            onHomeworkStateReceived(data.homework, data.omen_barrier, data);
+          } catch (hwErr) {
+            console.error('onHomeworkStateReceived error:', hwErr);
+          }
         } else if (data.omen_barrier) {
-          updateOmenBarrierUI(data.omen_barrier);
+          try {
+            updateOmenBarrierUI(data.omen_barrier);
+          } catch (obErr) {}
         }
 
         const currentlyBusy = !!data.is_busy;
@@ -11930,6 +11940,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
     // =========================================================================
     // [HOMEWORK SUPPORT & TOP-LEVEL MODE SWITCHER]
     // =========================================================================
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+    window.escapeHtml = escapeHtml;
+
     let currentTopAppMode = localStorage.getItem('mobi_top_app_mode') || 'living';
     let currentHomeworkSubTab = localStorage.getItem('mobi_hw_sub_tab') || 'main';
     let cachedHomeworkState = null;
@@ -12024,11 +12045,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
       }
       const livPill = document.getElementById('top-living-summary-pill');
-      if (livPill && cachedDeliveryCharactersInfo) {
-        const actId = cachedDeliveryCharactersInfo.active_character_id;
-        const c = (cachedDeliveryCharactersInfo.characters || []).find(x => x.id === actId);
+      const dcInfo = window.deliveryCharactersInfo;
+      if (livPill && dcInfo) {
+        const actId = dcInfo.active_character_id;
+        const c = (dcInfo.characters || []).find(x => x.id === actId);
         if (c) {
-          livPill.innerText = c.weekly_delivered ? `${c.name} · 납품완료✓` : `${c.name} · 납품 ${c.completed_count || 0}/${c.target_count || 18}`;
+          livPill.innerText = c.weekly_delivered ? `${c.name} · 납품완료✓` : `${c.name} · 납품 ${c.completed_count || 0}/${c.target_count || c.total_count || 18}`;
         }
       }
     }
@@ -12080,14 +12102,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     function renderHomeworkDashboard(hw) {
       if (!hw) return;
-      renderHomeworkMasterCommandBar(hw);
-      renderHomeworkCharacterBar(hw);
-      renderHomeworkChecklists(hw);
-      renderHomeworkTelemetry(hw);
-      renderHomeworkSummaryTable(hw);
-      renderHomeworkMatrixTable(hw);
+      try { renderHomeworkMasterCommandBar(hw); } catch(e) { console.error(e); }
+      try { renderHomeworkCharacterBar(hw); } catch(e) { console.error(e); }
+      try { renderHomeworkChecklists(hw); } catch(e) { console.error(e); }
+      try { renderHomeworkTelemetry(hw); } catch(e) { console.error(e); }
+      try { renderHomeworkSummaryTable(hw); } catch(e) { console.error(e); }
+      try { renderHomeworkMatrixTable(hw); } catch(e) { console.error(e); }
       if (currentHomeworkSubTab === 'settings') {
-        renderHomeworkSettings(hw);
+        try { renderHomeworkSettings(hw); } catch(e) { console.error(e); }
       }
     }
 
@@ -12319,8 +12341,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const gold = st.gold ? Number(st.gold).toLocaleString() : '-';
       const wings = st.wings !== undefined ? st.wings : '-';
       const bagText = st.max_weight > 0 ? `${st.bag_weight}/${st.max_weight}` : '-';
-      const hpText = isLiveMatched && liveChar.MaxHp ? `${liveChar.Hp || 0}/${liveChar.MaxHp}` : '-';
-      const satietyText = isLiveMatched && liveChar.SatietyValue !== undefined ? `${liveChar.SatietyValue}` : '-';
+      const vitals = (isLiveMatched && liveChar.Vitals) ? liveChar.Vitals : {};
+      const hpCur = vitals.HealthCurrent ?? liveChar.Hp;
+      const hpMax = vitals.HealthMax ?? liveChar.MaxHp;
+      const hpText = (isLiveMatched && hpMax) ? `${Number(hpCur || 0).toLocaleString()}/${Number(hpMax).toLocaleString()}` : '-';
+      const satVal = vitals.SatietyValue ?? liveChar.SatietyValue ?? liveChar.Satiety;
+      const buffCnt = vitals.ActiveBuffCount;
+      const satietyText = (isLiveMatched && satVal !== undefined) ? `${satVal}${buffCnt !== undefined ? ` (버프 ${buffCnt})` : ''}` : '-';
 
       const statsItems = [
         { label: '캐릭터 / 레벨', val: `${actChar.name} (Lv.${level})` },
@@ -12959,12 +12986,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
           } else {
             dailyEl.innerHTML = dList.map(m => {
               const title = m.Title || m.Name || m.Description || ('일일 미션 #' + (m.MissionId || ''));
-              const cur = m.Progress ?? m.CurrentCount ?? 0;
-              const max = m.TargetCount ?? m.MaxCount ?? 1;
-              const claimed = !!(m.IsRewardClaimed || m.RewardClaimed);
+              const desc = (m.Title && m.Description && m.Title !== m.Description) ? ` (${m.Description})` : '';
+              const cur = m.CurrentCount ?? m.Progress ?? 0;
+              const max = m.GoalCount ?? m.TargetCount ?? m.MaxCount ?? 1;
+              const claimed = !!(m.IsRewardReceived || m.IsRewardClaimed || m.RewardClaimed);
               const done = claimed || !!(m.IsCompleted || (max > 0 && cur >= max));
               return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--line-subtle);">
-                <span style="color: ${done ? 'var(--text-muted)' : 'var(--text-bright)'}; ${claimed ? 'text-decoration: line-through;' : ''}">${done ? '■' : '□'} ${escapeHtml(String(title))}</span>
+                <span style="color: ${done ? 'var(--text-muted)' : 'var(--text-bright)'}; ${claimed ? 'text-decoration: line-through;' : ''}">${done ? '■' : '□'} ${escapeHtml(String(title + desc))}</span>
                 <span class="mono-num" style="font-size: 11px; color: ${claimed ? '#34D399' : (done ? '#FBBF24' : 'var(--text-muted)')};">${claimed ? '보상수령✓' : `${cur}/${max}`}</span>
               </div>`;
             }).join('');
@@ -12986,12 +13014,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (Array.isArray(wList) && wList.length > 0) {
           wHtml += wList.map(m => {
             const title = m.Title || m.Name || m.Description || ('주간 미션 #' + (m.MissionId || ''));
-            const cur = m.Progress ?? m.CurrentCount ?? 0;
-            const max = m.TargetCount ?? m.MaxCount ?? 1;
-            const done = !!(m.IsRewardClaimed || m.IsCompleted || (max > 0 && cur >= max));
+            const desc = (m.Title && m.Description && m.Title !== m.Description) ? ` (${m.Description})` : '';
+            const cur = m.CurrentCount ?? m.Progress ?? 0;
+            const max = m.GoalCount ?? m.TargetCount ?? m.MaxCount ?? 1;
+            const claimed = !!(m.IsRewardReceived || m.IsRewardClaimed || m.RewardClaimed);
+            const done = claimed || !!(m.IsCompleted || (max > 0 && cur >= max));
             return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--line-subtle);">
-              <span style="color: ${done ? 'var(--text-muted)' : 'var(--text-bright)'};">${done ? '■' : '□'} ${escapeHtml(String(title))}</span>
-              <span class="mono-num" style="font-size: 11px; color: ${done ? '#34D399' : 'var(--text-muted)'};">${cur}/${max}</span>
+              <span style="color: ${done ? 'var(--text-muted)' : 'var(--text-bright)'}; ${claimed ? 'text-decoration: line-through;' : ''}">${done ? '■' : '□'} ${escapeHtml(String(title + desc))}</span>
+              <span class="mono-num" style="font-size: 11px; color: ${claimed ? '#34D399' : (done ? '#FBBF24' : 'var(--text-muted)')};">${claimed ? '보상수령✓' : `${cur}/${max}`}</span>
             </div>`;
           }).join('');
         }
