@@ -1911,26 +1911,26 @@ def send_discord_test_message(webhook_url: str) -> Tuple[bool, str]:
     """Sends a verification test embed to the user's Discord webhook."""
     from datetime import datetime
     payload = {
-        "content": "🔔 **[모비노기 생활 지원도구]** 디스코드 웹훅 연동 테스트 성공!",
+        "content": "🔔 **[모비노기 지원도구]** 디스코드 웹훅 연동 테스트 성공!",
         "embeds": [
             {
                 "title": "🔔 디스코드 웹훅 알림 연동 완료",
-                "description": "모비노기 생활 지원도구와 디스코드 채널이 정상적으로 연결되었습니다.\n**[목표 완수 모드]**에서 모든 작업이 완료되면 이 채널로 상세 리포트가 전송됩니다.",
+                "description": "모비노기 지원도구와 디스코드 채널이 정상적으로 연결되었습니다.\n**[생활 지원 목표 완수 모드]** 및 **[숙제 지원 던전·어비스·사냥터 클리어 알림]**이 이 채널로 전송됩니다.",
                 "color": 0x5865F2,  # Discord Blurple
                 "fields": [
                     {
                         "name": "🎯 알림 연동 대상",
-                        "value": "• 전체 주간 납품 목표 완수 모드\n• 개별 지정 제작 목표 완수 모드",
+                        "value": "• 생활 지원: 주간 납품 / 개별 지정 제작 목표 완수 리포트\n• 숙제 지원: 던전 / 어비스 / 사냥터 / 채집·가공 완료 알림",
                         "inline": False
                     },
                     {
                         "name": "⚙️ 전송 정보",
-                        "value": "소요 시간, 정령의 날개 소모, 완제품 제작 목록, 가공/채집 내역",
+                        "value": "캐릭터명, 클리어 던전/임무, 소요 시간, 날개 소모, 제작·가공·채집 내역",
                         "inline": False
                     }
                 ],
                 "footer": {
-                    "text": f"모비노기 생활 지원도구 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    "text": f"모비노기 지원도구 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 }
             }
         ]
@@ -2094,7 +2094,7 @@ def notify_discord_goal_completion(summary: Dict[str, Any], context_label: str =
         })
 
     payload = {
-        "content": f"🔔 **[모비노기 생활 지원도구]** {title}",
+        "content": f"🔔 **[모비노기 지원도구]** {title}",
         "embeds": [
             {
                 "title": title,
@@ -2102,7 +2102,7 @@ def notify_discord_goal_completion(summary: Dict[str, Any], context_label: str =
                 "color": color,
                 "fields": fields,
                 "footer": {
-                    "text": f"모비노기 생활 지원도구 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    "text": f"모비노기 지원도구 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 }
             }
         ]

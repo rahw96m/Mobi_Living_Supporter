@@ -35,6 +35,7 @@ from delivery_manager import (
     send_discord_test_message, notify_discord_goal_completion,
     STANDARD_ALTER_RECIPES, KNOWN_GATHERABLE_ITEMS, KNOWN_NON_GATHERABLE_MATERIALS
 )
+from homework_manager import HomeworkManager
 
 BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 EXE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
@@ -257,6 +258,13 @@ def add_log(level: str, message: str):
     if is_busy and (level in ("action", "busy") or "채집 진행 중" in message or "가공 중" in message or "제작 진행" in message or message.startswith("[목표") or message.startswith("[맞춤 채집") or message.startswith("[부족 수량")):
         current_task_info = message
 
+homework_instance = HomeworkManager(
+    cli=cli_instance,
+    delivery_store=delivery_target_store,
+    settings_store=settings_store,
+    log_callback=add_log,
+)
+
 def get_cached_status() -> Dict[str, Any]:
     global cached_status_data, cached_status_time, cached_character_info, cached_character_time
     now = time.time()
@@ -270,12 +278,16 @@ def get_cached_status() -> Dict[str, Any]:
                 cached_status_data["last_summary"] = last_execution_summary
                 cached_status_data["last_summary_id"] = last_summary_id
                 cached_status_data["delivery_character"] = delivery_target_store.get_characters_summary()
+                cached_status_data["homework"] = homework_instance.get_dashboard_state()
+                cached_status_data["omen_barrier"] = homework_instance.get_omen_barrier_status()
                 return copy.deepcopy(cached_status_data)
             return {
                 "connected": True,
                 "activity": {},
                 "character": copy.deepcopy(cached_character_info or {}),
                 "delivery_character": delivery_target_store.get_characters_summary(),
+                "homework": homework_instance.get_dashboard_state(),
+                "omen_barrier": homework_instance.get_omen_barrier_status(),
                 "wings": 0,
                 "inventory": {},
                 "is_busy": True,
@@ -295,6 +307,8 @@ def get_cached_status() -> Dict[str, Any]:
             cached_status_data["last_summary"] = last_execution_summary
             cached_status_data["last_summary_id"] = last_summary_id
             cached_status_data["delivery_character"] = delivery_target_store.get_characters_summary()
+            cached_status_data["homework"] = homework_instance.get_dashboard_state()
+            cached_status_data["omen_barrier"] = homework_instance.get_omen_barrier_status()
             return copy.deepcopy(cached_status_data)
 
         need_char_refresh = (not cached_character_info) or ((now - cached_character_time) > 5.0)
@@ -315,6 +329,7 @@ def get_cached_status() -> Dict[str, Any]:
                 char_info_now, allow_auto_switch=(not is_busy)
             )
             if switched_char_id:
+                homework_instance.on_delivery_character_selected(switched_char_id)
                 invalidate_plan_caches()
                 with status_lock:
                     global cached_delivery_targets
@@ -332,12 +347,25 @@ def get_cached_status() -> Dict[str, Any]:
         except Exception:
             env_info = {}
 
+        try:
+            homework_instance.update_from_ingame_state(
+                char_info_now or {},
+                activity or {},
+                inv or {},
+                env_info or {},
+                is_busy=is_busy,
+            )
+        except Exception:
+            pass
+
         data = {
             "connected": True,
             "activity": activity,
             "environment": env_info,
             "character": char_info_now,
             "delivery_character": delivery_target_store.get_characters_summary(),
+            "homework": homework_instance.get_dashboard_state(),
+            "omen_barrier": homework_instance.get_omen_barrier_status(),
             "wings": wings,
             "inventory": inv,
             "is_busy": is_busy,
@@ -362,6 +390,9 @@ def get_cached_status() -> Dict[str, Any]:
             "error_code": e.error_code or "CLI_ERROR",
             "cli_path": cli_instance.cli_path or "",
             "discovery_source": getattr(cli_instance, "discovery_source", ""),
+            "delivery_character": delivery_target_store.get_characters_summary(),
+            "homework": homework_instance.get_dashboard_state(),
+            "omen_barrier": homework_instance.get_omen_barrier_status(),
             "is_busy": is_busy,
             "current_task": current_task_info,
             "last_summary": last_execution_summary,
@@ -378,6 +409,9 @@ def get_cached_status() -> Dict[str, Any]:
             "error_code": "UNKNOWN",
             "cli_path": cli_instance.cli_path or "",
             "discovery_source": getattr(cli_instance, "discovery_source", ""),
+            "delivery_character": delivery_target_store.get_characters_summary(),
+            "homework": homework_instance.get_dashboard_state(),
+            "omen_barrier": homework_instance.get_omen_barrier_status(),
             "is_busy": is_busy,
             "current_task": current_task_info,
             "last_summary": last_execution_summary,
@@ -898,6 +932,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "scores": scores,
                     "instruments": instruments
                 })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/state":
+            try:
+                self._send_json(homework_instance.get_dashboard_state())
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/export_backup":
+            try:
+                self._send_json(homework_instance.export_backup_bundle())
             except Exception as e:
                 self._send_error(e)
             return
@@ -1498,13 +1546,15 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if not selected:
                     self._send_error("선택할 캐릭터 프로필을 찾을 수 없습니다.", 404)
                     return
+                homework_instance.on_delivery_character_selected(char_id)
                 invalidate_plan_caches()
                 with status_lock:
                     cached_delivery_targets = None
-                add_log("info", f"[캐릭터 탭 전환] '{selected.get('name', char_id)}' 주간 납품 현황으로 전환했습니다.")
+                add_log("info", f"[캐릭터 탭 전환] '{selected.get('name', char_id)}' 프로필로 전환했습니다.")
                 self._send_json({
                     "status": "success",
-                    "characters_info": delivery_target_store.get_characters_summary()
+                    "characters_info": delivery_target_store.get_characters_summary(),
+                    "homework": homework_instance.get_dashboard_state()
                 })
             except Exception as e:
                 self._send_error(e)
@@ -1530,6 +1580,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     link_current_ingame=link_ingame,
                     ingame_char_info=live_char or cached_character_info
                 )
+                homework_instance.on_delivery_character_added(created)
                 invalidate_plan_caches()
                 with status_lock:
                     cached_delivery_targets = None
@@ -1537,7 +1588,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_json({
                     "status": "success",
                     "character": created,
-                    "characters_info": delivery_target_store.get_characters_summary()
+                    "characters_info": delivery_target_store.get_characters_summary(),
+                    "homework": homework_instance.get_dashboard_state()
                 })
             except Exception as e:
                 self._send_error(e)
@@ -1553,14 +1605,23 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if not new_name:
                     self._send_error("변경할 캐릭터 이름을 입력해주세요.", 400)
                     return
+                chars_before = delivery_target_store.get_characters_summary().get("characters", [])
+                old_name = ""
+                for c in chars_before:
+                    if c.get("id") == char_id:
+                        old_name = c.get("name", "")
+                        break
                 updated = delivery_target_store.rename_character(char_id, new_name)
                 if not updated:
                     self._send_error("이름을 변경할 캐릭터 프로필을 찾을 수 없습니다.", 404)
                     return
+                if old_name:
+                    homework_instance.on_delivery_character_renamed(old_name, updated.get("name", new_name))
                 add_log("info", f"[캐릭터 이름 변경] 프로필 이름이 '{updated.get('name')}'(으)로 변경되었습니다.")
                 self._send_json({
                     "status": "success",
-                    "characters_info": delivery_target_store.get_characters_summary()
+                    "characters_info": delivery_target_store.get_characters_summary(),
+                    "homework": homework_instance.get_dashboard_state()
                 })
             except Exception as e:
                 self._send_error(e)
@@ -1572,10 +1633,18 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
                 char_id = str(req_json.get("char_id") or "").strip()
+                chars_before = delivery_target_store.get_characters_summary().get("characters", [])
+                deleted_name = ""
+                for c in chars_before:
+                    if c.get("id") == char_id:
+                        deleted_name = c.get("name", "")
+                        break
                 ok, msg = delivery_target_store.delete_character(char_id)
                 if not ok:
                     self._send_error(msg, 400)
                     return
+                if deleted_name:
+                    homework_instance.on_delivery_character_deleted(deleted_name)
                 invalidate_plan_caches()
                 with status_lock:
                     cached_delivery_targets = None
@@ -1583,7 +1652,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_json({
                     "status": "success",
                     "message": msg,
-                    "characters_info": delivery_target_store.get_characters_summary()
+                    "characters_info": delivery_target_store.get_characters_summary(),
+                    "homework": homework_instance.get_dashboard_state()
                 })
             except Exception as e:
                 self._send_error(e)
@@ -2135,6 +2205,223 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error(e)
             return
 
+        # --- Homework Manager Endpoints ---
+        if path == "/api/homework/select_character":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_name = str(req_json.get("char_name") or "").strip()
+                res = homework_instance.select_character(char_name)
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                add_log("info", f"[캐릭터 탭 전환] '{res.get('active_character', char_name)}' 프로필로 전환했습니다.")
+                self._send_json({
+                    "status": "success",
+                    "homework": res,
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/toggle_task":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_name = str(req_json.get("char_name") or "").strip()
+                cat_key = str(req_json.get("category") or "daily").strip()
+                task_name = str(req_json.get("task_name") or "").strip()
+                force_value = req_json.get("value", None)
+                res = homework_instance.toggle_task(char_name, cat_key, task_name, force_value=force_value)
+                self._send_json({"status": "success", "homework": res})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/complete_step":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_name = str(req_json.get("char_name") or "").strip() or None
+                res = homework_instance.complete_current_step(char_name=char_name)
+                self._send_json(res)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/rollback_step":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_name = str(req_json.get("char_name") or "").strip() or None
+                res = homework_instance.rollback_last_step(char_name=char_name)
+                self._send_json(res)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/batch_category":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_name = str(req_json.get("char_name") or "").strip()
+                cat_key = str(req_json.get("category") or "daily").strip()
+                completed = bool(req_json.get("completed", True))
+                res = homework_instance.batch_set_category(char_name, cat_key, completed=completed)
+                self._send_json({"status": "success", "homework": res})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/batch_weekly_task":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                task_name = str(req_json.get("task_name") or "").strip()
+                completed = bool(req_json.get("completed", True))
+                res = homework_instance.batch_set_weekly_task_all_chars(task_name, completed=completed)
+                self._send_json({"status": "success", "homework": res})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/save_memo":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_name = str(req_json.get("char_name") or "").strip()
+                memo_text = str(req_json.get("memo") or "")
+                res = homework_instance.save_memo(char_name, memo_text)
+                self._send_json({"status": "success", "homework": res})
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/character_crud":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                action = str(req_json.get("action") or "").strip()
+                if action == "add":
+                    res = homework_instance.add_character(
+                        name=str(req_json.get("name") or ""),
+                        char_class=str(req_json.get("char_class") or ""),
+                        combat_power=req_json.get("combat_power", 0),
+                        title=str(req_json.get("title") or ""),
+                    )
+                elif action == "update":
+                    res = homework_instance.update_character(
+                        old_name=str(req_json.get("old_name") or ""),
+                        new_name=str(req_json.get("new_name") or ""),
+                        char_class=req_json.get("char_class"),
+                        combat_power=req_json.get("combat_power"),
+                        title=req_json.get("title"),
+                    )
+                elif action == "delete":
+                    res = homework_instance.delete_character(str(req_json.get("name") or ""))
+                elif action == "move":
+                    res = homework_instance.move_character(
+                        name=str(req_json.get("name") or ""),
+                        direction=int(req_json.get("direction") or -1),
+                    )
+                else:
+                    self._send_error("알 수 없는 캐릭터 관리 명령입니다.", 400)
+                    return
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                res["characters_info"] = delivery_target_store.get_characters_summary()
+                self._send_json(res)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/task_crud":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                action = str(req_json.get("action") or "").strip()
+                cat_key = str(req_json.get("category") or "daily").strip()
+                if action == "add":
+                    res = homework_instance.add_task(cat_key, str(req_json.get("task_name") or ""))
+                elif action == "rename":
+                    res = homework_instance.rename_task(
+                        cat_key,
+                        str(req_json.get("old_name") or ""),
+                        str(req_json.get("new_name") or ""),
+                    )
+                elif action == "delete":
+                    res = homework_instance.delete_task(cat_key, str(req_json.get("task_name") or ""))
+                elif action == "move":
+                    res = homework_instance.move_task(
+                        cat_key,
+                        str(req_json.get("task_name") or ""),
+                        int(req_json.get("direction") or -1),
+                    )
+                elif action == "set_targets":
+                    res = homework_instance.set_task_target_characters(
+                        cat_key,
+                        str(req_json.get("task_name") or ""),
+                        req_json.get("target_chars"),
+                    )
+                elif action == "reset_defaults":
+                    res = homework_instance.reset_category_default_tasks(cat_key)
+                else:
+                    self._send_error("알 수 없는 숙제 항목 관리 명령입니다.", 400)
+                    return
+                self._send_json(res)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/settings":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                res = homework_instance.update_settings(req_json)
+                self._send_json(res)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/import_backup":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                res = homework_instance.import_backup_bundle(req_json)
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                res["characters_info"] = delivery_target_store.get_characters_summary()
+                self._send_json(res)
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/homework/reimport_legacy":
+            try:
+                res = homework_instance.reimport_from_legacy_overlay()
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                res["characters_info"] = delivery_target_store.get_characters_summary()
+                self._send_json(res)
+            except Exception as e:
+                self._send_error(e)
+            return
+
         self._send_data(404, b"Not Found", "text/plain")
 
 def _get_app_data_dir() -> str:
@@ -2286,7 +2573,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>모비노기 생활 지원도구</title>
+  <title>모비노기 지원도구</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/api/icon">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -4100,16 +4387,212 @@ HTML_PAGE = r"""<!DOCTYPE html>
         padding: 10px 14px;
       }
     }
+
+    /* Top-Level Category Switcher (생활 지원 vs 숙제 지원) */
+    .top-mode-switcher {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      background: var(--bg-sub-panel);
+      margin-left: 14px;
+    }
+    .top-mode-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      font-size: var(--fs-md);
+      font-weight: 700;
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      border-right: 1px solid var(--line);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+    .top-mode-btn:last-child {
+      border-right: none;
+    }
+    .top-mode-btn:hover {
+      color: var(--text-bright);
+      background: var(--bg-elevated);
+    }
+    .top-mode-btn.active {
+      background: var(--invert-bg);
+      color: var(--invert-text);
+    }
+    .top-mode-pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border: 1px solid currentColor;
+      opacity: 0.9;
+      font-family: var(--font-mono);
+    }
+
+    /* Homework Support Specific Layouts */
+    .hw-checklist-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 1024px) {
+      .hw-checklist-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .hw-cat-card {
+      background: var(--bg-panel);
+      border-top: 2px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .hw-cat-card.cat-daily { border-top-color: #60A5FA; }
+    .hw-cat-card.cat-focus { border-top-color: #FBBF24; }
+    .hw-cat-card.cat-weekly { border-top-color: #A78BFA; }
+
+    .hw-task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .hw-task-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 7px 10px;
+      background: var(--bg-sub-panel);
+      border: 1px solid var(--line-subtle);
+      cursor: pointer;
+      transition: all 0.12s ease;
+      user-select: none;
+    }
+    .hw-task-row:hover {
+      border-color: var(--line-focus);
+      background: var(--bg-elevated);
+    }
+    .hw-task-row.done {
+      opacity: 0.65;
+    }
+    .hw-task-row.done .hw-task-name {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+    .hw-task-row.current-step {
+      border-left: 3px solid #FBBF24;
+      background: rgba(251, 191, 36, 0.08);
+    }
+    .hw-task-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+    }
+    .hw-task-check {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text-bright);
+    }
+    .hw-task-row.done .hw-task-check {
+      color: #34D399;
+    }
+    .hw-task-name {
+      font-size: var(--fs-md);
+      color: var(--text-bright);
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hw-progress-bar-wrap {
+      height: 6px;
+      background: var(--bg-sub-panel);
+      border: 1px solid var(--line-subtle);
+      overflow: hidden;
+    }
+    .hw-progress-bar-fill {
+      height: 100%;
+      background: var(--invert-bg);
+      transition: width 0.25s ease;
+    }
+    .hw-cat-card.cat-daily .hw-progress-bar-fill { background: #60A5FA; }
+    .hw-cat-card.cat-focus .hw-progress-bar-fill { background: #FBBF24; }
+    .hw-cat-card.cat-weekly .hw-progress-bar-fill { background: #A78BFA; }
+
+    .hw-matrix-cell {
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.12s ease;
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+    .hw-matrix-cell:hover {
+      background: var(--bg-elevated) !important;
+    }
+    .hw-matrix-cell.done {
+      color: #34D399;
+      background: rgba(52, 211, 153, 0.08);
+    }
+    .hw-matrix-cell.todo {
+      color: var(--text-muted);
+    }
+    .hw-matrix-cell.excluded {
+      color: var(--text-dim);
+      opacity: 0.4;
+      cursor: default;
+    }
+    .hw-telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+      gap: 8px;
+    }
+    .hw-stat-box {
+      padding: 8px 10px;
+      background: var(--bg-sub-panel);
+      border: 1px solid var(--line-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .hw-stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .hw-stat-val {
+      font-size: var(--fs-md);
+      font-weight: 700;
+      color: var(--text-bright);
+      font-family: var(--font-mono);
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <!-- 1층: 좌측(타이틀) / 우측(보조 메뉴) -->
+      <!-- 1층: 좌측(타이틀 & 최상위 모드 전환) / 우측(보조 메뉴) -->
       <div class="header-top">
-        <div class="logo-area">
+        <div class="logo-area" style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span class="badge">v1.4.1</span></h1>
+            <h1>모비노기 지원도구 <span class="badge">v2.0.0</span></h1>
+          </div>
+          <div class="top-mode-switcher" role="tablist" aria-label="지원도구 메인 모드 전환">
+            <button type="button" id="btn-top-mode-living" class="top-mode-btn active" onclick="switchTopAppMode('living')" title="주간 납품 18개 품목, 빠른 재료 가공, 개별 아이템 제작 파이프라인">
+              <span>⚒️ 생활 지원</span>
+              <span class="top-mode-pill" id="top-living-summary-pill">납품·가공·제작</span>
+            </button>
+            <button type="button" id="btn-top-mode-homework" class="top-mode-btn" onclick="switchTopAppMode('homework')" title="6캐릭터 일일·집중·주간 숙제 체크리스트, 주간 매트릭스, 인게임 미션·던전 자동 감지 및 정각 결계 알림">
+              <span>📋 숙제 지원</span>
+              <span class="top-mode-pill" id="top-hw-summary-pill">캐릭터 숙제</span>
+            </button>
           </div>
         </div>
         <div class="header-actions">
@@ -4154,8 +4637,24 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="pill weight" id="pill-weight">무게 -/-</div>
         <span class="status-delim">|</span>
         <div class="pill" id="pill-env" title="현재 지역/채널, 에린 시간 및 포만감" style="color: var(--text-muted);">환경 확인 중</div>
+        <span class="status-delim">|</span>
+        <div class="pill" id="pill-omen-barrier" onclick="switchTopAppMode('homework')" style="cursor: pointer; color: var(--text-muted);" title="매시간 정각(00분~05분) 불길한 소환의 결계 알림 타이머">⚡ 결계 확인 중</div>
       </div>
     </header>
+
+    <!-- Hourly Omen Barrier Active Alert Banner -->
+    <div id="omen-barrier-banner" style="display: none; margin-bottom: 14px; padding: 10px 16px; background: rgba(251, 191, 36, 0.12); border-top: 2px solid #FBBF24; border-bottom: 1px solid var(--line);">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="mono-num" style="font-weight: 700; color: #FBBF24; font-size: var(--fs-md);">[🔥 결계 진행 시간]</span>
+          <span id="omen-barrier-banner-text" style="font-size: var(--fs-md); color: var(--text-bright); font-weight: 600;">현재 정각 불길한 소환의 결계가 열려 있습니다! (매시간 00분 ~ 05분)</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-sm" onclick="switchTopAppMode('homework')">숙제 탭 열기</button>
+          <button type="button" class="btn btn-sm" onclick="dismissOmenBarrierBanner()">이번 시간 닫기</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Connection Alert Banner (shown when disconnected) -->
     <div id="cli-connection-alert" style="display: none; margin-bottom: 20px; padding: 14px 16px; background: var(--bg-panel); border-top: 1px solid var(--invert-bg); border-bottom: 1px solid var(--line);">
@@ -4178,6 +4677,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
       </div>
     </div>
+
+    <!-- ========================================================= -->
+    <!-- [TOP VIEW 1] ⚒️ 생활 지원 (Living Support View)           -->
+    <!-- ========================================================= -->
+    <div id="top-view-living">
 
     <!-- Collapsible 3x2 Facility Altering Queue & Delivery-Only Alarm Section -->
     <div class="card" id="altering-main-card">
@@ -4707,6 +5211,412 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
       </div>
     </div>
+
+    </div><!-- /#top-view-living -->
+
+    <!-- ========================================================= -->
+    <!-- [TOP VIEW 2] 📋 숙제 지원 (Homework Support View)         -->
+    <!-- ========================================================= -->
+    <div id="top-view-homework" style="display: none;">
+
+      <!-- Homework Support Master Command Bar -->
+      <div id="homework-master-command-bar" class="master-command-bar">
+        <div class="mcb-mode-tabs" role="tablist">
+          <button type="button" class="mcb-mode-tab active" id="btn-hw-tab-main" onclick="switchHomeworkSubTab('main')">
+            <span>캐릭터 숙제 &amp; 인게임 상태</span>
+            <span class="mcb-tab-pill" id="hw-tab-pill-main">진행 중</span>
+          </button>
+          <button type="button" class="mcb-mode-tab" id="btn-hw-tab-summary" onclick="switchHomeworkSubTab('summary')">
+            <span>전체 캐릭터 종합 현황표</span>
+            <span class="mcb-tab-pill" id="hw-tab-pill-summary">6캐릭</span>
+          </button>
+          <button type="button" class="mcb-mode-tab" id="btn-hw-tab-matrix" onclick="switchHomeworkSubTab('matrix')">
+            <span>주간 숙제 매트릭스 체크표</span>
+            <span class="mcb-tab-pill" id="hw-tab-pill-matrix">주간</span>
+          </button>
+          <button type="button" class="mcb-mode-tab" id="btn-hw-tab-settings" onclick="switchHomeworkSubTab('settings')">
+            <span>숙제·캐릭터·알림 설정</span>
+            <span class="mcb-tab-pill">관리</span>
+          </button>
+        </div>
+
+        <div class="mcb-inner">
+          <div class="mcb-left">
+            <div class="mcb-briefing" id="hw-mcb-briefing">
+              <span class="sym-prefix">&gt;</span>숙제 진행 현황을 불러오는 중입니다...
+            </div>
+            <div class="mcb-options-row">
+              <button type="button" class="mcb-pill-btn" id="btn-hw-opt-reset" onclick="toggleHomeworkSetting('auto_reset_enabled')" title="매일 오전 06:00 일일/집중 숙제 및 월요일 오전 06:00 주간 숙제 자동 초기화">
+                <span class="cli-check-box" id="icon-hw-opt-reset">■</span>
+                <span>06시 자동 초기화</span>
+              </button>
+              <button type="button" class="mcb-pill-btn" id="btn-hw-opt-autoswitch" onclick="toggleHomeworkSetting('auto_detect_character')" title="인게임 로그인 캐릭터(이름/생활력/매력/전투력/직업) 감지 시 자동 탭 전환">
+                <span class="cli-check-box" id="icon-hw-opt-autoswitch">■</span>
+                <span>인게임 캐릭터 자동 전환</span>
+              </button>
+              <button type="button" class="mcb-pill-btn" id="btn-hw-opt-autocheck" onclick="toggleHomeworkSetting('auto_check_missions')" title="인게임 일일 미션, 던전 클리어, 어비스 클리어, 사냥터 전리품 감지 시 해당 숙제 자동 체크">
+                <span class="cli-check-box" id="icon-hw-opt-autocheck">■</span>
+                <span>미션·던전·어비스 자동 체크</span>
+              </button>
+              <button type="button" class="mcb-pill-btn" id="btn-hw-opt-omen" onclick="toggleHomeworkSetting('omen_barrier_alert')" title="매시간 정각(00분~05분) 불길한 소환의 결계 알림 배너 및 사운드">
+                <span class="cli-check-box" id="icon-hw-opt-omen">■</span>
+                <span>정각 결계 알림</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mcb-right" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn" id="btn-hw-rollback" onclick="rollbackHomeworkStep()" title="방금 완료한 숙제 단계를 이전 상태로 되돌립니다">
+              ↩ 되돌리기
+            </button>
+            <button type="button" class="btn btn-mcb-start" id="btn-hw-complete-step" onclick="completeCurrentHomeworkStep()" title="현재 순서의 숙제를 즉시 완료 처리하고 다음 순서로 넘어갑니다">
+              ✓ 현재 숙제 완료
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Unified Multi-Character Profile Bar (Shared with Weekly Delivery) -->
+      <div class="card" id="hw-character-bar-card" style="padding: 12px 16px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>다중 캐릭터 프로필 (숙제 &amp; 주간 납품 통합)</span>
+            <span id="hw-recommended-focus-badge" class="badge" style="color: #FBBF24; border-color: rgba(251, 191, 36, 0.4);">★ 집중 추천: 확인 중</span>
+            <span id="hw-ingame-match-badge" style="font-size: var(--fs-sm); color: var(--text-muted);"></span>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm" onclick="refreshHomeworkLiveMissions()" title="인게임 스펙, 재화, 일일/주간 미션, 진행 퀘스트를 즉시 새로고침합니다">인게임 정보 새로고침</button>
+            <button type="button" class="btn btn-sm" onclick="switchHomeworkSubTab('settings')">캐릭터·숙제 편집</button>
+          </div>
+        </div>
+        <div class="character-tabs-scroll" id="hw-character-tabs-list">
+          <!-- Populated by renderHomeworkCharacterBar() -->
+        </div>
+      </div>
+
+      <!-- ===================================================== -->
+      <!-- [HW SUB-TAB 1] 캐릭터 숙제 & 인게임 상태               -->
+      <!-- ===================================================== -->
+      <div id="hw-subview-main">
+
+        <!-- 3-Column Homework Checklist Grid (Daily / Focus / Weekly) -->
+        <div class="hw-checklist-grid">
+          <!-- Column 1: 일일 숙제 -->
+          <div class="hw-cat-card cat-daily">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+              <div>
+                <div style="font-size: var(--fs-md); font-weight: 700; color: #60A5FA;"><span class="sym-prefix">//</span>일일 숙제</div>
+                <div style="font-size: 11px; color: var(--text-muted);">매일 오전 06:00 자동 초기화</div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span id="hw-daily-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0 (0%)</span>
+                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('daily', true)">전체완료</button>
+                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('daily', false)">초기화</button>
+              </div>
+            </div>
+            <div class="hw-progress-bar-wrap">
+              <div id="hw-daily-prog-bar" class="hw-progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            <div id="hw-daily-task-list" class="hw-task-list"></div>
+          </div>
+
+          <!-- Column 2: 집중 숙제 -->
+          <div class="hw-cat-card cat-focus">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: var(--fs-md); font-weight: 700; color: #FBBF24;"><span class="sym-prefix">//</span>집중 숙제</span>
+                  <span id="hw-focus-last-date" class="badge" style="font-size: 10px;">기록 없음</span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted);">권장 로테이션 · 완료 시 완료일 자동 기록</div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span id="hw-focus-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0 (0%)</span>
+                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('focus', true)">전체완료</button>
+                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('focus', false)">초기화</button>
+              </div>
+            </div>
+            <div class="hw-progress-bar-wrap">
+              <div id="hw-focus-prog-bar" class="hw-progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            <div id="hw-focus-task-list" class="hw-task-list"></div>
+          </div>
+
+          <!-- Column 3: 주간 숙제 -->
+          <div class="hw-cat-card cat-weekly">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+              <div>
+                <div style="font-size: var(--fs-md); font-weight: 700; color: #A78BFA;"><span class="sym-prefix">//</span>주간 숙제</div>
+                <div style="font-size: 11px; color: var(--text-muted);">매주 월요일 오전 06:00 자동 초기화</div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span id="hw-weekly-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0 (0%)</span>
+                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('weekly', true)">전체완료</button>
+                <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchHomeworkCategory('weekly', false)">초기화</button>
+              </div>
+            </div>
+            <div class="hw-progress-bar-wrap">
+              <div id="hw-weekly-prog-bar" class="hw-progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            <div id="hw-weekly-task-list" class="hw-task-list"></div>
+          </div>
+        </div>
+
+        <!-- Middle 2-Column Grid: Character Memo & In-Game Character Telemetry -->
+        <div class="grid" style="margin-bottom: 16px;">
+          <!-- Left: 캐릭터별 메모장 & 주간 납품 연동 요약 -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">
+              <span><span class="sym-prefix">//</span><span id="hw-memo-char-title">캐릭터</span> 개별 메모장 &amp; 주간 납품 연동</span>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <span id="hw-memo-save-status" style="font-size: 11px; color: var(--text-muted);">자동 저장 지원</span>
+                <button type="button" class="btn btn-sm" onclick="saveActiveCharacterMemo()">메모 저장</button>
+              </div>
+            </div>
+            <textarea id="hw-char-memo-input" class="input-text" rows="3" style="width: 100%; resize: vertical; font-family: var(--font-sans); line-height: 1.5;" placeholder="이 캐릭터의 장비 목표, 룬 정가 계획, 주간 특이사항 등을 자유롭게 적어두세요. (포커스 해제 시 자동 저장)" onblur="saveActiveCharacterMemo()"></textarea>
+
+            <!-- Weekly Delivery Quick Status Box -->
+            <div id="hw-delivery-quick-box" style="margin-top: 10px; padding: 10px 12px; background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <div>
+                <div style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">
+                  <span class="sym-prefix">&gt;</span>주간 납품 연동 상태: <span id="hw-delivery-quick-status" class="mono-num">확인 중...</span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">생활 지원 탭의 주간 납품 캐릭터 프로필과 실시간 공유됩니다.</div>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <button type="button" class="btn btn-sm" onclick="switchTopAppMode('living')">⚒️ 주간 납품 탭으로 이동</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: 인게임 캐릭터 실시간 스펙 & 주요 재화 현황 -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">
+              <span><span class="sym-prefix">//</span>캐릭터 스펙 &amp; 주요 재화 현황 (인게임 수집)</span>
+              <span id="hw-telemetry-updated-badge" class="badge">실시간 연동</span>
+            </div>
+            <div id="hw-telemetry-grid" class="hw-telemetry-grid">
+              <!-- Populated by renderHomeworkTelemetry() -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Live In-Game Missions & Quests Tracker Card -->
+        <div class="card" id="hw-ingame-missions-card">
+          <div class="card-title">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span><span class="sym-prefix">//</span>인게임 실시간 미션 · 주간 의뢰 · 진행 퀘스트 트래커</span>
+              <span id="hw-live-missions-badge" class="badge">CLI 실시간 수집</span>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button type="button" class="btn btn-sm" onclick="refreshHomeworkLiveMissions()">새로고침</button>
+            </div>
+          </div>
+          <div class="hw-checklist-grid" style="margin-bottom: 0;">
+            <!-- Col 1: 인게임 일일 미션 -->
+            <div style="background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); padding: 10px 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>인게임 일일 미션 [N]</span>
+                <span id="hw-live-daily-count" class="badge">0건</span>
+              </div>
+              <div id="hw-live-daily-missions-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);">
+                <div style="color: var(--text-muted);">게임 연결 시 실시간 일일 미션 진행도가 표시됩니다.</div>
+              </div>
+            </div>
+
+            <!-- Col 2: 인게임 주간 미션 -->
+            <div style="background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); padding: 10px 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>인게임 주간 미션 &amp; 어비스/길드</span>
+                <span id="hw-live-weekly-count" class="badge">0건</span>
+              </div>
+              <div id="hw-live-weekly-missions-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);">
+                <div style="color: var(--text-muted);">게임 연결 시 실시간 주간 미션 진행도가 표시됩니다.</div>
+              </div>
+            </div>
+
+            <!-- Col 3: 진행 중인 퀘스트 & 던전/사냥터 상태 -->
+            <div style="background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); padding: 10px 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>진행 중인 퀘스트 · 사냥터 · 던전</span>
+                <span id="hw-live-quests-count" class="badge">0건</span>
+              </div>
+              <div id="hw-live-quests-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);">
+                <div style="color: var(--text-muted);">게임 연결 시 진행 중인 퀘스트 및 던전 상태가 표시됩니다.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================== -->
+      <!-- [HW SUB-TAB 2] 전체 캐릭터 종합 현황표                 -->
+      <!-- ===================================================== -->
+      <div id="hw-subview-summary" style="display: none;">
+        <div class="card">
+          <div class="card-title">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span><span class="sym-prefix">//</span>전체 캐릭터 종합 숙제 · 스펙 · 재화 현황표</span>
+              <span class="badge">일일 / 집중 / 주간 / 납품 한눈에 보기</span>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button type="button" class="btn btn-sm" onclick="switchHomeworkSubTab('matrix')">주간 매트릭스 체크표 보기</button>
+            </div>
+          </div>
+          <div class="bom-table-container">
+            <table class="bom-table">
+              <thead>
+                <tr>
+                  <th style="min-width: 130px;">캐릭터 (직업)</th>
+                  <th style="min-width: 110px;">전투력 / 생활·매력</th>
+                  <th style="min-width: 100px; text-align: center;">무게 / 은동전·공물</th>
+                  <th style="min-width: 110px; text-align: center;">일일 숙제</th>
+                  <th style="min-width: 140px; text-align: center;">집중 숙제 (최근 완료일)</th>
+                  <th style="min-width: 110px; text-align: center;">주간 숙제</th>
+                  <th style="min-width: 110px; text-align: center;">주간 납품</th>
+                  <th style="min-width: 160px;">캐릭터 메모</th>
+                  <th style="min-width: 90px; text-align: center;">작업</th>
+                </tr>
+              </thead>
+              <tbody id="hw-summary-tbody">
+                <!-- Populated by renderHomeworkSummaryTable() -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================== -->
+      <!-- [HW SUB-TAB 3] 주간 숙제 매트릭스 체크표               -->
+      <!-- ===================================================== -->
+      <div id="hw-subview-matrix" style="display: none;">
+        <div class="card">
+          <div class="card-title">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span><span class="sym-prefix">//</span>전 캐릭터 주간 숙제 매트릭스 체크표 (클릭하여 즉시 완료/해제)</span>
+              <span class="badge">월요일 06:00 자동 초기화</span>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button type="button" class="btn btn-sm" onclick="switchHomeworkSubTab('main')">개별 캐릭터 뷰로 돌아가기</button>
+            </div>
+          </div>
+          <div class="bom-table-container">
+            <table class="bom-table" id="hw-matrix-table">
+              <thead id="hw-matrix-thead"></thead>
+              <tbody id="hw-matrix-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================== -->
+      <!-- [HW SUB-TAB 4] 숙제·캐릭터·알림 설정                   -->
+      <!-- ===================================================== -->
+      <div id="hw-subview-settings" style="display: none;">
+        <div class="grid">
+          <!-- Left Column: 캐릭터 프로필 통합 관리 -->
+          <div class="card">
+            <div class="card-title">
+              <span><span class="sym-prefix">//</span>캐릭터 프로필 통합 관리 (숙제 &amp; 주간 납품 공통)</span>
+            </div>
+            <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 10px;">
+              <span class="sym-prefix">&gt;</span>여기서 캐릭터를 추가·수정·순서 변경하면 <strong>숙제 지원</strong>과 <strong>생활 지원(주간 납품)</strong> 양쪽에 즉시 반영됩니다.
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px; background: var(--bg-sub-panel); border: 1px solid var(--line-subtle);">
+              <input type="text" id="hw-new-char-name" class="input-text" placeholder="캐릭터명 (예: 카르브)" style="width: 120px;">
+              <input type="text" id="hw-new-char-class" class="input-text" placeholder="직업 (예: 수도사)" style="width: 110px;">
+              <input type="number" id="hw-new-char-cp" class="input-text" placeholder="전투력 (선택)" style="width: 110px;">
+              <input type="text" id="hw-new-char-title" class="input-text" placeholder="칭호 (선택)" style="width: 120px;">
+              <button type="button" class="btn btn-solid-core btn-sm" onclick="addHomeworkCharacter()">+ 캐릭터 추가</button>
+            </div>
+            <div class="bom-table-container">
+              <table class="bom-table">
+                <thead>
+                  <tr>
+                    <th>캐릭터명</th>
+                    <th>직업</th>
+                    <th>전투력</th>
+                    <th>칭호</th>
+                    <th style="text-align: center;">순서/관리</th>
+                  </tr>
+                </thead>
+                <tbody id="hw-settings-char-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Right Column: 카테고리별 숙제 항목 & 대상 캐릭터 필터 관리 -->
+          <div class="card">
+            <div class="card-title">
+              <span><span class="sym-prefix">//</span>숙제 항목 편집 &amp; 캐릭터별 표시 필터</span>
+              <div style="display: flex; gap: 6px;">
+                <select id="hw-settings-cat-select" class="input-text" onchange="renderHomeworkSettingsTasks()" style="padding: 3px 8px;">
+                  <option value="daily">일일 숙제 (매일 06시)</option>
+                  <option value="focus">집중 숙제 (권장 로테이션)</option>
+                  <option value="weekly">주간 숙제 (월요일 06시)</option>
+                </select>
+                <button type="button" class="btn btn-sm" onclick="resetHomeworkCategoryDefaults()">기본값 복원</button>
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+              <input type="text" id="hw-new-task-input" class="input-text" placeholder="새 숙제 항목 이름 입력 (예: 필드 보스, 심층 던전 등)" style="flex: 1;">
+              <button type="button" class="btn btn-solid-core btn-sm" onclick="addHomeworkTaskItem()">+ 숙제 항목 추가</button>
+            </div>
+            <div id="hw-settings-tasks-container" style="max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+              <!-- Populated by renderHomeworkSettingsTasks() -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Settings Card: 디스코드 웹훅 & 데이터 백업/복원 -->
+        <div class="card">
+          <div class="card-title">
+            <span><span class="sym-prefix">//</span>디스코드 이벤트 알림 &amp; 숙제 데이터 백업·복원</span>
+          </div>
+          <div class="grid" style="margin-bottom: 0;">
+            <div>
+              <div style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin-bottom: 8px;"><span class="sym-prefix">&gt;</span>디스코드 웹훅 실시간 알림 설정</div>
+              <div style="display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
+                <input type="text" id="hw-discord-webhook-input" class="input-text" placeholder="https://discord.com/api/webhooks/..." style="flex: 1; min-width: 240px;">
+                <button type="button" class="btn btn-sm btn-solid-core" onclick="saveHomeworkDiscordSettings()">웹훅 저장</button>
+                <button type="button" class="btn btn-sm" onclick="testDiscordWebhook()">테스트 전송</button>
+              </div>
+              <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: var(--fs-sm);">
+                <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="hw-wh-dungeon" onchange="saveHomeworkDiscordSettings()"> 일반 던전 클리어
+                </label>
+                <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="hw-wh-abyss" onchange="saveHomeworkDiscordSettings()"> 어비스 던전 클리어
+                </label>
+                <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="hw-wh-hunting" onchange="saveHomeworkDiscordSettings()"> 사냥터 전리품 완료
+                </label>
+                <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="hw-wh-gathering" onchange="saveHomeworkDiscordSettings()"> 채집 완료
+                </label>
+                <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="hw-wh-crafting" onchange="saveHomeworkDiscordSettings()"> 가공 완료
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <div style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright); margin-bottom: 8px;"><span class="sym-prefix">&gt;</span>숙제 설정·체크 기록 백업 및 레거시 연동</div>
+              <div style="font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 10px;">
+                모든 캐릭터 및 숙제 체크 기록은 <code style="color: var(--text-bright);">내 문서\MobiLivingSupporter</code> 폴더에 자동 저장됩니다.
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-sm" onclick="exportHomeworkBackup()">JSON 백업 파일 내보내기</button>
+                <button type="button" class="btn btn-sm" onclick="document.getElementById('hw-backup-file-input').click()">JSON 백업 파일 불러오기</button>
+                <input type="file" id="hw-backup-file-input" accept=".json" style="display: none;" onchange="importHomeworkBackupFile(event)">
+                <button type="button" class="btn btn-sm" onclick="reimportLegacyOverlayData()" title="기존 '모비 숙제 오버레이' 폴더의 캐릭터 및 숙제 데이터를 다시 가져와 병합합니다">기존 숙제 오버레이 데이터 다시 가져오기</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /#top-view-homework -->
 
     <!-- Bottom 2-Column Grid: Live Console & Recipe Search -->
     <div class="grid">
@@ -10168,6 +11078,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
         }
 
+        if (data.homework) {
+          onHomeworkStateReceived(data.homework, data.omen_barrier, data);
+        } else if (data.omen_barrier) {
+          updateOmenBarrierUI(data.omen_barrier);
+        }
+
         const currentlyBusy = !!data.is_busy;
         if (!currentlyBusy && wasBusy) {
           // Task just finished! Play sound if enabled
@@ -11011,8 +11927,1110 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     }
 
+    // =========================================================================
+    // [HOMEWORK SUPPORT & TOP-LEVEL MODE SWITCHER]
+    // =========================================================================
+    let currentTopAppMode = localStorage.getItem('mobi_top_app_mode') || 'living';
+    let currentHomeworkSubTab = localStorage.getItem('mobi_hw_sub_tab') || 'main';
+    let cachedHomeworkState = null;
+    let cachedLiveStatusData = null;
+    let dismissedOmenHourKey = '';
+    let lastOmenChimeHourKey = '';
+    let isEditingMemo = false;
+
+    function switchTopAppMode(mode) {
+      if (mode !== 'living' && mode !== 'homework') mode = 'living';
+      currentTopAppMode = mode;
+      try { localStorage.setItem('mobi_top_app_mode', mode); } catch(e) {}
+      applyTopAppModeView();
+    }
+
+    function applyTopAppModeView() {
+      const livingView = document.getElementById('top-view-living');
+      const hwView = document.getElementById('top-view-homework');
+      const btnLiving = document.getElementById('btn-top-mode-living');
+      const btnHw = document.getElementById('btn-top-mode-homework');
+
+      if (livingView) livingView.style.display = (currentTopAppMode === 'living') ? 'block' : 'none';
+      if (hwView) hwView.style.display = (currentTopAppMode === 'homework') ? 'block' : 'none';
+      if (btnLiving) btnLiving.classList.toggle('active', currentTopAppMode === 'living');
+      if (btnHw) btnHw.classList.toggle('active', currentTopAppMode === 'homework');
+
+      if (currentTopAppMode === 'homework') {
+        applyHomeworkSubTabView();
+        if (cachedHomeworkState) {
+          renderHomeworkDashboard(cachedHomeworkState);
+        } else {
+          fetchHomeworkState();
+        }
+        refreshHomeworkLiveMissions();
+      } else {
+        updateMasterCommandBar();
+      }
+      try { updateStickyHeaderOffset(); } catch(e) {}
+    }
+
+    function switchHomeworkSubTab(tab) {
+      if (!['main', 'summary', 'matrix', 'settings'].includes(tab)) tab = 'main';
+      currentHomeworkSubTab = tab;
+      try { localStorage.setItem('mobi_hw_sub_tab', tab); } catch(e) {}
+      applyHomeworkSubTabView();
+      if (cachedHomeworkState) {
+        renderHomeworkDashboard(cachedHomeworkState);
+      }
+    }
+
+    function applyHomeworkSubTabView() {
+      const tabs = ['main', 'summary', 'matrix', 'settings'];
+      tabs.forEach(t => {
+        const btn = document.getElementById('btn-hw-tab-' + t);
+        const view = document.getElementById('hw-subview-' + t);
+        if (btn) btn.classList.toggle('active', currentHomeworkSubTab === t);
+        if (view) view.style.display = (currentHomeworkSubTab === t) ? 'block' : 'none';
+      });
+    }
+
+    async function fetchHomeworkState() {
+      try {
+        const res = await fetch('/api/homework/state');
+        const hw = await res.json();
+        if (hw && !hw.error) {
+          onHomeworkStateReceived(hw, hw.omen_barrier, cachedLiveStatusData);
+        }
+      } catch (e) {
+        console.warn('fetchHomeworkState error:', e);
+      }
+    }
+
+    function onHomeworkStateReceived(hw, omenBarrier, fullStatusData) {
+      if (fullStatusData) cachedLiveStatusData = fullStatusData;
+      cachedHomeworkState = hw;
+      if (omenBarrier || hw.omen_barrier) {
+        updateOmenBarrierUI(omenBarrier || hw.omen_barrier, hw.settings);
+      }
+      updateTopSwitcherPills(hw);
+      renderHomeworkDashboard(hw);
+    }
+
+    function updateTopSwitcherPills(hw) {
+      const hwPill = document.getElementById('top-hw-summary-pill');
+      if (hwPill && hw && hw.characters) {
+        const actName = hw.active_character || '';
+        const actChar = (hw.characters || []).find(c => c.name === actName) || hw.characters[0];
+        if (actChar && actChar.progress) {
+          const dp = actChar.progress.daily || { done: 0, total: 0 };
+          const wp = actChar.progress.weekly || { done: 0, total: 0 };
+          hwPill.innerText = `${actChar.name} · 일일 ${dp.done}/${dp.total} · 주간 ${wp.done}/${wp.total}`;
+        }
+      }
+      const livPill = document.getElementById('top-living-summary-pill');
+      if (livPill && cachedDeliveryCharactersInfo) {
+        const actId = cachedDeliveryCharactersInfo.active_character_id;
+        const c = (cachedDeliveryCharactersInfo.characters || []).find(x => x.id === actId);
+        if (c) {
+          livPill.innerText = c.weekly_delivered ? `${c.name} · 납품완료✓` : `${c.name} · 납품 ${c.completed_count || 0}/${c.target_count || 18}`;
+        }
+      }
+    }
+
+    function updateOmenBarrierUI(omen, hwSettings) {
+      if (!omen) return;
+      const pill = document.getElementById('pill-omen-barrier');
+      const banner = document.getElementById('omen-barrier-banner');
+      const bannerText = document.getElementById('omen-barrier-banner-text');
+      const alertEnabled = hwSettings ? (hwSettings.omen_barrier_alert !== false) : true;
+
+      if (pill) {
+        if (omen.is_active_window) {
+          pill.innerHTML = `<span style="color: #FBBF24; font-weight: 700;">🔥 ${omen.label}</span>`;
+        } else if (omen.is_pre_alert) {
+          pill.innerHTML = `<span style="color: #60A5FA; font-weight: 700;">⚡ ${omen.label}</span>`;
+        } else {
+          pill.innerHTML = `<span style="color: var(--text-muted);">⚡ ${omen.label}</span>`;
+        }
+      }
+
+      if (banner) {
+        if (alertEnabled && (omen.is_active_window || omen.is_pre_alert) && dismissedOmenHourKey !== omen.hour_key) {
+          banner.style.display = 'block';
+          if (bannerText) {
+            bannerText.innerText = omen.is_active_window
+              ? `현재 정각 불길한 소환의 결계가 진행 중입니다! (${omen.label})`
+              : `곧 정각 불길한 소환의 결계가 시작됩니다! (${omen.label})`;
+          }
+          if (omen.is_active_window && lastOmenChimeHourKey !== omen.hour_key) {
+            lastOmenChimeHourKey = omen.hour_key;
+            if (currentSoundAlarmEnabled && typeof playChime === 'function') {
+              try { playChime(false); } catch(e) {}
+            }
+          }
+        } else {
+          banner.style.display = 'none';
+        }
+      }
+    }
+
+    function dismissOmenBarrierBanner() {
+      if (cachedHomeworkState && cachedHomeworkState.omen_barrier) {
+        dismissedOmenHourKey = cachedHomeworkState.omen_barrier.hour_key || 'dismissed';
+      }
+      const banner = document.getElementById('omen-barrier-banner');
+      if (banner) banner.style.display = 'none';
+    }
+
+    function renderHomeworkDashboard(hw) {
+      if (!hw) return;
+      renderHomeworkMasterCommandBar(hw);
+      renderHomeworkCharacterBar(hw);
+      renderHomeworkChecklists(hw);
+      renderHomeworkTelemetry(hw);
+      renderHomeworkSummaryTable(hw);
+      renderHomeworkMatrixTable(hw);
+      if (currentHomeworkSubTab === 'settings') {
+        renderHomeworkSettings(hw);
+      }
+    }
+
+    function renderHomeworkMasterCommandBar(hw) {
+      const actName = hw.active_character || '';
+      const actChar = (hw.characters || []).find(c => c.name === actName) || (hw.characters || [])[0];
+      const step = hw.active_step;
+      const briefingEl = document.getElementById('hw-mcb-briefing');
+      const btnComplete = document.getElementById('btn-hw-complete-step');
+      const btnRollback = document.getElementById('btn-hw-rollback');
+
+      if (briefingEl && actChar) {
+        const clsText = actChar.class ? `(${actChar.class})` : '';
+        if (step && step.task_name) {
+          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span><strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <strong style="color: #FBBF24;">[${escapeHtml(step.cat_title)}] ${escapeHtml(step.task_name)}</strong> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
+        } else {
+          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span><strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> <span style="color: #34D399; font-weight: 700;">모든 일일·집중·주간 숙제를 100% 완료했습니다!</span>`;
+        }
+      }
+
+      if (btnComplete) {
+        btnComplete.disabled = !(step && step.task_name);
+        btnComplete.innerText = (step && step.task_name) ? `✓ [${step.task_name}] 완료` : '✓ 모든 숙제 완료됨';
+      }
+      if (btnRollback) {
+        btnRollback.disabled = !hw.can_rollback;
+      }
+
+      // Pills on Homework sub-tabs
+      const pillMain = document.getElementById('hw-tab-pill-main');
+      if (pillMain && actChar && actChar.progress) {
+        const d = actChar.progress.daily || { done: 0, total: 0 };
+        pillMain.innerText = `${actChar.name} ${d.done}/${d.total}`;
+      }
+      const pillSummary = document.getElementById('hw-tab-pill-summary');
+      if (pillSummary && hw.characters) {
+        const allDailyDone = hw.characters.filter(c => c.progress && c.progress.daily && c.progress.daily.pct >= 100).length;
+        pillSummary.innerText = `일일완 ${allDailyDone}/${hw.characters.length}`;
+      }
+      const pillMatrix = document.getElementById('hw-tab-pill-matrix');
+      if (pillMatrix && hw.characters) {
+        let wDone = 0, wTotal = 0;
+        hw.characters.forEach(c => {
+          if (c.progress && c.progress.weekly) {
+            wDone += c.progress.weekly.done;
+            wTotal += c.progress.weekly.total;
+          }
+        });
+        pillMatrix.innerText = `${wDone}/${wTotal}`;
+      }
+
+      // Option check icons
+      const st = hw.settings || {};
+      const setIcon = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = val ? '■' : '□';
+      };
+      setIcon('icon-hw-opt-reset', st.auto_reset_enabled !== false);
+      setIcon('icon-hw-opt-autoswitch', st.auto_detect_character !== false);
+      setIcon('icon-hw-opt-autocheck', st.auto_check_missions !== false);
+      setIcon('icon-hw-opt-omen', st.omen_barrier_alert !== false);
+    }
+
+    function renderHomeworkCharacterBar(hw) {
+      const container = document.getElementById('hw-character-tabs-list');
+      const recBadge = document.getElementById('hw-recommended-focus-badge');
+      const matchBadge = document.getElementById('hw-ingame-match-badge');
+      if (!container || !hw) return;
+
+      if (recBadge) {
+        if (hw.recommended_focus_character) {
+          recBadge.innerText = `★ 집중 숙제 추천: ${hw.recommended_focus_character}`;
+          recBadge.style.display = 'inline-block';
+        } else {
+          recBadge.style.display = 'none';
+        }
+      }
+      if (matchBadge) {
+        if (hw.matched_ingame_character) {
+          matchBadge.innerHTML = `<span style="color: #34D399; font-weight: 700;">● 인게임 감지: ${escapeHtml(hw.matched_ingame_character)}</span>`;
+        } else {
+          matchBadge.innerHTML = '';
+        }
+      }
+
+      let html = '';
+      (hw.characters || []).forEach(c => {
+        const isActive = c.is_active;
+        const isIngame = (hw.matched_ingame_character && hw.matched_ingame_character === c.name);
+        const dp = (c.progress && c.progress.daily) || { done: 0, total: 0, pct: 0 };
+        const wp = (c.progress && c.progress.weekly) || { done: 0, total: 0, pct: 0 };
+        const safeName = c.name.replace(/'/g, "\\'");
+        const recStar = c.is_recommended_focus ? `<span style="color: #FBBF24; font-weight: 700;" title="집중 숙제 권장 순서 캐릭터">★</span> ` : '';
+        const ingameDot = isIngame ? `<span class="char-ingame-dot" title="현재 인게임 접속 중인 캐릭터">●</span>` : '';
+        const delivMark = c.weekly_delivered ? `<span style="color: #34D399;" title="이번 주 주간 납품 완료">납품✓</span>` : `납품 ${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}`;
+
+        html += `
+          <button type="button" class="character-tab-btn ${isActive ? 'active' : ''} ${isIngame ? 'ingame-matched' : ''}" onclick="selectHomeworkCharacter('${safeName}')">
+            <div class="char-tab-top">
+              ${ingameDot}
+              <span class="char-tab-name">${recStar}${escapeHtml(c.name)}</span>
+              ${c.class ? `<span class="char-tab-sub">${escapeHtml(c.class)}</span>` : ''}
+            </div>
+            <div class="char-tab-meta mono-num">
+              <span>일일 ${dp.done}/${dp.total}</span>
+              <span>·</span>
+              <span>주간 ${wp.done}/${wp.total}</span>
+              <span>·</span>
+              <span>${delivMark}</span>
+            </div>
+          </button>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    function renderHomeworkChecklists(hw) {
+      const actName = hw.active_character || '';
+      const actChar = (hw.characters || []).find(c => c.name === actName) || (hw.characters || [])[0];
+      if (!actChar) return;
+
+      const step = hw.active_step || null;
+      const cats = [
+        { key: 'daily', progTextId: 'hw-daily-prog-text', progBarId: 'hw-daily-prog-bar', listId: 'hw-daily-task-list' },
+        { key: 'focus', progTextId: 'hw-focus-prog-text', progBarId: 'hw-focus-prog-bar', listId: 'hw-focus-task-list' },
+        { key: 'weekly', progTextId: 'hw-weekly-prog-text', progBarId: 'hw-weekly-prog-bar', listId: 'hw-weekly-task-list' },
+      ];
+
+      const focusDateBadge = document.getElementById('hw-focus-last-date');
+      if (focusDateBadge) {
+        focusDateBadge.innerText = actChar.last_focus_completed ? `최근 완료: ${actChar.last_focus_completed}` : '완료 기록 없음';
+      }
+
+      cats.forEach(cat => {
+        const prog = (actChar.progress && actChar.progress[cat.key]) || { done: 0, total: 0, pct: 0, items: [] };
+        const txtEl = document.getElementById(cat.progTextId);
+        const barEl = document.getElementById(cat.progBarId);
+        const listEl = document.getElementById(cat.listId);
+        if (txtEl) txtEl.innerText = `${prog.done}/${prog.total} (${prog.pct}%)`;
+        if (barEl) barEl.style.width = `${prog.pct}%`;
+        if (!listEl) return;
+
+        let html = '';
+        (prog.items || []).forEach(item => {
+          const isStep = step && step.cat_key === cat.key && step.task_name === item.name;
+          const safeChar = actChar.name.replace(/'/g, "\\'");
+          const safeTask = item.name.replace(/'/g, "\\'");
+          html += `
+            <div class="hw-task-row ${item.done ? 'done' : ''} ${isStep ? 'current-step' : ''}" onclick="toggleHomeworkTask('${safeChar}', '${cat.key}', '${safeTask}')">
+              <div class="hw-task-left">
+                <span class="hw-task-check">${item.done ? '■' : '□'}</span>
+                <span class="hw-task-name">${escapeHtml(item.name)}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                ${isStep ? '<span class="badge" style="color: #FBBF24; border-color: rgba(251,191,36,0.4); font-size: 10px;">▶ 현재 순서</span>' : ''}
+                <span class="mono-num" style="font-size: 11px; color: ${item.done ? '#34D399' : 'var(--text-muted)'};">${item.done ? '완료' : '대기'}</span>
+              </div>
+            </div>
+          `;
+        });
+
+        // In Weekly column, also show unified Weekly Delivery status row!
+        if (cat.key === 'weekly') {
+          const delivDone = !!actChar.weekly_delivered;
+          const delivCnt = actChar.delivery_completed_count || 0;
+          const delivTot = actChar.delivery_target_count || 18;
+          html += `
+            <div class="hw-task-row ${delivDone ? 'done' : ''}" style="border-top: 1px dashed var(--line); margin-top: 4px;" onclick="switchTopAppMode('living')" title="클릭하면 생활 지원(주간 납품) 화면으로 이동합니다">
+              <div class="hw-task-left">
+                <span class="hw-task-check">${delivDone ? '■' : '□'}</span>
+                <span class="hw-task-name">⚒️ 주간 납품 (${delivCnt}/${delivTot} 품목)</span>
+              </div>
+              <span class="badge" style="font-size: 10px;">생활 지원 연동 &gt;</span>
+            </div>
+          `;
+        }
+
+        if (!html) {
+          html = `<div style="padding: 12px; color: var(--text-muted); font-size: var(--fs-sm); text-align: center;">표시할 숙제 항목이 없습니다.</div>`;
+        }
+        listEl.innerHTML = html;
+      });
+
+      // Memo & Delivery quick box
+      const memoTitle = document.getElementById('hw-memo-char-title');
+      if (memoTitle) memoTitle.innerText = `${actChar.name}${actChar.class ? '(' + actChar.class + ')' : ''}`;
+      const memoInput = document.getElementById('hw-char-memo-input');
+      if (memoInput && document.activeElement !== memoInput) {
+        memoInput.value = actChar.memo || '';
+        memoInput.dataset.charName = actChar.name;
+      }
+      const delivQuick = document.getElementById('hw-delivery-quick-status');
+      if (delivQuick) {
+        if (actChar.weekly_delivered) {
+          delivQuick.innerHTML = `<span style="color: #34D399; font-weight: 700;">이번 주 주간 납품 완료 ✓</span>`;
+        } else {
+          delivQuick.innerHTML = `<span style="color: var(--text-bright);">진행 중 (${actChar.delivery_completed_count || 0}/${actChar.delivery_target_count || 18} 품목 보유)</span>`;
+        }
+      }
+    }
+
+    function renderHomeworkTelemetry(hw) {
+      const grid = document.getElementById('hw-telemetry-grid');
+      const badge = document.getElementById('hw-telemetry-updated-badge');
+      if (!grid || !hw) return;
+
+      const actName = hw.active_character || '';
+      const actChar = (hw.characters || []).find(c => c.name === actName) || (hw.characters || [])[0];
+      if (!actChar) return;
+
+      const st = actChar.stats || {};
+      const liveChar = (cachedLiveStatusData && cachedLiveStatusData.character) || {};
+      const isLiveMatched = (hw.matched_ingame_character === actChar.name);
+
+      if (badge) {
+        badge.innerText = isLiveMatched
+          ? `● 현재 접속 중 (${st.updated_at || '실시간'})`
+          : (st.updated_at ? `최근 기록: ${st.updated_at}` : '인게임 접속 시 자동 수집');
+      }
+
+      const cp = st.combat_power || actChar.combat_power || 0;
+      const lvScore = st.living_score || 0;
+      const attrScore = st.attractiveness_score || 0;
+      const decorScore = st.decor_score || 0;
+      const title = st.title || actChar.title || '-';
+      const level = st.level || (isLiveMatched ? liveChar.Level : '-') || '-';
+      const silver = st.silver_coin !== undefined ? st.silver_coin : '-';
+      const tribute = st.tribute !== undefined ? st.tribute : '-';
+      const gold = st.gold ? Number(st.gold).toLocaleString() : '-';
+      const wings = st.wings !== undefined ? st.wings : '-';
+      const bagText = st.max_weight > 0 ? `${st.bag_weight}/${st.max_weight}` : '-';
+      const hpText = isLiveMatched && liveChar.MaxHp ? `${liveChar.Hp || 0}/${liveChar.MaxHp}` : '-';
+      const satietyText = isLiveMatched && liveChar.SatietyValue !== undefined ? `${liveChar.SatietyValue}` : '-';
+
+      const statsItems = [
+        { label: '캐릭터 / 레벨', val: `${actChar.name} (Lv.${level})` },
+        { label: '직업 / 칭호', val: `${actChar.class || '-'} · ${title}` },
+        { label: '전투력 (Combat)', val: cp ? Number(cp).toLocaleString() : '-' },
+        { label: '생활력 / 매력', val: `${lvScore ? Number(lvScore).toLocaleString() : '-'} / ${attrScore ? Number(attrScore).toLocaleString() : '-'}` },
+        { label: '은동전 / 마족 공물', val: `${silver} / ${tribute}` },
+        { label: '보유 골드 / 날개', val: `${gold} / ${wings}` },
+        { label: '가방 무게 / 인테리어', val: `${bagText} / ${decorScore || '-'}` },
+        { label: '체력(HP) / 포만감', val: `${hpText} / ${satietyText}` },
+      ];
+
+      grid.innerHTML = statsItems.map(item => `
+        <div class="hw-stat-box">
+          <span class="hw-stat-label">${escapeHtml(item.label)}</span>
+          <span class="hw-stat-val">${escapeHtml(String(item.val))}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderHomeworkSummaryTable(hw) {
+      const tbody = document.getElementById('hw-summary-tbody');
+      if (!tbody || !hw) return;
+
+      let html = '';
+      (hw.characters || []).forEach(c => {
+        const st = c.stats || {};
+        const dp = (c.progress && c.progress.daily) || { done: 0, total: 0, pct: 0 };
+        const fp = (c.progress && c.progress.focus) || { done: 0, total: 0, pct: 0 };
+        const wp = (c.progress && c.progress.weekly) || { done: 0, total: 0, pct: 0 };
+        const cp = st.combat_power || c.combat_power || 0;
+        const lv = st.living_score || 0;
+        const attr = st.attractiveness_score || 0;
+        const weight = st.max_weight > 0 ? `${st.bag_weight}/${st.max_weight}` : '-';
+        const coinTrib = (st.silver_coin !== undefined || st.tribute !== undefined) ? `은동전 ${st.silver_coin ?? '-'} · 공물 ${st.tribute ?? '-'}` : '-';
+        const safeName = c.name.replace(/'/g, "\\'");
+        const recStar = c.is_recommended_focus ? `<span style="color: #FBBF24; font-weight: 700;">★추천</span> ` : '';
+        const delivHtml = c.weekly_delivered
+          ? `<span style="color: #34D399; font-weight: 700;">완료 ✓</span>`
+          : `<span class="mono-num">${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}</span>`;
+
+        html += `
+          <tr style="${c.is_active ? 'background: rgba(255,255,255,0.04);' : ''}">
+            <td>
+              <div style="font-weight: 700; color: var(--text-bright); cursor: pointer;" onclick="selectHomeworkCharacter('${safeName}'); switchHomeworkSubTab('main');">
+                ${recStar}${escapeHtml(c.name)} <span style="font-weight: 400; color: var(--text-muted); font-size: 12px;">(${escapeHtml(c.class || '-')})</span>
+              </div>
+              ${(st.title || c.title) ? `<div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(st.title || c.title)}</div>` : ''}
+            </td>
+            <td class="mono-num">
+              <div style="font-weight: 700; color: var(--text-bright);">전투 ${cp ? Number(cp).toLocaleString() : '-'}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">생활 ${lv || '-'} · 매력 ${attr || '-'}</div>
+            </td>
+            <td class="mono-num" style="text-align: center;">
+              <div>${escapeHtml(weight)}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(coinTrib)}</div>
+            </td>
+            <td class="mono-num" style="text-align: center;">
+              <span style="color: ${dp.pct >= 100 ? '#34D399' : '#60A5FA'}; font-weight: 700;">${dp.done}/${dp.total} (${dp.pct}%)</span>
+            </td>
+            <td class="mono-num" style="text-align: center;">
+              <div style="color: ${fp.pct >= 100 ? '#34D399' : '#FBBF24'}; font-weight: 700;">${fp.done}/${fp.total} (${fp.pct}%)</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${c.last_focus_completed || '기록 없음'}</div>
+            </td>
+            <td class="mono-num" style="text-align: center;">
+              <span style="color: ${wp.pct >= 100 ? '#34D399' : '#A78BFA'}; font-weight: 700;">${wp.done}/${wp.total} (${wp.pct}%)</span>
+            </td>
+            <td style="text-align: center;">${delivHtml}</td>
+            <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-sm);" title="${escapeHtml(c.memo || '')}">
+              ${escapeHtml(c.memo || '-')}
+            </td>
+            <td style="text-align: center; white-space: nowrap;">
+              <button type="button" class="btn btn-sm" onclick="selectHomeworkCharacter('${safeName}'); switchHomeworkSubTab('main');">열기</button>
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }
+
+    function renderHomeworkMatrixTable(hw) {
+      const thead = document.getElementById('hw-matrix-thead');
+      const tbody = document.getElementById('hw-matrix-tbody');
+      if (!thead || !tbody || !hw) return;
+
+      const chars = hw.characters || [];
+      const weeklyTasks = (hw.categories && hw.categories.weekly && hw.categories.weekly.tasks) || [];
+      const targetMap = (hw.task_character_mapping && hw.task_character_mapping.weekly) || {};
+
+      let headHtml = `<tr><th style="min-width: 170px;">주간 숙제 항목</th>`;
+      chars.forEach(c => {
+        const safeName = c.name.replace(/'/g, "\\'");
+        headHtml += `<th style="text-align: center; min-width: 90px; cursor: pointer;" onclick="selectHomeworkCharacter('${safeName}'); switchHomeworkSubTab('main');" title="클릭하여 ${escapeHtml(c.name)} 상세 보기">
+          <div>${escapeHtml(c.name)}</div>
+          <div style="font-size: 10px; color: var(--text-muted); font-weight: 400;">${escapeHtml(c.class || '')}</div>
+        </th>`;
+      });
+      headHtml += `<th style="text-align: center; min-width: 110px;">일괄 처리</th></tr>`;
+      thead.innerHTML = headHtml;
+
+      let bodyHtml = '';
+      weeklyTasks.forEach(taskName => {
+        const safeTask = taskName.replace(/'/g, "\\'");
+        const allowedList = targetMap[taskName];
+        bodyHtml += `<tr><td style="font-weight: 700; color: var(--text-bright);">${escapeHtml(taskName)}</td>`;
+        chars.forEach(c => {
+          const safeChar = c.name.replace(/'/g, "\\'");
+          const isAllowed = !Array.isArray(allowedList) || allowedList.includes(c.name);
+          if (!isAllowed) {
+            bodyHtml += `<td class="hw-matrix-cell excluded" title="대상 제외 캐릭터">-</td>`;
+          } else {
+            const wItems = (c.progress && c.progress.weekly && c.progress.weekly.items) || [];
+            const found = wItems.find(x => x.name === taskName);
+            const done = !!(found && found.done);
+            bodyHtml += `<td class="hw-matrix-cell ${done ? 'done' : 'todo'}" onclick="toggleHomeworkTask('${safeChar}', 'weekly', '${safeTask}')">${done ? '■ 완료' : '□ 대기'}</td>`;
+          }
+        });
+        bodyHtml += `<td style="text-align: center; white-space: nowrap;">
+          <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchWeeklyTaskAllChars('${safeTask}', true)">전체완료</button>
+          <button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="batchWeeklyTaskAllChars('${safeTask}', false)">초기화</button>
+        </td></tr>`;
+      });
+
+      // Add Weekly Delivery row at the bottom of the Matrix
+      bodyHtml += `<tr style="border-top: 2px solid var(--line);"><td style="font-weight: 700; color: var(--text-bright);">⚒️ 주간 납품 (18품목)</td>`;
+      chars.forEach(c => {
+        const done = !!c.weekly_delivered;
+        bodyHtml += `<td class="hw-matrix-cell ${done ? 'done' : 'todo'}" onclick="switchTopAppMode('living')" title="생활 지원 탭에서 관리">${done ? '■ 완료' : `□ ${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}`}</td>`;
+      });
+      bodyHtml += `<td style="text-align: center;"><button type="button" class="btn btn-sm" style="padding: 2px 6px; font-size: 11px;" onclick="switchTopAppMode('living')">납품 탭 이동</button></td></tr>`;
+
+      tbody.innerHTML = bodyHtml;
+    }
+
+    function renderHomeworkSettings(hw) {
+      if (!hw) return;
+      // 1. Characters CRUD table
+      const charTbody = document.getElementById('hw-settings-char-tbody');
+      if (charTbody) {
+        let html = '';
+        (hw.characters || []).forEach((c, idx) => {
+          const safeName = c.name.replace(/'/g, "\\'");
+          html += `
+            <tr>
+              <td><input type="text" id="hw-edit-char-name-${idx}" class="input-text" value="${escapeHtml(c.name)}" style="width: 100px;"></td>
+              <td><input type="text" id="hw-edit-char-class-${idx}" class="input-text" value="${escapeHtml(c.class || '')}" style="width: 95px;"></td>
+              <td><input type="number" id="hw-edit-char-cp-${idx}" class="input-text" value="${c.combat_power || 0}" style="width: 95px;"></td>
+              <td><input type="text" id="hw-edit-char-title-${idx}" class="input-text" value="${escapeHtml(c.title || '')}" style="width: 110px;"></td>
+              <td style="text-align: center; white-space: nowrap;">
+                <button type="button" class="btn btn-sm" onclick="saveHomeworkCharacterRow('${safeName}', ${idx})">저장</button>
+                <button type="button" class="btn btn-sm" onclick="moveHomeworkCharacter('${safeName}', -1)">▲</button>
+                <button type="button" class="btn btn-sm" onclick="moveHomeworkCharacter('${safeName}', 1)">▼</button>
+                <button type="button" class="btn btn-sm" onclick="deleteHomeworkCharacter('${safeName}')">삭제</button>
+              </td>
+            </tr>
+          `;
+        });
+        charTbody.innerHTML = html;
+      }
+
+      // 2. Tasks & per-character target filter
+      renderHomeworkSettingsTasks();
+
+      // 3. Discord webhook settings
+      const st = hw.settings || {};
+      const whUrl = document.getElementById('hw-discord-webhook-input');
+      if (whUrl && document.activeElement !== whUrl) whUrl.value = st.discord_webhook_url || '';
+      const whEvents = st.webhook_events || {};
+      const setChk = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = (val !== false);
+      };
+      setChk('hw-wh-dungeon', whEvents.dungeon);
+      setChk('hw-wh-abyss', whEvents.abyss);
+      setChk('hw-wh-hunting', whEvents.hunting_ground);
+      setChk('hw-wh-gathering', whEvents.gathering);
+      setChk('hw-wh-crafting', whEvents.crafting);
+    }
+
+    function renderHomeworkSettingsTasks() {
+      const container = document.getElementById('hw-settings-tasks-container');
+      const catSel = document.getElementById('hw-settings-cat-select');
+      if (!container || !catSel || !cachedHomeworkState) return;
+
+      const catKey = catSel.value || 'daily';
+      const tasks = (cachedHomeworkState.categories && cachedHomeworkState.categories[catKey] && cachedHomeworkState.categories[catKey].tasks) || [];
+      const targetMap = (cachedHomeworkState.task_character_mapping && cachedHomeworkState.task_character_mapping[catKey]) || {};
+      const allChars = (cachedHomeworkState.characters || []).map(c => c.name);
+
+      let html = '';
+      tasks.forEach((tName, idx) => {
+        const safeTask = tName.replace(/'/g, "\\'");
+        const allowed = targetMap[tName]; // null/undefined means all characters
+        const charChecks = allChars.map(cName => {
+          const checked = !Array.isArray(allowed) || allowed.includes(cName);
+          const safeChar = cName.replace(/'/g, "\\'");
+          return `<label style="display: inline-flex; align-items: center; gap: 3px; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleHomeworkTaskTargetChar('${catKey}', '${safeTask}', '${safeChar}', this.checked)">
+            <span>${escapeHtml(cName)}</span>
+          </label>`;
+        }).join(' ');
+
+        html += `
+          <div style="padding: 8px 10px; background: var(--bg-sub-panel); border: 1px solid var(--line-subtle);">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 6px;">
+              <input type="text" id="hw-edit-task-${idx}" class="input-text" value="${escapeHtml(tName)}" style="flex: 1;">
+              <div style="display: flex; gap: 4px;">
+                <button type="button" class="btn btn-sm" onclick="renameHomeworkTaskItem('${catKey}', '${safeTask}', ${idx})">이름변경</button>
+                <button type="button" class="btn btn-sm" onclick="moveHomeworkTaskItem('${catKey}', '${safeTask}', -1)">▲</button>
+                <button type="button" class="btn btn-sm" onclick="moveHomeworkTaskItem('${catKey}', '${safeTask}', 1)">▼</button>
+                <button type="button" class="btn btn-sm" onclick="deleteHomeworkTaskItem('${catKey}', '${safeTask}')">삭제</button>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span style="font-size: 11px; color: var(--text-muted);">대상 캐릭터:</span>
+              ${charChecks}
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html || '<div style="color: var(--text-muted); font-size: var(--fs-sm);">등록된 숙제가 없습니다.</div>';
+    }
+
+    async function selectHomeworkCharacter(charName) {
+      try {
+        const res = await fetch('/api/homework/select_character', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_name: charName })
+        });
+        const d = await res.json();
+        if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+        if (d.homework) onHomeworkStateReceived(d.homework);
+      } catch (e) {
+        console.error('selectHomeworkCharacter error:', e);
+      }
+    }
+
+    async function toggleHomeworkTask(charName, category, taskName) {
+      try {
+        const res = await fetch('/api/homework/toggle_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_name: charName, category: category, task_name: taskName })
+        });
+        const d = await res.json();
+        if (d.homework) onHomeworkStateReceived(d.homework);
+      } catch (e) {
+        console.error('toggleHomeworkTask error:', e);
+      }
+    }
+
+    async function completeCurrentHomeworkStep() {
+      try {
+        const res = await fetch('/api/homework/complete_step', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {
+        console.error('completeCurrentHomeworkStep error:', e);
+      }
+    }
+
+    async function rollbackHomeworkStep() {
+      try {
+        const res = await fetch('/api/homework/rollback_step', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {
+        console.error('rollbackHomeworkStep error:', e);
+      }
+    }
+
+    async function batchHomeworkCategory(category, completed) {
+      if (!cachedHomeworkState) return;
+      const charName = cachedHomeworkState.active_character;
+      try {
+        const res = await fetch('/api/homework/batch_category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_name: charName, category: category, completed: !!completed })
+        });
+        const d = await res.json();
+        if (d.homework) onHomeworkStateReceived(d.homework);
+      } catch (e) {
+        console.error('batchHomeworkCategory error:', e);
+      }
+    }
+
+    async function batchWeeklyTaskAllChars(taskName, completed) {
+      try {
+        const res = await fetch('/api/homework/batch_weekly_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task_name: taskName, completed: !!completed })
+        });
+        const d = await res.json();
+        if (d.homework) onHomeworkStateReceived(d.homework);
+      } catch (e) {
+        console.error('batchWeeklyTaskAllChars error:', e);
+      }
+    }
+
+    async function saveActiveCharacterMemo() {
+      const memoInput = document.getElementById('hw-char-memo-input');
+      const statusEl = document.getElementById('hw-memo-save-status');
+      if (!memoInput || !cachedHomeworkState) return;
+      const charName = memoInput.dataset.charName || cachedHomeworkState.active_character;
+      const memoText = memoInput.value || '';
+      try {
+        if (statusEl) statusEl.innerText = '저장 중...';
+        const res = await fetch('/api/homework/save_memo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_name: charName, memo: memoText })
+        });
+        const d = await res.json();
+        if (d.homework) onHomeworkStateReceived(d.homework);
+        if (statusEl) statusEl.innerText = '✓ 저장 완료';
+      } catch (e) {
+        if (statusEl) statusEl.innerText = '저장 실패';
+      }
+    }
+
+    async function toggleHomeworkSetting(key) {
+      if (!cachedHomeworkState || !cachedHomeworkState.settings) return;
+      const currentVal = cachedHomeworkState.settings[key] !== false;
+      const payload = {};
+      payload[key] = !currentVal;
+      try {
+        const res = await fetch('/api/homework/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {
+        console.error('toggleHomeworkSetting error:', e);
+      }
+    }
+
+    async function saveHomeworkDiscordSettings() {
+      const urlEl = document.getElementById('hw-discord-webhook-input');
+      const payload = {
+        discord_webhook_url: urlEl ? urlEl.value.trim() : '',
+        webhook_events: {
+          dungeon: !!(document.getElementById('hw-wh-dungeon') && document.getElementById('hw-wh-dungeon').checked),
+          abyss: !!(document.getElementById('hw-wh-abyss') && document.getElementById('hw-wh-abyss').checked),
+          hunting_ground: !!(document.getElementById('hw-wh-hunting') && document.getElementById('hw-wh-hunting').checked),
+          gathering: !!(document.getElementById('hw-wh-gathering') && document.getElementById('hw-wh-gathering').checked),
+          crafting: !!(document.getElementById('hw-wh-crafting') && document.getElementById('hw-wh-crafting').checked),
+        }
+      };
+      try {
+        const res = await fetch('/api/homework/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {
+        console.error('saveHomeworkDiscordSettings error:', e);
+      }
+    }
+
+    async function addHomeworkCharacter() {
+      const nameEl = document.getElementById('hw-new-char-name');
+      const clsEl = document.getElementById('hw-new-char-class');
+      const cpEl = document.getElementById('hw-new-char-cp');
+      const titleEl = document.getElementById('hw-new-char-title');
+      const name = nameEl ? nameEl.value.trim() : '';
+      if (!name) { alert('캐릭터 이름을 입력해주세요.'); return; }
+      try {
+        const res = await fetch('/api/homework/character_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'add',
+            name: name,
+            char_class: clsEl ? clsEl.value.trim() : '',
+            combat_power: cpEl ? Number(cpEl.value || 0) : 0,
+            title: titleEl ? titleEl.value.trim() : ''
+          })
+        });
+        const d = await res.json();
+        if (!d.ok) { alert(d.message || '추가 실패'); return; }
+        if (nameEl) nameEl.value = '';
+        if (clsEl) clsEl.value = '';
+        if (cpEl) cpEl.value = '';
+        if (titleEl) titleEl.value = '';
+        if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {
+        alert('캐릭터 추가 오류: ' + e);
+      }
+    }
+
+    async function saveHomeworkCharacterRow(oldName, idx) {
+      const newName = (document.getElementById(`hw-edit-char-name-${idx}`) || {}).value || oldName;
+      const charClass = (document.getElementById(`hw-edit-char-class-${idx}`) || {}).value || '';
+      const cp = Number((document.getElementById(`hw-edit-char-cp-${idx}`) || {}).value || 0);
+      const title = (document.getElementById(`hw-edit-char-title-${idx}`) || {}).value || '';
+      try {
+        const res = await fetch('/api/homework/character_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'update',
+            old_name: oldName,
+            new_name: newName.trim(),
+            char_class: charClass.trim(),
+            combat_power: cp,
+            title: title.trim()
+          })
+        });
+        const d = await res.json();
+        if (!d.ok) { alert(d.message || '수정 실패'); return; }
+        if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {
+        alert('캐릭터 수정 오류: ' + e);
+      }
+    }
+
+    async function moveHomeworkCharacter(name, direction) {
+      try {
+        const res = await fetch('/api/homework/character_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'move', name: name, direction: direction })
+        });
+        const d = await res.json();
+        if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {}
+    }
+
+    async function deleteHomeworkCharacter(name) {
+      if (!confirm(`'${name}' 캐릭터 프로필을 삭제하시겠습니까? (숙제 및 주간 납품 탭에서 함께 삭제됩니다)`)) return;
+      try {
+        const res = await fetch('/api/homework/character_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', name: name })
+        });
+        const d = await res.json();
+        if (!d.ok) { alert(d.message || '삭제 실패'); return; }
+        if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {}
+    }
+
+    async function addHomeworkTaskItem() {
+      const catSel = document.getElementById('hw-settings-cat-select');
+      const inputEl = document.getElementById('hw-new-task-input');
+      const catKey = catSel ? catSel.value : 'daily';
+      const taskName = inputEl ? inputEl.value.trim() : '';
+      if (!taskName) { alert('추가할 숙제 이름을 입력해주세요.'); return; }
+      try {
+        const res = await fetch('/api/homework/task_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'add', category: catKey, task_name: taskName })
+        });
+        const d = await res.json();
+        if (!d.ok) { alert(d.message || '추가 실패'); return; }
+        if (inputEl) inputEl.value = '';
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {}
+    }
+
+    async function renameHomeworkTaskItem(catKey, oldName, idx) {
+      const el = document.getElementById(`hw-edit-task-${idx}`);
+      const newName = el ? el.value.trim() : '';
+      if (!newName) return;
+      try {
+        const res = await fetch('/api/homework/task_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'rename', category: catKey, old_name: oldName, new_name: newName })
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {}
+    }
+
+    async function moveHomeworkTaskItem(catKey, taskName, direction) {
+      try {
+        const res = await fetch('/api/homework/task_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'move', category: catKey, task_name: taskName, direction: direction })
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {}
+    }
+
+    async function deleteHomeworkTaskItem(catKey, taskName) {
+      if (!confirm(`'${taskName}' 숙제 항목을 삭제하시겠습니까?`)) return;
+      try {
+        const res = await fetch('/api/homework/task_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', category: catKey, task_name: taskName })
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {}
+    }
+
+    async function toggleHomeworkTaskTargetChar(catKey, taskName, charName, checked) {
+      if (!cachedHomeworkState) return;
+      const allChars = (cachedHomeworkState.characters || []).map(c => c.name);
+      const targetMap = (cachedHomeworkState.task_character_mapping && cachedHomeworkState.task_character_mapping[catKey]) || {};
+      let currentList = Array.isArray(targetMap[taskName]) ? [...targetMap[taskName]] : [...allChars];
+      if (checked) {
+        if (!currentList.includes(charName)) currentList.push(charName);
+      } else {
+        currentList = currentList.filter(x => x !== charName);
+      }
+      const targetPayload = (currentList.length >= allChars.length) ? null : currentList;
+      try {
+        const res = await fetch('/api/homework/task_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_targets', category: catKey, task_name: taskName, target_chars: targetPayload })
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {}
+    }
+
+    async function resetHomeworkCategoryDefaults() {
+      const catSel = document.getElementById('hw-settings-cat-select');
+      const catKey = catSel ? catSel.value : 'daily';
+      if (!confirm('선택한 카테고리의 숙제 목록을 기본값으로 복원하시겠습니까?')) return;
+      try {
+        const res = await fetch('/api/homework/task_crud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reset_defaults', category: catKey })
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {}
+    }
+
+    async function exportHomeworkBackup() {
+      try {
+        const res = await fetch('/api/homework/export_backup');
+        const bundle = await res.json();
+        const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `mobi_supporter_homework_backup_${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert('백업 내보내기 실패: ' + e);
+      }
+    }
+
+    async function importHomeworkBackupFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const bundle = JSON.parse(text);
+        const res = await fetch('/api/homework/import_backup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bundle)
+        });
+        const d = await res.json();
+        if (!d.ok) { alert(d.message || '백업 불러오기 실패'); return; }
+        if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+        if (d.state) onHomeworkStateReceived(d.state);
+        alert(d.message || '백업 데이터를 성공적으로 복원했습니다.');
+      } catch (e) {
+        alert('백업 파일 파싱 오류: ' + e);
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    async function reimportLegacyOverlayData() {
+      if (!confirm("기존 '모비 숙제 오버레이' 폴더의 캐릭터 및 숙제 데이터를 다시 가져와 병합하시겠습니까?")) return;
+      try {
+        const res = await fetch('/api/homework/reimport_legacy', { method: 'POST' });
+        const d = await res.json();
+        if (!d.ok) { alert(d.message || '가져오기 실패'); return; }
+        if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+        if (d.state) onHomeworkStateReceived(d.state);
+        alert(d.message);
+      } catch (e) {
+        alert('레거시 데이터 가져오기 오류: ' + e);
+      }
+    }
+
+    async function refreshHomeworkLiveMissions() {
+      if (isCurrentlyBusy) return;
+      const dailyEl = document.getElementById('hw-live-daily-missions-list');
+      const weeklyEl = document.getElementById('hw-live-weekly-missions-list');
+      const questsEl = document.getElementById('hw-live-quests-list');
+      const dailyCnt = document.getElementById('hw-live-daily-count');
+      const weeklyCnt = document.getElementById('hw-live-weekly-count');
+      const questsCnt = document.getElementById('hw-live-quests-count');
+
+      try {
+        const [mRes, qRes] = await Promise.all([
+          fetch('/api/missions'),
+          fetch('/api/quests')
+        ]);
+        const mData = await mRes.json();
+        const qData = await qRes.json();
+
+        // 1. Daily Missions
+        const dList = (mData.daily && (mData.daily.Missions || mData.daily.DailyMissions)) || (Array.isArray(mData.daily) ? mData.daily : []);
+        if (dailyCnt) dailyCnt.innerText = `${dList.length}건`;
+        if (dailyEl) {
+          if (dList.length === 0) {
+            dailyEl.innerHTML = `<div style="color: var(--text-muted);">표시할 인게임 일일 미션이 없거나 게임 미연결 상태입니다.</div>`;
+          } else {
+            dailyEl.innerHTML = dList.map(m => {
+              const title = m.Title || m.Name || m.Description || ('일일 미션 #' + (m.MissionId || ''));
+              const cur = m.Progress ?? m.CurrentCount ?? 0;
+              const max = m.TargetCount ?? m.MaxCount ?? 1;
+              const claimed = !!(m.IsRewardClaimed || m.RewardClaimed);
+              const done = claimed || !!(m.IsCompleted || (max > 0 && cur >= max));
+              return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--line-subtle);">
+                <span style="color: ${done ? 'var(--text-muted)' : 'var(--text-bright)'}; ${claimed ? 'text-decoration: line-through;' : ''}">${done ? '■' : '□'} ${escapeHtml(String(title))}</span>
+                <span class="mono-num" style="font-size: 11px; color: ${claimed ? '#34D399' : (done ? '#FBBF24' : 'var(--text-muted)')};">${claimed ? '보상수령✓' : `${cur}/${max}`}</span>
+              </div>`;
+            }).join('');
+          }
+        }
+
+        // 2. Weekly Missions
+        const wObj = mData.weekly || {};
+        const wList = wObj.Missions || wObj.WeeklyMissions || (Array.isArray(wObj) ? wObj : []);
+        const abyssCnt = wObj.AbyssClearRewardClaimCount ?? null;
+        const guildReg = wObj.GuildRegularTask || null;
+        let wHtml = '';
+        if (abyssCnt !== null || guildReg) {
+          wHtml += `<div style="padding: 6px 8px; background: var(--bg-panel); border: 1px solid var(--line-subtle); margin-bottom: 4px; font-size: 11px;">
+            ${abyssCnt !== null ? `<div><span class="sym-prefix">&gt;</span>어비스 주간 클리어 보상: <strong class="mono-num" style="color: #A78BFA;">${abyssCnt}회</strong></div>` : ''}
+            ${guildReg ? `<div><span class="sym-prefix">&gt;</span>길드 정기 협동(던전/심층/사냥터): <strong class="mono-num">${guildReg.Dungeon || 0} / ${guildReg.DeepDungeon || 0} / ${guildReg.HuntingGround || 0}</strong></div>` : ''}
+          </div>`;
+        }
+        if (Array.isArray(wList) && wList.length > 0) {
+          wHtml += wList.map(m => {
+            const title = m.Title || m.Name || m.Description || ('주간 미션 #' + (m.MissionId || ''));
+            const cur = m.Progress ?? m.CurrentCount ?? 0;
+            const max = m.TargetCount ?? m.MaxCount ?? 1;
+            const done = !!(m.IsRewardClaimed || m.IsCompleted || (max > 0 && cur >= max));
+            return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--line-subtle);">
+              <span style="color: ${done ? 'var(--text-muted)' : 'var(--text-bright)'};">${done ? '■' : '□'} ${escapeHtml(String(title))}</span>
+              <span class="mono-num" style="font-size: 11px; color: ${done ? '#34D399' : 'var(--text-muted)'};">${cur}/${max}</span>
+            </div>`;
+          }).join('');
+        }
+        if (weeklyCnt) weeklyCnt.innerText = `${Array.isArray(wList) ? wList.length : 0}건`;
+        if (weeklyEl) weeklyEl.innerHTML = wHtml || `<div style="color: var(--text-muted);">표시할 인게임 주간 미션이 없거나 게임 미연결 상태입니다.</div>`;
+
+        // 3. Active Quests & Dungeon state
+        const qList = (qData && qData.quests) || [];
+        if (questsCnt) questsCnt.innerText = `${qList.length}건`;
+        if (questsEl) {
+          const act = (cachedLiveStatusData && cachedLiveStatusData.activity) || {};
+          const dg = act.Dungeon || {};
+          let qHtml = '';
+          if (dg && dg.Name) {
+            qHtml += `<div style="padding: 6px 8px; background: rgba(96, 165, 250, 0.1); border-left: 3px solid #60A5FA; margin-bottom: 4px;">
+              <strong>[던전/필드 진행]</strong> ${escapeHtml(dg.Name)} <span class="mono-num">(${escapeHtml(dg.State || '진행 중')})</span>
+            </div>`;
+          }
+          if (qList.length > 0) {
+            qHtml += qList.slice(0, 12).map(q => {
+              const qTitle = q.Title || q.Name || '퀘스트';
+              const cat = q.CategoryDisplayName || q.Category || '';
+              const objs = (q.Objectives || []).map(o => `${o.Description || ''} (${o.CurrentCount ?? 0}/${o.TargetCount ?? 1})`).join(', ');
+              return `<div style="padding: 4px 6px; border-bottom: 1px solid var(--line-subtle);">
+                <div style="font-weight: 600; color: var(--text-bright);">${cat ? `<span class="badge" style="font-size: 10px; margin-right: 4px;">${escapeHtml(cat)}</span>` : ''}${escapeHtml(qTitle)}</div>
+                ${objs ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${escapeHtml(objs)}</div>` : ''}
+              </div>`;
+            }).join('');
+          }
+          questsEl.innerHTML = qHtml || `<div style="color: var(--text-muted);">진행 중인 퀘스트 정보가 없습니다.</div>`;
+        }
+      } catch (e) {
+        console.warn('refreshHomeworkLiveMissions error:', e);
+      }
+    }
+
     // Safe Init View (each call isolated in try/catch)
     function initAll() {
+      try { applyTopAppModeView(); } catch(e) { console.error('applyTopAppModeView error:', e); }
       try { updateStickyHeaderOffset(); } catch(e) {}
       try { applyAlteringView(); } catch(e) { console.error('applyAlteringView error:', e); }
       try { applyQuickAlterView(); } catch(e) { console.error('applyQuickAlterView error:', e); }

@@ -15,7 +15,7 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "배포용_Mobi_Living_Supporter")
 VERSION_INFO = os.path.join(BASE_DIR, "file_version_info.txt")
 
 print("=" * 65)
-print("[모비노기 생활 지원도구] 배포 패키지 빌드 시작")
+print("[모비노기 지원도구] 배포 패키지 빌드 시작")
 print("   - 빌드 방식: PyInstaller --onedir (폴더형 독립 패키지)")
 print("   - 장점: 실시간 임시폴더 압축해제(Dropper 행위)가 없어 백신 오탐 대폭 방지 및 초고속 실행")
 print("=" * 65)
@@ -62,11 +62,14 @@ shutil.copytree(DIST_BUILD_DIR, OUTPUT_DIR, dirs_exist_ok=True)
 
 # 3. 한글 이름 실행 파일도 추가 제공 (사용자 편의)
 exe_src = os.path.join(OUTPUT_DIR, "Mobi_Living_Supporter.exe")
-exe_kr = os.path.join(OUTPUT_DIR, "모비노기_생활_지원도구.exe")
+exe_kr = os.path.join(OUTPUT_DIR, "모비노기_지원도구.exe")
+exe_kr_legacy = os.path.join(OUTPUT_DIR, "모비노기_생활_지원도구.exe")
 if os.path.exists(exe_src):
     shutil.copy2(exe_src, exe_kr)
+    shutil.copy2(exe_src, exe_kr_legacy)
     try:
         os.utime(exe_kr, None)
+        os.utime(exe_kr_legacy, None)
         import ctypes
         ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
     except Exception:
@@ -90,15 +93,15 @@ for icon_name in ("app_icon.ico", "app_icon.png"):
 shortcut_bat_content = """@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-echo 바탕화면에 '모비노기 생활 지원도구' 바로가기를 생성합니다...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $target = Join-Path $pwd.Path '모비노기_생활_지원도구.exe'; if (-not (Test-Path $target)) { $target = Join-Path $pwd.Path 'Mobi_Living_Supporter.exe' }; $ico = Join-Path $pwd.Path 'app_icon.ico'; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), '모비노기 생활 지원도구.lnk')); $s.TargetPath = $target; $s.WorkingDirectory = $pwd.Path; if (Test-Path $ico) { $s.IconLocation = \\"$ico,0\\" } else { $s.IconLocation = \\"$target,0\\" }; $s.Description = '모비노기 생활 지원도구'; $s.Save()"
+echo 바탕화면에 '모비노기 지원도구' 바로가기를 생성합니다...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $target = Join-Path $pwd.Path '모비노기_지원도구.exe'; if (-not (Test-Path $target)) { $target = Join-Path $pwd.Path '모비노기_생활_지원도구.exe' }; if (-not (Test-Path $target)) { $target = Join-Path $pwd.Path 'Mobi_Living_Supporter.exe' }; $ico = Join-Path $pwd.Path 'app_icon.ico'; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), '모비노기 지원도구.lnk')); $s.TargetPath = $target; $s.WorkingDirectory = $pwd.Path; if (Test-Path $ico) { $s.IconLocation = \\"$ico,0\\" } else { $s.IconLocation = \\"$target,0\\" }; $s.Description = '모비노기 지원도구'; $s.Save()"
 if %errorlevel% equ 0 (
     echo.
-    echo 바탕화면에 '모비노기 생활 지원도구' 바로가기가 생성되었습니다!
+    echo 바탕화면에 '모비노기 지원도구' 바로가기가 생성되었습니다!
     echo.
 ) else (
     echo.
-    echo 바로가기 생성 중 오류가 발생했습니다. 직접 '모비노기_생활_지원도구.exe'를 우클릭하여 바로가기를 만들어주세요.
+    echo 바로가기 생성 중 오류가 발생했습니다. 직접 '모비노기_지원도구.exe'를 우클릭하여 바로가기를 만들어주세요.
     echo.
 )
 pause
@@ -107,13 +110,13 @@ with open(os.path.join(OUTPUT_DIR, "바탕화면_바로가기_만들기.bat"), "
     f.write(shortcut_bat_content)
 
 # 6. 사용방법 안내 텍스트 파일 작성
-guide_text = """[ 모비노기 생활 지원도구 ]
+guide_text = """[ 모비노기 지원도구 v2.0.0 ]
 
 ■ 실행 방법:
 1. 배포받은 압축(ZIP) 파일을 원하는 폴더에 압축 해제합니다.
-2. 폴더 내의 '모비노기_생활_지원도구.exe'를 더블클릭하여 실행합니다.
+2. 폴더 내의 '모비노기_지원도구.exe' (또는 '모비노기_생활_지원도구.exe')를 더블클릭하여 실행합니다.
    * 바탕화면에 아이콘을 두고 쓰시려면 '바탕화면_바로가기_만들기.bat'을 더블클릭하시면 됩니다!
-3. 브라우저 전용 대시보드가 자동으로 열립니다. 창을 닫으면 프로그램도 안전하게 자동 종료됩니다.
+3. 브라우저 전용 대시보드가 자동으로 열립니다. 상단 헤더에서 [⚒️ 생활 지원] ↔ [📋 숙제 지원] 모드를 자유롭게 전환하며 사용할 수 있으며, 창을 닫으면 프로그램도 안전하게 자동 종료됩니다.
 
 ■ 필수 사전 설정 (중요!):
 1. 마비노기 모바일 PC 클라이언트를 켜고 캐릭터로 접속합니다.
@@ -187,13 +190,13 @@ with open(os.path.join(OUTPUT_DIR, "사용방법.txt"), "w", encoding="utf-8") a
 print("\n배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
-# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v1.4.1.zip)
-VERSION = "v1.4.1"
+# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v2.0.0.zip)
+VERSION = "v2.0.0"
 github_zip_path = os.path.join(BASE_DIR, f"Mobi_Living_Supporter_{VERSION}.zip")
 shutil.copy2(zip_path, github_zip_path)
 
 print("\n" + "=" * 65)
-print("[성공] 모비노기 생활 지원도구 배포 패키지 구성 및 압축 완료!")
+print("[성공] 모비노기 지원도구 배포 패키지 구성 및 압축 완료!")
 print(f"배포 폴더: {OUTPUT_DIR}")
 print(f"압축 파일: {zip_path}")
 print(f"깃허브 릴리즈용: {github_zip_path}")
