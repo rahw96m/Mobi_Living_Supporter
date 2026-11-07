@@ -22,7 +22,7 @@ READ_CACHE_TTL = {
     "get_currencies": 10.0,
     "get_items": 4.0,
     "get_quests": 5.0,
-    "get_my_info": 30.0,
+    "get_my_info": 5.0,
     "get_current_environment": 10.0,
     "get_daily_missions": 15.0,
     "get_weekly_missions": 15.0,
@@ -637,8 +637,8 @@ class MabinogiCLI:
         _, data = self.run_raw("status", timeout=10)
         return data if isinstance(data, dict) else {}
 
-    def get_my_info(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_my_info", timeout=15)
+    def get_my_info(self, bypass_cache: bool = False) -> Dict[str, Any]:
+        _, data = self.run_raw("get_my_info", timeout=15, bypass_cache=bypass_cache)
         return data if isinstance(data, dict) else {}
 
     def get_current_environment(self) -> Dict[str, Any]:

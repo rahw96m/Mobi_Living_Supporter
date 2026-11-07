@@ -91,7 +91,7 @@ shortcut_bat_content = """@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
 echo 바탕화면에 '모비노기 생활 지원도구' 바로가기를 생성합니다...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $target = Join-Path $pwd '모비노기_생활_지원도구.exe'; if (-not (Test-Path $target)) { $target = Join-Path $pwd 'Mobi_Living_Supporter.exe' }; $ico = Join-Path $pwd 'app_icon.ico'; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), '모비노기 생활 지원도구.lnk')); $s.TargetPath = $target; $s.WorkingDirectory = $pwd; if (Test-Path $ico) { $s.IconLocation = \\"$ico,0\\" } else { $s.IconLocation = \\"$target,0\\" }; $s.Description = '모비노기 생활 지원도구'; $s.Save()"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $target = Join-Path $pwd.Path '모비노기_생활_지원도구.exe'; if (-not (Test-Path $target)) { $target = Join-Path $pwd.Path 'Mobi_Living_Supporter.exe' }; $ico = Join-Path $pwd.Path 'app_icon.ico'; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), '모비노기 생활 지원도구.lnk')); $s.TargetPath = $target; $s.WorkingDirectory = $pwd.Path; if (Test-Path $ico) { $s.IconLocation = \\"$ico,0\\" } else { $s.IconLocation = \\"$target,0\\" }; $s.Description = '모비노기 생활 지원도구'; $s.Save()"
 if %errorlevel% equ 0 (
     echo.
     echo 바탕화면에 '모비노기 생활 지원도구' 바로가기가 생성되었습니다!
@@ -187,8 +187,8 @@ with open(os.path.join(OUTPUT_DIR, "사용방법.txt"), "w", encoding="utf-8") a
 print("\n배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
-# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v1.4.0.zip)
-VERSION = "v1.4.0"
+# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v1.4.1.zip)
+VERSION = "v1.4.1"
 github_zip_path = os.path.join(BASE_DIR, f"Mobi_Living_Supporter_{VERSION}.zip")
 shutil.copy2(zip_path, github_zip_path)
 

@@ -5,6 +5,7 @@ import math
 import time
 import json
 import threading
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Set
 
@@ -480,20 +481,46 @@ KNOWN_GATHERABLE_ITEMS: Set[str] = {
 }
 
 # --- 양털 계열 다단계 채집 및 종별 드롭 특성 정의 ---
+# 중요: 인게임 CLI execute_gathering({"displayName": ...})은 몬스터 이름을 직접 지정할 수 없으며,
+# 반드시 채집할 '아이템 이름'을 그대로 전달해야 해당 아이템이 드롭되는 양을 채집합니다.
+# - 주의: 먹구름 양(Lv.25, 상급 양털+/최상급 양털)은 '상급 양털'이나 '양털'을 드롭하지 않습니다!
+#   따라서 '상급 양털' 채집 시 gather_target을 '상급 양털+'로 바꾸거나 먹구름 양으로 폴백하면 상급 양털을 1개도 얻을 수 없습니다.
+# - '상급 양털'은 반드시 gather_target="상급 양털"로 호출해야 합니다 (인게임 엔진이 주변의 곱슬 양/일반 양 중 가까운 대상을 자동 선택).
 WOOL_SPECIES_DATA: Dict[str, Dict[str, Any]] = {
-    "상급 양털+": {
+    "최상급 양털+": {
         "species": "먹구름 양",
+        "tier": 4,
+        "gather_target": "최상급 양털+",
+        "primary_drop": "최상급 양털+",
+        "desc": "먹구름 양 (최상급 양털+/최상급 양털/상급 양털+ 드롭)"
+    },
+    "최상급 양털": {
+        "species": "먹구름 양",
+        "tier": 3,
+        "gather_target": "최상급 양털",
+        "primary_drop": "최상급 양털",
+        "desc": "먹구름 양 (최상급 양털/상급 양털+/두꺼운 양털 드롭, 상급 양털 미드롭)"
+    },
+    "상급 양털+": {
+        "species": "먹구름 양/곱슬 양",
         "tier": 3,
         "gather_target": "상급 양털+",
         "primary_drop": "상급 양털+",
-        "desc": "먹구름 양 (상급 양털+ 다량, 상급 양털/양털 부가 드롭)"
+        "desc": "먹구름 양 및 곱슬 양 (상급 양털+ 다량 드롭)"
+    },
+    "두꺼운 양털": {
+        "species": "곱슬 양/먹구름 양",
+        "tier": 2,
+        "gather_target": "두꺼운 양털",
+        "primary_drop": "두꺼운 양털",
+        "desc": "곱슬 양 및 먹구름 양 (두꺼운 양털 드롭)"
     },
     "상급 양털": {
-        "species": "곱슬 양",
+        "species": "곱슬 양/일반 양",
         "tier": 2,
         "gather_target": "상급 양털",
         "primary_drop": "상급 양털",
-        "desc": "곱슬 양 (상급 양털 다량, 일반 양털 부가 드롭)"
+        "desc": "곱슬 양 및 일반 양 (상급 양털 드롭 - 먹구름 양은 상급 양털을 드롭하지 않음)"
     },
     "양털": {
         "species": "일반 양",
@@ -514,42 +541,66 @@ def is_wool_family(item_name: str) -> bool:
 
 def get_wool_gather_candidates(target_item: str, preference: str = "drop_rate") -> List[Dict[str, Any]]:
     """
-    항상 가장 빨리 필요한 재료를 확보할 수 있는 최적의 양 후보 목록을 반환합니다.
-    - 양털: 일반 양 (양털 최다 드롭) -> 곱슬 양 -> 먹구름 양
-    - 상급 양털: 곱슬 양 (상급 양털 최다 드롭) -> 먹구름 양 -> 일반 양
-    - 상급 양털+: 먹구름 양 (상급 양털+ 최다 드롭) -> 곱슬 양 -> 일반 양
-    (생활 레벨 미달 시 자동으로 하위 양으로 단계적 폴백)
+    목표 양털 아이템을 실제로 드롭하는 정확한 채집 타겟 목록을 반환합니다.
+    - 양털: gather_target='양털' (일반 양)
+    - 상급 양털: gather_target='상급 양털' (곱슬 양/일반 양 — 먹구름 양은 상급 양털을 드롭하지 않으므로 제외!)
+    - 두꺼운 양털: gather_target='두꺼운 양털' (곱슬 양/먹구름 양)
+    - 상급 양털+: gather_target='상급 양털+' (먹구름 양/곱슬 양)
+    - 최상급 양털: gather_target='최상급 양털' (먹구름 양)
     """
-    cloud = WOOL_SPECIES_DATA["상급 양털+"]
-    curly = WOOL_SPECIES_DATA["상급 양털"]
+    cloud_plus = WOOL_SPECIES_DATA["최상급 양털+"]
+    cloud = WOOL_SPECIES_DATA["최상급 양털"]
+    high_plus = WOOL_SPECIES_DATA["상급 양털+"]
+    thick = WOOL_SPECIES_DATA["두꺼운 양털"]
+    high = WOOL_SPECIES_DATA["상급 양털"]
     normal = WOOL_SPECIES_DATA["양털"]
 
     clean = target_item.split("(")[0].strip()
 
     if clean == "양털":
-        return [normal, curly, cloud]
+        return [normal]
     elif clean == "상급 양털":
-        return [curly, cloud, normal]
+        # 먹구름 양(상급 양털+/최상급 양털)은 상급 양털을 드롭하지 않으므로 절대 후보에 넣지 않음
+        return [high, normal]
+    elif clean == "두꺼운 양털":
+        return [thick, high]
     elif clean == "상급 양털+":
-        return [cloud, curly, normal]
+        return [high_plus, high]
+    elif clean == "최상급 양털":
+        return [cloud, high_plus]
+    elif clean == "최상급 양털+":
+        return [cloud_plus, cloud]
     else:
-        return [normal, curly, cloud]
+        return [{
+            "species": clean,
+            "tier": 4,
+            "gather_target": clean,
+            "primary_drop": clean,
+            "desc": clean
+        }]
 
 # --- 벌목 및 통나무/나무 진액 계열 다단계 채집 및 종별 드롭 특성 정의 ---
 WOOD_SPECIES_DATA: Dict[str, Dict[str, Any]] = {
+    "최상급 통나무": {
+        "species": "최상급 나무",
+        "tier": 4,
+        "gather_target": "최상급 통나무",
+        "primary_drop": "최상급 통나무",
+        "desc": "최상급 나무 (최상급 통나무 드롭)"
+    },
     "상급 통나무+": {
         "species": "상급 나무+",
         "tier": 3,
         "gather_target": "상급 통나무+",
         "primary_drop": "상급 통나무+",
-        "desc": "상급 나무+ (상급 통나무+ 다량, 상급/일반 통나무, 진액 동시 드롭)"
+        "desc": "상급 나무+ (상급 통나무+ 다량 드롭)"
     },
     "상급 통나무": {
         "species": "상급 나무",
         "tier": 2,
         "gather_target": "상급 통나무",
         "primary_drop": "상급 통나무",
-        "desc": "상급 나무 (상급 통나무 다량, 일반 통나무, 진액 동시 드롭)"
+        "desc": "상급 나무 (상급 통나무 다량 드롭)"
     },
     "통나무": {
         "species": "굵은 나무",
@@ -590,13 +641,9 @@ def is_non_gatherable_material(item_name: str) -> bool:
 
 def get_wood_gather_candidates(target_item: str, preference: str = "drop_rate") -> List[Dict[str, Any]]:
     """
-    항상 가장 빨리 필요한 재료를 확보할 수 있는 최적의 나무 후보 목록을 반환합니다.
-    - 나무 진액: 뾰족 나무 (진액 최다 드롭 타겟 고정, 일반 통나무 나무로 오인 폴백 방지)
-    - 통나무: 굵은 나무 (통나무 최다 드롭) -> 뾰족 나무 -> 상급 나무 -> 상급 나무+
-    - 상급 통나무: 상급 나무 (상급 통나무 최다 드롭) -> 상급 나무+ -> 굵은 나무 -> 뾰족 나무
-    - 상급 통나무+: 상급 나무+ (상급 통나무+ 최다 드롭) -> 상급 나무 -> 굵은 나무 -> 뾰족 나무
-    (생활 레벨 미달 시 자동으로 하위 나무로 단계적 폴백)
+    목표 목재/진액 아이템을 실제로 드롭하는 정확한 채집 타겟 목록을 반환합니다.
     """
+    top_wood = WOOD_SPECIES_DATA["최상급 통나무"]
     cloud = WOOD_SPECIES_DATA["상급 통나무+"]
     high = WOOD_SPECIES_DATA["상급 통나무"]
     thick = WOOD_SPECIES_DATA["통나무"]    # 굵은 나무
@@ -605,17 +652,23 @@ def get_wood_gather_candidates(target_item: str, preference: str = "drop_rate") 
     clean = target_item.split("(")[0].strip()
 
     if "진액" in clean:
-        # 나무 진액은 '나무 진액' 타겟으로 지정해야만 뾰족 나무 등 진액 노드를 집중 채집합니다.
-        # 일반 통나무나 상급 나무로 폴백하면 나무 진액 대신 통나무만 대량으로 캐게 되므로 폴백 없이 진액 전용 타겟을 유지합니다.
         return [pointy]
     elif clean == "통나무":
-        return [thick, pointy, high, cloud]
+        return [thick, pointy]
     elif clean == "상급 통나무":
-        return [high, cloud, thick, pointy]
+        return [high, thick]
     elif clean == "상급 통나무+":
-        return [cloud, high, thick, pointy]
+        return [cloud, high]
+    elif clean == "최상급 통나무":
+        return [top_wood, cloud]
     else:
-        return [thick, pointy, high, cloud]
+        return [{
+            "species": clean,
+            "tier": 3,
+            "gather_target": clean,
+            "primary_drop": clean,
+            "desc": clean
+        }]
 
 FACILITY_MAP: Dict[str, str] = {
     # 금속
@@ -731,10 +784,13 @@ class DeliveryAlarmStore:
 
         if key in self.alarms:
             existing = self.alarms[key]
-            # If the new work completes later than existing target, extend targetTimestamp
-            if target_ms > existing.get("targetTimestamp", 0) or existing.get("notified", False):
+            # Synchronize targetTimestamp to latest accurate completion
+            if total_remaining_seconds > 0:
                 existing["targetTimestamp"] = target_ms
                 existing["notified"] = False
+            elif existing.get("total_remaining_seconds", 0) != 0:
+                existing["total_remaining_seconds"] = 0
+                existing["targetTimestamp"] = min(existing.get("targetTimestamp", now_ms), now_ms)
             existing["item"] = items_summary
             existing["worksCount"] = works_count
             existing["source"] = source
@@ -836,61 +892,765 @@ class DeliveryAlarmStore:
 
 alarm_store = DeliveryAlarmStore()
 
+def _extract_stat_int(val: Any) -> int:
+    if isinstance(val, dict):
+        val = val.get("Value", 0)
+    try:
+        return int(float(val or 0))
+    except Exception:
+        return 0
+
+
+def extract_character_signature(char_info: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Extracts a comparable character fingerprint from CLI get_my_info() output."""
+    if not char_info or not isinstance(char_info, dict):
+        return None
+    realm = str(char_info.get("RealmName") or "").strip()
+    level = _extract_stat_int(char_info.get("Level"))
+    job = str(
+        char_info.get("EnabledCombatJobDisplayName")
+        or char_info.get("CombatJobDisplayName")
+        or char_info.get("JobDisplayName")
+        or char_info.get("CombatJob")
+        or char_info.get("Job")
+        or ""
+    ).strip()
+    title = str(char_info.get("Title") or "").strip()
+    living_score = _extract_stat_int(char_info.get("LivingScore"))
+    combat_score = _extract_stat_int(char_info.get("CombatScore"))
+    attractiveness_score = _extract_stat_int(char_info.get("AttractivenessScore"))
+    if level <= 0 and not job and not realm:
+        return None
+    return {
+        "realm": realm,
+        "level": level,
+        "job": job,
+        "title": title,
+        "living_score": living_score,
+        "combat_score": combat_score,
+        "attractiveness_score": attractiveness_score,
+    }
+
+
+def format_signature_label(sig: Optional[Dict[str, Any]]) -> str:
+    if not sig or not isinstance(sig, dict):
+        return "인게임 미연동"
+    realm = sig.get("realm") or ""
+    job = sig.get("job") or "캐릭터"
+    level = int(sig.get("level") or 0)
+    living = int(sig.get("living_score") or 0)
+    parts = []
+    if realm:
+        parts.append(realm)
+    parts.append(f"{job} Lv.{level}" if level > 0 else job)
+    if living > 0:
+        parts.append(f"생활력 {living:,}")
+    return " · ".join(parts)
+
+
+def is_same_character_signature(sig_a: Optional[Dict[str, Any]], sig_b: Optional[Dict[str, Any]]) -> bool:
+    """Checks whether two character signatures represent the same character."""
+    if not sig_a or not sig_b or not isinstance(sig_a, dict) or not isinstance(sig_b, dict):
+        return False
+    realm_a = str(sig_a.get("realm") or "").strip()
+    realm_b = str(sig_b.get("realm") or "").strip()
+    if realm_a and realm_b and realm_a != realm_b:
+        return False
+
+    lvl_a = int(sig_a.get("level") or 0)
+    lvl_b = int(sig_b.get("level") or 0)
+    if lvl_a > 0 and lvl_b > 0 and lvl_a != lvl_b:
+        return False
+
+    job_a = str(sig_a.get("job") or "").strip()
+    job_b = str(sig_b.get("job") or "").strip()
+    ls_a = int(sig_a.get("living_score") or 0)
+    ls_b = int(sig_b.get("living_score") or 0)
+    att_a = int(sig_a.get("attractiveness_score") or 0)
+    att_b = int(sig_b.get("attractiveness_score") or 0)
+
+    # Same job + same level + close living score
+    if job_a and job_b and job_a == job_b:
+        if ls_a > 0 and ls_b > 0:
+            return abs(ls_a - ls_b) <= 500
+        return True
+
+    # If the user changed combat class on the same character, living_score + attractiveness_score + level stay identical
+    if ls_a > 0 and ls_b > 0 and abs(ls_a - ls_b) <= 150:
+        if att_a > 0 and att_b > 0 and abs(att_a - att_b) <= 50:
+            return True
+
+    return False
+
+
+KST_TZ = timezone(timedelta(hours=9))
+
+
+def get_current_week_key(now_dt: Optional[datetime] = None) -> str:
+    """
+    Returns the Monday date string ('YYYY-MM-DD') for the current weekly cycle,
+    where each weekly cycle starts on Monday at 06:00 AM KST (UTC+9).
+    """
+    if now_dt is None:
+        now_kst = datetime.now(KST_TZ)
+    elif now_dt.tzinfo is None:
+        now_kst = now_dt.replace(tzinfo=KST_TZ)
+    else:
+        now_kst = now_dt.astimezone(KST_TZ)
+    shifted = now_kst - timedelta(hours=6)
+    monday = shifted - timedelta(days=shifted.weekday())
+    return monday.strftime("%Y-%m-%d")
+
+
 class RegisteredDeliveryStore:
-    """Manages persistent weekly delivery target items registered by the user."""
-    def __init__(self, filepath: str = DELIVERY_TARGETS_FILE):
+    """Manages persistent weekly delivery target items registered by the user (supports multi-character profiles)."""
+    def __init__(self, filepath: str = DELIVERY_TARGETS_FILE, multi_character: bool = True):
         self.filepath = filepath
-        self.targets: Dict[str, Dict[str, Any]] = {}
+        self.multi_character = multi_character
+        self._flat_targets: Dict[str, Dict[str, Any]] = {}
+        self.characters: Dict[str, Dict[str, Any]] = {}
+        self.active_character_id: str = "char_1"
+        self.auto_switch_character: bool = True
+        self.last_ingame_signature: Optional[Dict[str, Any]] = None
+        self.matched_ingame_character_id: Optional[str] = None
         self._lock = threading.RLock()
         self.load()
 
+    @property
+    def targets(self) -> Dict[str, Dict[str, Any]]:
+        with self._lock:
+            if not self.multi_character:
+                return self._flat_targets
+            self._ensure_active_character_locked()
+            return self.characters[self.active_character_id]["targets"]
+
+    @targets.setter
+    def targets(self, value: Dict[str, Dict[str, Any]]):
+        with self._lock:
+            if not self.multi_character:
+                self._flat_targets = value if isinstance(value, dict) else {}
+            else:
+                self._ensure_active_character_locked()
+                self.characters[self.active_character_id]["targets"] = value if isinstance(value, dict) else {}
+
+    def _check_weekly_reset_locked(self) -> bool:
+        """
+        Resets weekly_delivered completion marks across all characters if the Monday 06:00 AM KST
+        boundary has passed (i.e. delivered_week_key != get_current_week_key()).
+        """
+        if not self.multi_character or not self.characters:
+            return False
+        cur_week = get_current_week_key()
+        changed = False
+        for cinfo in self.characters.values():
+            if cinfo.get("weekly_delivered"):
+                if cinfo.get("delivered_week_key") != cur_week:
+                    cinfo["weekly_delivered"] = False
+                    cinfo["delivered_week_key"] = None
+                    cinfo["delivered_at"] = None
+                    changed = True
+        return changed
+
+    def _ensure_active_character_locked(self):
+        if not self.characters:
+            self.characters["char_1"] = {
+                "id": "char_1",
+                "name": "캐릭터 1",
+                "signature": None,
+                "weekly_delivered": False,
+                "delivered_week_key": None,
+                "delivered_at": None,
+                "targets": self._build_default_18_targets(),
+                "created_at": int(time.time() * 1000),
+            }
+            self.active_character_id = "char_1"
+        elif self.active_character_id not in self.characters:
+            self.active_character_id = next(iter(self.characters.keys()))
+        if self._check_weekly_reset_locked():
+            try:
+                payload = {
+                    "version": 2,
+                    "active_character_id": self.active_character_id,
+                    "auto_switch_character": self.auto_switch_character,
+                    "characters": self.characters,
+                }
+                with open(self.filepath, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+    def _build_default_18_targets(self) -> Dict[str, Dict[str, Any]]:
+        """Loads the default 18 weekly delivery items from bundled delivery_presets.json."""
+        result: Dict[str, Dict[str, Any]] = {}
+        bundled_preset = os.path.join(SCRIPT_DIR, "delivery_presets.json")
+        if os.path.exists(bundled_preset):
+            try:
+                with open(bundled_preset, "r", encoding="utf-8") as f:
+                    presets = json.load(f)
+                    preset_data = presets.get("주간 납품") or (next(iter(presets.values())) if presets else None)
+                    if preset_data and "items" in preset_data:
+                        now_ms = int(time.time() * 1000)
+                        for item in preset_data["items"]:
+                            name = item.get("item_name")
+                            goal = int(item.get("goal", 1))
+                            qtitle = item.get("quest_title", f"{name} 구하기")
+                            if name:
+                                result[name] = {
+                                    "quest_title": qtitle,
+                                    "item_name": name,
+                                    "goal": goal,
+                                    "current": 0,
+                                    "needed": goal,
+                                    "is_completed": False,
+                                    "override_current": None,
+                                    "updated_at": now_ms,
+                                }
+            except Exception:
+                pass
+        return result
+
     def load(self):
         with self._lock:
+            if not self.multi_character:
+                loaded = False
+                if os.path.exists(self.filepath):
+                    try:
+                        with open(self.filepath, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            if isinstance(data, dict):
+                                self._flat_targets = data
+                                loaded = True
+                    except Exception:
+                        self._flat_targets = {}
+                if not loaded:
+                    self._flat_targets = {}
+                return
+
             loaded = False
             if os.path.exists(self.filepath):
                 try:
                     with open(self.filepath, "r", encoding="utf-8") as f:
-                        self.targets = json.load(f)
-                        if self.targets and isinstance(self.targets, dict):
+                        raw = json.load(f)
+                    if isinstance(raw, dict):
+                        if "characters" in raw and isinstance(raw.get("characters"), dict) and raw["characters"]:
+                            # v2 multi-character schema
+                            self.characters = {}
+                            for cid, cinfo in raw["characters"].items():
+                                if not isinstance(cinfo, dict):
+                                    continue
+                                t_dict = cinfo.get("targets")
+                                if not isinstance(t_dict, dict):
+                                    t_dict = {}
+                                self.characters[cid] = {
+                                    "id": cid,
+                                    "name": str(cinfo.get("name") or cid).strip() or cid,
+                                    "signature": cinfo.get("signature") if isinstance(cinfo.get("signature"), dict) else None,
+                                    "weekly_delivered": bool(cinfo.get("weekly_delivered", False)),
+                                    "delivered_week_key": cinfo.get("delivered_week_key"),
+                                    "delivered_at": cinfo.get("delivered_at"),
+                                    "targets": t_dict,
+                                    "created_at": int(cinfo.get("created_at") or int(time.time() * 1000)),
+                                }
+                            self.active_character_id = str(raw.get("active_character_id") or "")
+                            self.auto_switch_character = bool(raw.get("auto_switch_character", True))
+                            self._ensure_active_character_locked()
                             loaded = True
-                except Exception:
-                    self.targets = {}
-            if not loaded or not self.targets:
-                # 번들된 delivery_presets.json에서 기본 18개 주간 납품 목록을 자동 등록
-                bundled_preset = os.path.join(SCRIPT_DIR, "delivery_presets.json")
-                if os.path.exists(bundled_preset):
-                    try:
-                        with open(bundled_preset, "r", encoding="utf-8") as f:
-                            presets = json.load(f)
-                            preset_data = presets.get("주간 납품") or (next(iter(presets.values())) if presets else None)
-                            if preset_data and "items" in preset_data:
-                                self.targets = {}
-                                for item in preset_data["items"]:
-                                    name = item.get("item_name")
-                                    goal = int(item.get("goal", 1))
-                                    qtitle = item.get("quest_title", f"{name} 구하기")
-                                    if name:
-                                        self.targets[name] = {
-                                            "quest_title": qtitle,
-                                            "item_name": name,
-                                            "goal": goal,
-                                            "current": 0,
-                                            "needed": goal,
-                                            "is_completed": False,
-                                            "override_current": None,
-                                            "updated_at": int(time.time() * 1000)
-                                        }
+                        elif raw:
+                            # Migrate v1 flat targets dict -> v2 under char_1
+                            migrated_targets = {}
+                            for k, v in raw.items():
+                                if isinstance(v, dict) and "item_name" in v:
+                                    migrated_targets[k] = v
+                            if migrated_targets:
+                                self.characters = {
+                                    "char_1": {
+                                        "id": "char_1",
+                                        "name": "캐릭터 1",
+                                        "signature": None,
+                                        "weekly_delivered": False,
+                                        "delivered_week_key": None,
+                                        "delivered_at": None,
+                                        "targets": migrated_targets,
+                                        "created_at": int(time.time() * 1000),
+                                    }
+                                }
+                                self.active_character_id = "char_1"
+                                self.auto_switch_character = True
+                                loaded = True
                                 self.save()
-                    except Exception:
-                        pass
+                except Exception:
+                    self.characters = {}
+
+            if not loaded or not self.characters:
+                self.characters = {
+                    "char_1": {
+                        "id": "char_1",
+                        "name": "캐릭터 1",
+                        "signature": None,
+                        "weekly_delivered": False,
+                        "delivered_week_key": None,
+                        "delivered_at": None,
+                        "targets": self._build_default_18_targets(),
+                        "created_at": int(time.time() * 1000),
+                    }
+                }
+                self.active_character_id = "char_1"
+                self.auto_switch_character = True
+                self.save()
 
     def save(self):
         with self._lock:
             try:
-                with open(self.filepath, "w", encoding="utf-8") as f:
-                    json.dump(self.targets, f, ensure_ascii=False, indent=2)
+                if not self.multi_character:
+                    with open(self.filepath, "w", encoding="utf-8") as f:
+                        json.dump(self._flat_targets, f, ensure_ascii=False, indent=2)
+                else:
+                    self._ensure_active_character_locked()
+                    payload = {
+                        "version": 2,
+                        "active_character_id": self.active_character_id,
+                        "auto_switch_character": self.auto_switch_character,
+                        "characters": self.characters,
+                    }
+                    with open(self.filepath, "w", encoding="utf-8") as f:
+                        json.dump(payload, f, ensure_ascii=False, indent=2)
             except Exception:
                 pass
+
+    # --- Multi-Character Profile Management ---
+
+    def _find_matching_character_id_locked(self, sig: Optional[Dict[str, Any]]) -> Optional[str]:
+        if not sig:
+            return None
+        for cid, cinfo in self.characters.items():
+            csig = cinfo.get("signature")
+            if csig and is_same_character_signature(csig, sig):
+                return cid
+        return None
+
+    def is_active_character_ingame(self) -> bool:
+        """
+        Returns True when the currently selected character tab corresponds to the
+        logged-in character in-game (or when no in-game mismatch exists).
+        Returns False when viewing another character's tab so its stored delivery counts
+        are not overwritten by the logged-in character's bag inventory.
+        """
+        with self._lock:
+            if not self.multi_character:
+                return True
+            self._ensure_active_character_locked()
+            if not self.last_ingame_signature:
+                return True
+            if self.matched_ingame_character_id:
+                return self.active_character_id == self.matched_ingame_character_id
+            active_char = self.characters.get(self.active_character_id, {})
+            # If the current in-game character is unlinked, allow live updates only if active tab is also unlinked
+            return active_char.get("signature") is None
+
+    def on_ingame_character_seen(self, char_info: Optional[Dict[str, Any]], allow_auto_switch: bool = True) -> Optional[str]:
+        """
+        Called when CLI get_my_info() returns character data.
+        Updates matched_ingame_character_id, auto-links if only 1 unlinked character exists,
+        and auto-switches active_character_id if the in-game character changed.
+        Returns the newly switched character ID if an auto-switch happened, else None.
+        """
+        with self._lock:
+            if not self.multi_character:
+                return None
+            sig = extract_character_signature(char_info)
+            if not sig:
+                return None
+            self._ensure_active_character_locked()
+
+            prev_sig = self.last_ingame_signature
+            ingame_changed = (prev_sig is None) or (not is_same_character_signature(prev_sig, sig))
+            self.last_ingame_signature = sig
+
+            matched_id = self._find_matching_character_id_locked(sig)
+
+            # Auto-bind initial single character if it has no signature yet
+            if matched_id is None and len(self.characters) == 1:
+                only_cid = next(iter(self.characters.keys()))
+                if self.characters[only_cid].get("signature") is None:
+                    self.characters[only_cid]["signature"] = sig
+                    if self.characters[only_cid].get("name") == "캐릭터 1" and sig.get("job"):
+                        self.characters[only_cid]["name"] = f"캐릭터 1 ({sig['job']})"
+                    matched_id = only_cid
+                    self.save()
+
+            if matched_id and matched_id in self.characters:
+                # Keep signature stats fresh (e.g. slight living_score growth)
+                if self.characters[matched_id].get("signature") != sig:
+                    self.characters[matched_id]["signature"] = sig
+                    self.save()
+
+            self.matched_ingame_character_id = matched_id
+
+            if allow_auto_switch and self.auto_switch_character and matched_id and ingame_changed:
+                if self.active_character_id != matched_id:
+                    self.active_character_id = matched_id
+                    self.save()
+                    return matched_id
+            return None
+
+    def get_characters_summary(self) -> Dict[str, Any]:
+        with self._lock:
+            self._ensure_active_character_locked()
+            cur_week = get_current_week_key()
+            char_list = []
+            total_chars = len(self.characters)
+            completed_chars = 0
+            weekly_delivered_chars = 0
+            overall_total_items = 0
+            overall_completed_items = 0
+
+            for cid, cinfo in self.characters.items():
+                t_map = cinfo.get("targets") or {}
+                total_cnt = len(t_map)
+                comp_cnt = 0
+                for t in t_map.values():
+                    goal = int(t.get("goal", 1))
+                    cur = int(t.get("current", 0))
+                    if t.get("is_completed") or cur >= goal:
+                        comp_cnt += 1
+                is_all_done = (total_cnt > 0 and comp_cnt >= total_cnt)
+                if is_all_done:
+                    completed_chars += 1
+                is_weekly_delivered = bool(cinfo.get("weekly_delivered", False)) and (cinfo.get("delivered_week_key") == cur_week)
+                if is_weekly_delivered:
+                    weekly_delivered_chars += 1
+                overall_total_items += total_cnt
+                overall_completed_items += comp_cnt
+
+                sig = cinfo.get("signature")
+                char_list.append({
+                    "id": cid,
+                    "name": cinfo.get("name", cid),
+                    "signature": sig,
+                    "signature_label": format_signature_label(sig),
+                    "is_active": (cid == self.active_character_id),
+                    "is_ingame": (cid == self.matched_ingame_character_id),
+                    "completed_count": comp_cnt,
+                    "total_count": total_cnt,
+                    "is_all_completed": is_all_done,
+                    "weekly_delivered": is_weekly_delivered,
+                    "delivered_week_key": cinfo.get("delivered_week_key"),
+                    "delivered_at": cinfo.get("delivered_at"),
+                })
+
+            active_char = self.characters.get(self.active_character_id, {})
+            active_delivered = bool(active_char.get("weekly_delivered", False)) and (active_char.get("delivered_week_key") == cur_week)
+            return {
+                "active_character_id": self.active_character_id,
+                "active_character_name": active_char.get("name", "캐릭터 1"),
+                "active_weekly_delivered": active_delivered,
+                "current_week_key": cur_week,
+                "auto_switch_character": self.auto_switch_character,
+                "matched_ingame_character_id": self.matched_ingame_character_id,
+                "is_active_ingame": self.is_active_character_ingame(),
+                "last_ingame_signature": self.last_ingame_signature,
+                "last_ingame_label": format_signature_label(self.last_ingame_signature) if self.last_ingame_signature else "",
+                "characters": char_list,
+                "overall": {
+                    "total_characters": total_chars,
+                    "completed_characters": completed_chars,
+                    "weekly_delivered_characters": weekly_delivered_chars,
+                    "total_items": overall_total_items,
+                    "completed_items": overall_completed_items,
+                },
+            }
+
+    def select_character(self, char_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            self._ensure_active_character_locked()
+            if char_id not in self.characters:
+                return None
+            self.active_character_id = char_id
+            self.save()
+            return self.characters[char_id]
+
+    def add_character(
+        self,
+        name: Optional[str] = None,
+        init_mode: str = "default_18",
+        link_current_ingame: bool = False,
+        ingame_char_info: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        with self._lock:
+            self._ensure_active_character_locked()
+            idx = len(self.characters) + 1
+            while f"char_{idx}" in self.characters:
+                idx += 1
+            new_id = f"char_{idx}"
+
+            sig = None
+            if link_current_ingame:
+                sig = extract_character_signature(ingame_char_info) or self.last_ingame_signature
+                if sig:
+                    for c in self.characters.values():
+                        if c.get("signature") and is_same_character_signature(c.get("signature"), sig):
+                            c["signature"] = None
+
+            clean_name = (name or "").strip()
+            if not clean_name:
+                if sig and sig.get("job"):
+                    clean_name = f"캐릭터 {idx} ({sig['job']})"
+                else:
+                    clean_name = f"캐릭터 {idx}"
+
+            cur_active_targets = self.characters.get(self.active_character_id, {}).get("targets", {})
+            if init_mode == "copy_current":
+                now_ms = int(time.time() * 1000)
+                new_targets = {}
+                for k, v in cur_active_targets.items():
+                    goal = int(v.get("goal", 1))
+                    new_targets[k] = {
+                        "quest_title": v.get("quest_title", "주간 납품"),
+                        "item_name": v.get("item_name", k),
+                        "goal": goal,
+                        "current": 0,
+                        "needed": goal,
+                        "is_completed": False,
+                        "override_current": None if link_current_ingame else 0,
+                        "updated_at": now_ms,
+                    }
+            elif init_mode == "empty":
+                new_targets = {}
+            else:
+                new_targets = self._build_default_18_targets()
+                # Preserve the user's preferred card ordering if customized, while keeping counts independent (0)
+                if cur_active_targets:
+                    ordered_new: Dict[str, Dict[str, Any]] = {}
+                    for k in cur_active_targets.keys():
+                        if k in new_targets:
+                            ordered_new[k] = new_targets[k]
+                    for k, v in new_targets.items():
+                        if k not in ordered_new:
+                            ordered_new[k] = v
+                    new_targets = ordered_new
+                if not link_current_ingame:
+                    for t in new_targets.values():
+                        t["override_current"] = 0
+
+            self.characters[new_id] = {
+                "id": new_id,
+                "name": clean_name,
+                "signature": sig,
+                "weekly_delivered": False,
+                "delivered_week_key": None,
+                "delivered_at": None,
+                "targets": new_targets,
+                "created_at": int(time.time() * 1000),
+            }
+            self.active_character_id = new_id
+            if sig:
+                self.matched_ingame_character_id = new_id
+            self.save()
+            return self.characters[new_id]
+
+    def rename_character(self, char_id: str, new_name: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            self._ensure_active_character_locked()
+            target_id = char_id or self.active_character_id
+            if target_id not in self.characters:
+                return None
+            clean = (new_name or "").strip()
+            if not clean:
+                return None
+            self.characters[target_id]["name"] = clean
+            self.save()
+            return self.characters[target_id]
+
+    def delete_character(self, char_id: str) -> Tuple[bool, str]:
+        with self._lock:
+            self._ensure_active_character_locked()
+            target_id = char_id or self.active_character_id
+            if target_id not in self.characters:
+                return False, "해당 캐릭터 프로필을 찾을 수 없습니다."
+            if len(self.characters) <= 1:
+                return False, "최소 1개의 캐릭터 프로필은 유지되어야 합니다."
+            deleted_name = self.characters[target_id].get("name", target_id)
+            del self.characters[target_id]
+            if self.matched_ingame_character_id == target_id:
+                self.matched_ingame_character_id = None
+            self._ensure_active_character_locked()
+            self.save()
+            return True, f"'{deleted_name}' 캐릭터 프로필이 삭제되었습니다."
+
+    def link_character_to_ingame(self, char_id: Optional[str] = None, char_info: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
+        with self._lock:
+            self._ensure_active_character_locked()
+            target_id = char_id or self.active_character_id
+            if target_id not in self.characters:
+                return False, "연동할 캐릭터 탭을 찾을 수 없습니다."
+            sig = extract_character_signature(char_info) or self.last_ingame_signature
+            if not sig:
+                return False, "현재 인게임 캐릭터 정보를 가져올 수 없습니다. 게임에 접속 중인지 확인해주세요."
+
+            # Unlink from any other character that had the same signature
+            for cid, cinfo in self.characters.items():
+                if cid != target_id and cinfo.get("signature") and is_same_character_signature(cinfo.get("signature"), sig):
+                    cinfo["signature"] = None
+
+            self.characters[target_id]["signature"] = sig
+            self.last_ingame_signature = sig
+            self.matched_ingame_character_id = target_id
+            # Clear initial 0 overrides if any so live inventory immediately syncs
+            for t in self.characters[target_id].get("targets", {}).values():
+                if t.get("override_current") == 0 and int(t.get("current", 0)) == 0:
+                    t["override_current"] = None
+            self.save()
+            label = format_signature_label(sig)
+            return True, f"'{self.characters[target_id]['name']}' 프로필이 현재 접속 중인 캐릭터({label})와 연동되었습니다."
+
+    def set_auto_switch(self, enabled: bool) -> bool:
+        with self._lock:
+            self.auto_switch_character = bool(enabled)
+            self.save()
+            return self.auto_switch_character
+
+    def complete_character_delivery(
+        self,
+        char_id: Optional[str] = None,
+    ) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Marks the target character's weekly delivery as completed for the current Monday 06:00 AM KST week,
+        and deducts each target item's goal quantity from that character's current owned quantity (max(0, current - goal)).
+        """
+        with self._lock:
+            self._ensure_active_character_locked()
+            target_id = char_id or self.active_character_id
+            if target_id not in self.characters:
+                return False, "납품 완료 처리할 캐릭터 프로필을 찾을 수 없습니다.", {}
+
+            cinfo = self.characters[target_id]
+            char_name = cinfo.get("name", target_id)
+            t_map = cinfo.get("targets") or {}
+            now_ms = int(time.time() * 1000)
+            cur_week = get_current_week_key()
+
+            deducted_items = []
+            for item_key, t in t_map.items():
+                item_name = t.get("item_name", item_key)
+                goal = max(1, int(t.get("goal", 1)))
+                old_cur = max(0, int(t.get("current", 0)))
+                new_cur = max(0, old_cur - goal)
+                deducted_amt = old_cur - new_cur
+
+                t["current"] = new_cur
+                t["needed"] = max(0, goal - new_cur)
+                t["is_completed"] = (new_cur >= goal)
+                t["override_current"] = new_cur
+                t["inventory_count"] = new_cur
+                t["updated_at"] = now_ms
+                t_map[item_key] = t
+
+                deducted_items.append({
+                    "item_name": item_name,
+                    "goal": goal,
+                    "before": old_cur,
+                    "deducted": deducted_amt,
+                    "after": new_cur,
+                })
+
+            cinfo["weekly_delivered"] = True
+            cinfo["delivered_week_key"] = cur_week
+            cinfo["delivered_at"] = now_ms
+            self.save()
+
+            msg = (
+                f"[{char_name}] 주간 납품 완료 처리됨! "
+                f"(총 {len(deducted_items)}개 품목 목표 수량만큼 보유 수량 차감 완료 · 월요일 오전 6시 초기화)"
+            )
+            return True, msg, {
+                "character_id": target_id,
+                "character_name": char_name,
+                "week_key": cur_week,
+                "deducted_count": len(deducted_items),
+                "deducted_items": deducted_items,
+            }
+
+    def set_character_weekly_delivered(self, char_id: Optional[str] = None, delivered: bool = False) -> Tuple[bool, str]:
+        """Sets or clears the weekly_delivered badge on a character without modifying item counts."""
+        with self._lock:
+            self._ensure_active_character_locked()
+            target_id = char_id or self.active_character_id
+            if target_id not in self.characters:
+                return False, "해당 캐릭터 프로필을 찾을 수 없습니다."
+            cinfo = self.characters[target_id]
+            char_name = cinfo.get("name", target_id)
+            if delivered:
+                cinfo["weekly_delivered"] = True
+                cinfo["delivered_week_key"] = get_current_week_key()
+                cinfo["delivered_at"] = int(time.time() * 1000)
+                msg = f"'{char_name}' 캐릭터에 주간 납품 완료 마크를 표시했습니다."
+            else:
+                cinfo["weekly_delivered"] = False
+                cinfo["delivered_week_key"] = None
+                cinfo["delivered_at"] = None
+                msg = f"'{char_name}' 캐릭터의 주간 납품 완료 마크가 해제되었습니다."
+            self.save()
+            return True, msg
+
+    def reorder_targets(self, ordered_names: List[str], sync_order_all_characters: bool = True) -> List[Dict[str, Any]]:
+        """Reorders the registered targets dictionary according to ordered_names."""
+        with self._lock:
+            clean_order = [str(n).strip() for n in ordered_names if str(n).strip()]
+            if not clean_order:
+                return self.get_all()
+
+            def _apply_order(t_dict: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+                new_dict: Dict[str, Dict[str, Any]] = {}
+                key_lookup = {k.strip(): k for k in t_dict.keys()}
+                for name in clean_order:
+                    real_k = key_lookup.get(name)
+                    if real_k is not None and real_k not in new_dict:
+                        new_dict[real_k] = t_dict[real_k]
+                for k, v in t_dict.items():
+                    if k not in new_dict:
+                        new_dict[k] = v
+                return new_dict
+
+            if not self.multi_character:
+                self._flat_targets = _apply_order(self._flat_targets)
+            else:
+                self._ensure_active_character_locked()
+                if sync_order_all_characters:
+                    for cinfo in self.characters.values():
+                        if isinstance(cinfo.get("targets"), dict):
+                            cinfo["targets"] = _apply_order(cinfo["targets"])
+                else:
+                    cinfo = self.characters[self.active_character_id]
+                    cinfo["targets"] = _apply_order(cinfo.get("targets", {}))
+            self.save()
+            return self.get_all()
+
+    def move_target_position(
+        self,
+        from_item: str,
+        to_item: str,
+        mode: str = "swap",
+        sync_order_all_characters: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Swaps or moves `from_item` relative to `to_item` in the targets list.
+        mode='swap': exchanges the exact positions of from_item and to_item.
+        mode='move': moves from_item to the index of to_item.
+        """
+        with self._lock:
+            keys = [k.strip() for k in self.targets.keys()]
+            f_clean = from_item.strip()
+            t_clean = to_item.strip()
+            if f_clean not in keys or t_clean not in keys or f_clean == t_clean:
+                return self.get_all()
+            idx_f = keys.index(f_clean)
+            idx_t = keys.index(t_clean)
+            if mode == "swap":
+                keys[idx_f], keys[idx_t] = keys[idx_t], keys[idx_f]
+            else:
+                item = keys.pop(idx_f)
+                keys.insert(idx_t, item)
+            return self.reorder_targets(keys, sync_order_all_characters=sync_order_all_characters)
 
     def add_or_update(self, item_name: str, goal: int, current: int = 0, quest_title: str = "주간 납품") -> Dict[str, Any]:
         with self._lock:
@@ -984,7 +1744,7 @@ CUSTOM_TARGETS_FILE = get_user_data_path("custom_targets.json", SCRIPT_DIR)
 class CustomTargetStore(RegisteredDeliveryStore):
     """Manages user-specified custom craft targets (개별 아이템 지정 제작 목표 관리)."""
     def __init__(self, filepath: str = CUSTOM_TARGETS_FILE):
-        super().__init__(filepath=filepath)
+        super().__init__(filepath=filepath, multi_character=False)
 
 custom_target_store = CustomTargetStore()
 
@@ -1879,7 +2639,8 @@ class DeliveryManager:
         Never resurrects targets deleted by the user while status polling was in progress.
         """
         targets = delivery_target_store.get_all()
-        active_delivery_tasks = {t.item_name: t for t in self.detect_delivery_quests()}
+        is_ingame_char = delivery_target_store.is_active_character_ingame()
+        active_delivery_tasks = {t.item_name: t for t in self.detect_delivery_quests()} if is_ingame_char else {}
         dirty = False
 
         for t in targets:
@@ -1887,25 +2648,41 @@ class DeliveryManager:
             goal = int(t.get("goal", 1))
             prev_current = int(t.get("current", 0))
 
-            breakdown = self.cli.get_item_location_breakdown(item_name)
-            inv_count = breakdown["inventory"]
+            if is_ingame_char:
+                breakdown = self.cli.get_item_location_breakdown(item_name)
+                inv_count = breakdown["inventory"]
 
-            # Check active quest tracker
-            quest_detected = 0
-            if item_name in active_delivery_tasks:
-                quest_detected = active_delivery_tasks[item_name].current
+                # Check active quest tracker
+                quest_detected = 0
+                if item_name in active_delivery_tasks:
+                    quest_detected = active_delivery_tasks[item_name].current
 
-            # Direct delivery target: count ONLY inventory (bag), EXCLUDE warehouse / storage!
-            if t.get("override_current") is not None:
-                current = int(t["override_current"])
-            elif inv_count > 0:
-                current = inv_count
-            elif quest_detected > 0:
-                current = quest_detected
-            elif prev_current > 0 and is_equipment_item(item_name):
-                current = prev_current
+                # Direct delivery target: count ONLY inventory (bag), EXCLUDE warehouse / storage!
+                if t.get("override_current") is not None:
+                    current = int(t["override_current"])
+                elif inv_count > 0:
+                    current = inv_count
+                elif quest_detected > 0:
+                    current = quest_detected
+                elif prev_current > 0 and is_equipment_item(item_name):
+                    current = prev_current
+                else:
+                    current = inv_count
+
+                t["inventory_count"] = max(inv_count, current if (is_equipment_item(item_name) or breakdown["total"] == 0) else 0)
+                t["character_storage_count"] = breakdown["character_storage"]
+                t["account_storage_count"] = breakdown["account_storage"]
+                t["storage_count"] = breakdown["storage_total"]
             else:
-                current = inv_count
+                # Viewing an offline character tab: do NOT overwrite its bag progress with the logged-in character's bag
+                if t.get("override_current") is not None:
+                    current = int(t["override_current"])
+                else:
+                    current = prev_current
+                t["inventory_count"] = int(t.get("inventory_count", current))
+                t["character_storage_count"] = int(t.get("character_storage_count", 0))
+                t["account_storage_count"] = int(t.get("account_storage_count", 0))
+                t["storage_count"] = int(t.get("storage_count", 0))
 
             needed = max(0, goal - current)
             is_completed = (current >= goal)
@@ -1916,10 +2693,6 @@ class DeliveryManager:
             t["current"] = current
             t["needed"] = needed
             t["is_completed"] = is_completed
-            t["inventory_count"] = max(inv_count, current if (is_equipment_item(item_name) or breakdown["total"] == 0) else 0)
-            t["character_storage_count"] = breakdown["character_storage"]
-            t["account_storage_count"] = breakdown["account_storage"]
-            t["storage_count"] = breakdown["storage_total"]
 
             rec = self.get_recipe_ingredients(item_name)
             t["recipe"] = rec
@@ -2327,7 +3100,7 @@ class DeliveryManager:
                 callback
             )
             if len(candidate_list) > 1:
-                cand_names = " -> ".join([c["species"] for c in candidate_list])
+                cand_names = " -> ".join(dict.fromkeys(c["species"] for c in candidate_list))
                 self.log(
                     f"[단계적 폴백 활성화] 생활 레벨 및 채집 가능 여부에 따라 단계적 순차 채집: {cand_names}",
                     "info",
@@ -2360,7 +3133,7 @@ class DeliveryManager:
                 callback
             )
             if len(candidate_list) > 1:
-                cand_names = " -> ".join([c["species"] for c in candidate_list])
+                cand_names = " -> ".join(dict.fromkeys(c["species"] for c in candidate_list))
                 self.log(
                     f"[단계적 폴백 활성화] 생활 레벨 및 채집 가능 여부에 따라 단계적 순차 채집: {cand_names}",
                     "info",
@@ -2696,11 +3469,16 @@ class DeliveryManager:
         }
 
 
-    def collect_completed_altering_works(self, preferred_facility: Optional[str] = None, callback: Optional[LogCallback] = None) -> List[str]:
+    def collect_completed_altering_works(
+        self, 
+        preferred_facility: Optional[str] = None, 
+        callback: Optional[LogCallback] = None,
+        only_fully_completed: bool = False
+    ) -> List[str]:
         """
-        Checks current altering queue across all facilities. If any completed altering works exist,
-        collects them facility by facility so slots are freed and materials are gathered
-        into inventory BEFORE new altering works are submitted.
+        Checks current altering queue across all facilities.
+        If only_fully_completed is True, collects ONLY from facilities where ALL queued works are completed
+        (skipping any facility that still has in-progress or waiting works).
         If preferred_facility is provided, processes that facility first.
         """
         try:
@@ -2710,18 +3488,44 @@ class DeliveryManager:
             return []
 
         works = works_info.get("works", [])
-        completed_works = [
-            w for w in works 
-            if w.get("IsCompleted") or (w.get("RemainingSeconds", 1) <= 0 and w.get("State") == "Completed")
-        ]
-        if not completed_works:
+        if not works:
             return []
 
-        # Group completed works by facility
-        facility_to_items: Dict[str, List[str]] = defaultdict(list)
-        for w in completed_works:
+        # Group all works by facility
+        facility_works: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for w in works:
             fac = w.get("FacilityName") or get_facility_for_material(w.get("DisplayName", ""))
-            facility_to_items[fac].append(w.get("DisplayName"))
+            if fac:
+                facility_works[fac].append(w)
+
+        # Determine which facilities are eligible for collection
+        facility_to_items: Dict[str, List[str]] = {}
+        for fac, f_works in facility_works.items():
+            completed_in_fac = [
+                w for w in f_works 
+                if w.get("IsCompleted") or (int(w.get("RemainingSeconds", 1)) <= 0 and w.get("State") == "Completed")
+            ]
+            incomplete_in_fac = [
+                w for w in f_works 
+                if not w.get("IsCompleted") and int(w.get("RemainingSeconds", 0)) > 0
+            ]
+
+            if not completed_in_fac:
+                continue
+
+            if only_fully_completed and incomplete_in_fac:
+                # Facility still has works in progress! Skip it (ignore partial completion).
+                self.log(
+                    f"[{fac}] 아직 진행 중인 작업({len(incomplete_in_fac)}슬롯)이 남아있어 자동 수령을 대기합니다. "
+                    f"시설의 모든 작업이 끝나면 일괄 수령합니다. ({len(completed_in_fac)}슬롯 완료 대기 중)",
+                    "info", callback
+                )
+                continue
+
+            facility_to_items[fac] = [w.get("DisplayName") for w in completed_in_fac if w.get("DisplayName")]
+
+        if not facility_to_items:
+            return []
 
         collected_facilities = []
         facilities = list(facility_to_items.keys())
@@ -2729,7 +3533,9 @@ class DeliveryManager:
             facilities.remove(preferred_facility)
             facilities.insert(0, preferred_facility)
 
-        self.log(f"[완료 가공품 감지] 총 {len(completed_works)}건의 완료된 가공 슬롯이 확인되었습니다. 새 가공 전 우선 수령합니다.", "action", callback)
+        total_collectable_slots = sum(len(items) for items in facility_to_items.values())
+        mode_desc = "모든 작업 완료 시설" if only_fully_completed else "완료 가공품"
+        self.log(f"[{mode_desc} 감지] 총 {len(facilities)}개 시설({total_collectable_slots}슬롯)의 수령을 진행합니다.", "action", callback)
 
         for fac in facilities:
             if self.abort_requested:
@@ -2749,7 +3555,7 @@ class DeliveryManager:
                 pass
             items = facility_to_items[fac]
             rep_item = items[0]
-            self.log(f"   ▶ '{fac}' 완료 가공품 {len(items)}건 수령 진행 ('{rep_item}' 등)...", "action", callback)
+            self.log(f"   ▶ '{fac}' 걸어둔 작업 전체 완료 수령 진행 ({len(items)}건, '{rep_item}' 등)...", "action", callback)
             try:
                 res = self.cli.complete_altering_work(rep_item)
                 collected_facilities.append(fac)
@@ -2760,10 +3566,10 @@ class DeliveryManager:
                     if c_parts:
                         crit_str = f" (✨ 대성공 추가 획득: {', '.join(c_parts)})"
                 self.log(f"     '{fac}' 완료 가공품 수령 완료!{crit_str} (슬롯 확보 완료)", "success", callback)
-                # Clean up alarms for items at this facility
+                # Clean up alarms for this facility
+                alarm_store.delete_alarm(fac)
                 for it in items:
-                    key = f"{fac}_{it}"
-                    alarm_store.delete_alarm(key)
+                    alarm_store.delete_alarm(f"{fac}_{it}")
                 time.sleep(0.35)
             except Exception as ex:
                 self.log(f"     '{fac}' 수령 중 알림/오류: {ex}", "warn", callback)
@@ -3122,18 +3928,19 @@ class DeliveryManager:
                         "override_current": t.get("override_current"),
                         "is_completed": t.get("is_completed", False)
                     })
-            # 2. Automatically merge active quests in Quest Tracker that are not yet in registered list
-            active_quests = self.detect_delivery_quests()
-            for q in active_quests:
-                if q.item_name not in existing_items:
-                    tasks_to_plan.append({
-                        "quest_title": q.quest_title,
-                        "item_name": q.item_name,
-                        "current": q.current,
-                        "goal": q.goal,
-                        "needed": q.needed,
-                        "is_completed": q.is_completed
-                    })
+            # 2. Automatically merge active quests in Quest Tracker that are not yet in registered list (only when active character is logged in)
+            if delivery_target_store.is_active_character_ingame():
+                active_quests = self.detect_delivery_quests()
+                for q in active_quests:
+                    if q.item_name not in existing_items:
+                        tasks_to_plan.append({
+                            "quest_title": q.quest_title,
+                            "item_name": q.item_name,
+                            "current": q.current,
+                            "goal": q.goal,
+                            "needed": q.needed,
+                            "is_completed": q.is_completed
+                        })
 
         if not tasks_to_plan:
             return {
@@ -3243,7 +4050,12 @@ class DeliveryManager:
                 # Warehouse / storage counts cannot be submitted directly without manual withdrawal.
                 # Therefore, only inventory count satisfies direct delivery demand:
                 bd_stock = get_stock(clean_it)
-                cur_bag = bd_stock["inventory"]
+                if t.get("override_current") is not None:
+                    cur_bag = int(t["override_current"])
+                elif custom_tasks is None and not delivery_target_store.is_active_character_ingame():
+                    cur_bag = int(t.get("current", 0))
+                else:
+                    cur_bag = bd_stock["inventory"]
                 goal_qty = t.get("goal") or (cur_bag + needed)
                 t["current"] = cur_bag
                 net_def = max(0, goal_qty - cur_bag)

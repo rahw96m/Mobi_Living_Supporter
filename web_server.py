@@ -269,11 +269,13 @@ def get_cached_status() -> Dict[str, Any]:
                 cached_status_data["abort_requested"] = manager_instance.abort_requested
                 cached_status_data["last_summary"] = last_execution_summary
                 cached_status_data["last_summary_id"] = last_summary_id
+                cached_status_data["delivery_character"] = delivery_target_store.get_characters_summary()
                 return copy.deepcopy(cached_status_data)
             return {
                 "connected": True,
                 "activity": {},
                 "character": copy.deepcopy(cached_character_info or {}),
+                "delivery_character": delivery_target_store.get_characters_summary(),
                 "wings": 0,
                 "inventory": {},
                 "is_busy": True,
@@ -292,9 +294,10 @@ def get_cached_status() -> Dict[str, Any]:
             cached_status_data["abort_requested"] = manager_instance.abort_requested
             cached_status_data["last_summary"] = last_execution_summary
             cached_status_data["last_summary_id"] = last_summary_id
+            cached_status_data["delivery_character"] = delivery_target_store.get_characters_summary()
             return copy.deepcopy(cached_status_data)
 
-        need_char_refresh = (not cached_character_info) or ((now - cached_character_time) > 30.0)
+        need_char_refresh = (not cached_character_info) or ((now - cached_character_time) > 5.0)
         prev_char_info = copy.deepcopy(cached_character_info) if cached_character_info else {}
 
     # Invoke CLI outside status_lock to avoid blocking other requests
@@ -305,6 +308,21 @@ def get_cached_status() -> Dict[str, Any]:
                 new_char_info = cli_instance.get_my_info()
             except Exception:
                 new_char_info = None
+
+        char_info_now = new_char_info or prev_char_info
+        if char_info_now:
+            switched_char_id = delivery_target_store.on_ingame_character_seen(
+                char_info_now, allow_auto_switch=(not is_busy)
+            )
+            if switched_char_id:
+                invalidate_plan_caches()
+                with status_lock:
+                    global cached_delivery_targets
+                    cached_delivery_targets = None
+                char_summary = delivery_target_store.get_characters_summary()
+                switched_name = char_summary.get("active_character_name", switched_char_id)
+                switched_label = char_summary.get("last_ingame_label", "")
+                add_log("info", f"[캐릭터 자동 전환] 인게임 캐릭터 감지({switched_label}) -> '{switched_name}' 프로필로 자동 전환되었습니다.")
 
         activity = cli_instance.get_activity()
         wings = cli_instance.get_wings_count()
@@ -318,7 +336,8 @@ def get_cached_status() -> Dict[str, Any]:
             "connected": True,
             "activity": activity,
             "environment": env_info,
-            "character": new_char_info or prev_char_info,
+            "character": char_info_now,
+            "delivery_character": delivery_target_store.get_characters_summary(),
             "wings": wings,
             "inventory": inv,
             "is_busy": is_busy,
@@ -471,14 +490,21 @@ class RequestHandler(BaseHTTPRequestHandler):
             global cached_delivery_targets
             if is_busy:
                 with status_lock:
-                    targets = cached_delivery_targets if cached_delivery_targets is not None else []
-                    self._send_json({"targets": targets, "is_busy": True})
+                    targets = cached_delivery_targets if cached_delivery_targets is not None else delivery_target_store.get_all()
+                    self._send_json({
+                        "targets": targets,
+                        "characters_info": delivery_target_store.get_characters_summary(),
+                        "is_busy": True
+                    })
                     return
             try:
                 targets = manager_instance.get_registered_deliveries_with_status()
                 with status_lock:
                     cached_delivery_targets = targets
-                self._send_json({"targets": targets})
+                self._send_json({
+                    "targets": targets,
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
             except Exception as e:
                 self._send_error(e)
             return
@@ -918,7 +944,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if not ok:
                     self._send_error("해당 경로 또는 폴더에서 MabinogiMobile_CLI.exe를 찾을 수 없습니다. 폴더 경로 또는 파일명을 확인해주세요.", 400)
                     return
-                global cached_status_time, cached_character_time, cached_status_data
+                global cached_status_time, cached_character_time, cached_status_data, cached_character_info, cached_delivery_targets
                 with status_lock:
                     cached_status_time = 0.0
                     cached_character_time = 0.0
@@ -1334,13 +1360,26 @@ class RequestHandler(BaseHTTPRequestHandler):
 
                 # Check all works at this facility to find the true last completion time
                 works_info = cli_instance.get_altering_works()
-                f_works = [w for w in works_info.get("works", []) if w.get("FacilityName") == facility and not w.get("IsCompleted")]
+                all_works = works_info.get("works", [])
+                f_works = [
+                    w for w in all_works 
+                    if (w.get("FacilityName") == facility or get_facility_for_material(w.get("DisplayName", "")) == facility) 
+                    and not w.get("IsCompleted") and int(w.get("RemainingSeconds", 0)) > 0
+                ]
                 if f_works:
                     total_sec = sum(int(w.get("RemainingSeconds", 0)) for w in f_works)
-                    summary = f"{facility} 전체 작업 ({len(f_works)}슬롯)"
-                    al = alarm_store.add_facility_alarm(facility, summary, total_sec, source="수동 등록", works_count=len(f_works))
+                    item_names = list(dict.fromkeys(w.get("DisplayName", "") for w in f_works if w.get("DisplayName")))
+                    if len(item_names) == 1:
+                        summary = f"{item_names[0]} ({len(f_works)}슬롯)"
+                    else:
+                        summary = f"{item_names[0]} 외 {len(f_works)-1}건 ({len(f_works)}슬롯)"
+                    al = alarm_store.add_facility_alarm(facility, summary, total_sec, source="시설 알람", works_count=len(f_works))
+                elif remaining_sec > 0:
+                    summary = item_name or f"{facility} 작업"
+                    al = alarm_store.add_facility_alarm(facility, summary, remaining_sec, source="시설 알람", works_count=1)
                 else:
-                    al = alarm_store.add_facility_alarm(facility, item_name, remaining_sec, source="수동 등록", works_count=1)
+                    self._send_error(f"'{facility}'에 진행 중인 가공 작업이 없습니다.", 400)
+                    return
 
                 self._send_json({"status": "success", "alarm": al})
             except Exception as e:
@@ -1418,8 +1457,259 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 reset_count = delivery_target_store.reset_all_current()
                 invalidate_plan_caches()
-                add_log("info", f"[보유 수량 초기화] 등록된 {reset_count}개 납품 품목의 보유 수량이 모두 0개로 초기화되었습니다.")
-                self._send_json({"status": "success", "reset_count": reset_count})
+                with status_lock:
+                    cached_delivery_targets = None
+                char_name = delivery_target_store.get_characters_summary().get("active_character_name", "현재 캐릭터")
+                add_log("info", f"[{char_name} 보유 수량 초기화] 등록된 {reset_count}개 납품 품목의 보유 수량이 모두 0개로 초기화되었습니다.")
+                self._send_json({
+                    "status": "success",
+                    "reset_count": reset_count,
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/sync_delivery_targets_inventory":
+            try:
+                cleared_count = delivery_target_store.clear_all_overrides()
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                char_name = delivery_target_store.get_characters_summary().get("active_character_name", "현재 캐릭터")
+                add_log("info", f"[{char_name} 가방 재고 재동기화] 수동 0개 고정({cleared_count}개 항목)을 해제하고 인게임 가방 수량과 다시 동기화합니다.")
+                self._send_json({
+                    "status": "success",
+                    "cleared_count": cleared_count,
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        # --- Multi-Character Delivery Profile Management Endpoints ---
+        if path == "/api/delivery_characters/select":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_id = str(req_json.get("char_id") or "").strip()
+                selected = delivery_target_store.select_character(char_id)
+                if not selected:
+                    self._send_error("선택할 캐릭터 프로필을 찾을 수 없습니다.", 404)
+                    return
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                add_log("info", f"[캐릭터 탭 전환] '{selected.get('name', char_id)}' 주간 납품 현황으로 전환했습니다.")
+                self._send_json({
+                    "status": "success",
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/delivery_characters/add":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                name = str(req_json.get("name") or "").strip()
+                init_mode = str(req_json.get("init_mode") or "default_18").strip()
+                link_ingame = bool(req_json.get("link_current_ingame", False))
+                live_char = None
+                if link_ingame and not is_busy:
+                    try:
+                        live_char = cli_instance.get_my_info(bypass_cache=True)
+                    except Exception:
+                        live_char = cached_character_info
+                created = delivery_target_store.add_character(
+                    name=name,
+                    init_mode=init_mode,
+                    link_current_ingame=link_ingame,
+                    ingame_char_info=live_char or cached_character_info
+                )
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                add_log("success", f"[캐릭터 추가] '{created.get('name')}' 프로필이 생성되었습니다 (기본 {len(created.get('targets', {}))}개 품목 등록).")
+                self._send_json({
+                    "status": "success",
+                    "character": created,
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/delivery_characters/rename":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_id = str(req_json.get("char_id") or "").strip()
+                new_name = str(req_json.get("name") or "").strip()
+                if not new_name:
+                    self._send_error("변경할 캐릭터 이름을 입력해주세요.", 400)
+                    return
+                updated = delivery_target_store.rename_character(char_id, new_name)
+                if not updated:
+                    self._send_error("이름을 변경할 캐릭터 프로필을 찾을 수 없습니다.", 404)
+                    return
+                add_log("info", f"[캐릭터 이름 변경] 프로필 이름이 '{updated.get('name')}'(으)로 변경되었습니다.")
+                self._send_json({
+                    "status": "success",
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/delivery_characters/delete":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_id = str(req_json.get("char_id") or "").strip()
+                ok, msg = delivery_target_store.delete_character(char_id)
+                if not ok:
+                    self._send_error(msg, 400)
+                    return
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                add_log("info", f"[캐릭터 삭제] {msg}")
+                self._send_json({
+                    "status": "success",
+                    "message": msg,
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/delivery_characters/link_ingame":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_id = str(req_json.get("char_id") or "").strip()
+                live_char = None
+                if not is_busy:
+                    try:
+                        live_char = cli_instance.get_my_info(bypass_cache=True)
+                        if live_char:
+                            with status_lock:
+                                cached_character_info = live_char
+                                cached_character_time = time.time()
+                    except Exception:
+                        live_char = None
+                ok, msg = delivery_target_store.link_character_to_ingame(
+                    char_id=char_id or None,
+                    char_info=live_char or cached_character_info
+                )
+                if not ok:
+                    self._send_error(msg, 400)
+                    return
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                add_log("success", f"[인게임 캐릭터 연동] {msg}")
+                self._send_json({
+                    "status": "success",
+                    "message": msg,
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/delivery_characters/toggle_auto_switch":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                enabled = bool(req_json.get("enabled", True))
+                delivery_target_store.set_auto_switch(enabled)
+                add_log("info", f"[캐릭터 자동 전환] 인게임 캐릭터 변경 시 탭 자동 전환 기능이 {'켜졌습니다(ON)' if enabled else '꺼졌습니다(OFF)'}.")
+                self._send_json({
+                    "status": "success",
+                    "characters_info": delivery_target_store.get_characters_summary()
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/delivery_characters/complete_delivery":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_id = str(req_json.get("char_id") or "").strip() or None
+                ok, msg, details = delivery_target_store.complete_character_delivery(char_id=char_id)
+                if not ok:
+                    self._send_error(msg, 400)
+                    return
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                add_log("success", msg)
+                self._send_json({
+                    "status": "success",
+                    "message": msg,
+                    "details": details,
+                    "characters_info": delivery_target_store.get_characters_summary(),
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/delivery_characters/set_weekly_delivered":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                char_id = str(req_json.get("char_id") or "").strip() or None
+                delivered = bool(req_json.get("delivered", False))
+                ok, msg = delivery_target_store.set_character_weekly_delivered(char_id=char_id, delivered=delivered)
+                if not ok:
+                    self._send_error(msg, 400)
+                    return
+                add_log("info", f"[주간 납품 완료 마크] {msg}")
+                self._send_json({
+                    "status": "success",
+                    "message": msg,
+                    "characters_info": delivery_target_store.get_characters_summary(),
+                })
+            except Exception as e:
+                self._send_error(e)
+            return
+
+        if path == "/api/reorder_delivery_targets":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                ordered_names = req_json.get("ordered_names")
+                from_item = str(req_json.get("from_item") or "").strip()
+                to_item = str(req_json.get("to_item") or "").strip()
+                mode = str(req_json.get("mode") or "swap").strip()
+                if isinstance(ordered_names, list) and ordered_names:
+                    delivery_target_store.reorder_targets(ordered_names, sync_order_all_characters=True)
+                elif from_item and to_item:
+                    delivery_target_store.move_target_position(from_item, to_item, mode=mode, sync_order_all_characters=True)
+                else:
+                    self._send_error("변경할 순서 정보가 없습니다.", 400)
+                    return
+                invalidate_plan_caches()
+                with status_lock:
+                    cached_delivery_targets = None
+                self._send_json({
+                    "status": "success",
+                    "targets": delivery_target_store.get_all(),
+                    "characters_info": delivery_target_store.get_characters_summary(),
+                })
             except Exception as e:
                 self._send_error(e)
             return
@@ -1647,20 +1937,27 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error(e)
             return
 
-        if path == "/api/collect_all_completed_altering":
+        if path.startswith("/api/collect_all_completed_altering"):
             if is_busy:
                 self._send_error("이미 다른 작업이 진행 중입니다.", 409)
                 return
 
+            only_fully = ("mode=fully_completed" in path)
             is_busy = True
-            current_task_info = "완료 가공품 순차 수령 중..."
+            current_task_info = "시설 전체 완료 가공품 수령 중..." if only_fully else "완료 가공품 순차 수령 중..."
 
             def collect_worker():
                 global is_busy, current_task_info
                 try:
-                    collected = manager_instance.collect_completed_altering_works(callback=add_log)
+                    collected = manager_instance.collect_completed_altering_works(
+                        callback=add_log,
+                        only_fully_completed=only_fully
+                    )
                     if not collected:
-                        add_log("info", "수령할 완료된 가공품이 없습니다.")
+                        if only_fully:
+                            add_log("info", "모든 작업이 완료된 가공 시설이 없습니다 (진행 중인 작업 완료 대기).")
+                        else:
+                            add_log("info", "수령할 완료된 가공품이 없습니다.")
                 except Exception as err:
                     add_log("error", f"가공품 수령 실패: {str(err)}")
                 finally:
@@ -2287,20 +2584,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     /* Header Action Buttons (Tier 3: Hover Bracket Style) */
     .header-actions {
-      display: inline-flex;
+      display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 2px 2px;
       margin-left: auto;
-      flex-shrink: 0;
+      flex-shrink: 1;
       flex-wrap: wrap;
+      max-width: 100%;
     }
     .header-action-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 3px 4px;
+      padding: 2px 3px;
       font-family: var(--font-sans);
-      font-size: var(--fs-md);
+      font-size: 12px;
       font-weight: 400;
       color: var(--text-muted);
       background: transparent;
@@ -2312,14 +2610,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     .header-action-btn .btn-icon { display: none; }
     .header-action-btn::before {
-      content: "[ ";
+      content: "[";
       font-family: var(--font-mono);
+      margin-right: 1px;
       opacity: 0;
       color: var(--text-bright);
     }
     .header-action-btn::after {
-      content: " ]";
+      content: "]";
       font-family: var(--font-mono);
+      margin-left: 1px;
       opacity: 0;
       color: var(--text-bright);
     }
@@ -2499,15 +2799,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
       transition: all 0.12s ease;
     }
     .btn::before {
-      content: "[ ";
+      content: "[";
       font-family: var(--font-mono);
+      margin-right: 1px;
       opacity: 0;
       color: var(--text-bright);
       transition: opacity 0.1s ease;
     }
     .btn::after {
-      content: " ]";
+      content: "]";
       font-family: var(--font-mono);
+      margin-left: 1px;
       opacity: 0;
       color: var(--text-bright);
       transition: opacity 0.1s ease;
@@ -2692,6 +2994,49 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .btn-facility-collect::after {
       content: none !important;
       display: none !important;
+    }
+    .btn-facility-collect-partial {
+      background: rgba(245, 158, 11, 0.15) !important;
+      color: #F59E0B !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      padding: 3px 8px !important;
+      border-radius: 0 !important;
+      border: 1px solid rgba(245, 158, 11, 0.3) !important;
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.2) !important;
+      cursor: pointer;
+      line-height: 1.3 !important;
+      white-space: nowrap !important;
+      transition: all 0.12s ease;
+    }
+    .btn-facility-collect-partial:hover {
+      background: rgba(245, 158, 11, 0.28) !important;
+      color: #FBBF24 !important;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.35) !important;
+    }
+    .btn-facility-alarm {
+      background: rgba(59, 130, 246, 0.12) !important;
+      color: #60A5FA !important;
+      font-size: 10px !important;
+      font-weight: 600 !important;
+      padding: 2px 6px !important;
+      border-radius: 2px !important;
+      border: 1px solid rgba(59, 130, 246, 0.25) !important;
+      cursor: pointer;
+      line-height: 1.3 !important;
+      white-space: nowrap !important;
+      transition: all 0.12s ease;
+    }
+    .btn-facility-alarm:hover {
+      background: rgba(59, 130, 246, 0.22) !important;
+      color: #93C5FD !important;
+      border-color: rgba(59, 130, 246, 0.45) !important;
+    }
+    .btn-facility-alarm.active {
+      background: rgba(16, 185, 129, 0.18) !important;
+      color: #34D399 !important;
+      border-color: rgba(16, 185, 129, 0.4) !important;
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.25) !important;
     }
     .btn-facility-idle {
       background: var(--btn-facility-idle-bg) !important;
@@ -3033,6 +3378,158 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-color: var(--invert-bg) !important;
       font-weight: 700;
       box-shadow: var(--badge-shadow) !important;
+    }
+
+    /* Multi-Character Profile Tabs & Summary Bar */
+    .char-profile-section {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: var(--bg-sub-panel);
+      border: 1px solid var(--line);
+    }
+    .char-profile-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .char-tabs-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+      gap: 6px;
+      align-items: stretch;
+    }
+    .char-tab-btn {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      color: var(--text-muted);
+      font-size: var(--fs-sm);
+      font-weight: 600;
+      padding: 6px 10px;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+    .char-tab-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .char-tab-right {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .char-tab-btn::before, .char-tab-btn::after {
+      content: none !important;
+      display: none !important;
+    }
+    .char-tab-btn:hover {
+      border-color: var(--text-muted);
+      color: var(--text-bright);
+    }
+    .char-tab-btn.active {
+      background: var(--invert-bg) !important;
+      color: var(--invert-text) !important;
+      border-color: var(--invert-bg) !important;
+      font-weight: 700;
+      box-shadow: var(--badge-shadow) !important;
+    }
+    .char-tab-btn.active .char-tab-progress,
+    .char-tab-btn.active .char-tab-sub {
+      color: var(--invert-text) !important;
+      opacity: 0.9;
+    }
+    .char-ingame-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: #34D399;
+      box-shadow: 0 0 5px rgba(52, 211, 153, 0.8);
+      flex-shrink: 0;
+    }
+    .char-tab-btn.active .char-ingame-dot {
+      background-color: #10B981;
+      box-shadow: 0 0 4px rgba(16, 185, 129, 0.9);
+    }
+    .char-delivered-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 4px;
+      color: #34D399;
+      border: 1px solid rgba(52, 211, 153, 0.45);
+      background: rgba(16, 185, 129, 0.14);
+      line-height: 1.2;
+    }
+    .char-tab-btn.active .char-delivered-badge {
+      color: #064E3B !important;
+      background: #34D399 !important;
+      border-color: #10B981 !important;
+    }
+    .delivery-tools-drawer {
+      margin-bottom: 12px;
+      padding: 12px;
+      background: var(--bg-sub-panel);
+      border: 1px solid var(--line);
+    }
+    /* Drag & Drop Target Card Reordering */
+    .target-card {
+      transition: transform 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+    }
+    .target-card.dragging {
+      opacity: 0.45;
+      border-style: dashed !important;
+    }
+    .target-card.drag-over {
+      border-color: var(--text-bright) !important;
+      box-shadow: 0 0 0 1px var(--text-bright) !important;
+      transform: translateY(-1px);
+    }
+    .target-drag-handle {
+      cursor: grab;
+      color: var(--text-dim);
+      font-size: 13px;
+      padding: 0 4px 0 0;
+      user-select: none;
+    }
+    .target-drag-handle:hover {
+      color: var(--text-bright);
+    }
+    .target-drag-handle:active {
+      cursor: grabbing;
+    }
+    .btn-move-card {
+      padding: 1px 5px !important;
+      font-size: 10px !important;
+      line-height: 1.2 !important;
+      color: var(--text-muted);
+    }
+    .char-context-banner {
+      margin-top: 8px;
+      padding: 6px 10px;
+      border: 1px solid var(--line-subtle);
+      background: var(--bg-panel);
+      font-size: var(--fs-sm);
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
     }
     .quick-cat-card {
       background: transparent;
@@ -3422,6 +3919,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       min-width: 0;
       max-width: 100%;
     }
+    .master-command-bar.running .mcb-right {
+      width: 100%;
+      border-top: 1px dashed var(--line-subtle);
+      padding-top: 8px;
+      margin-top: 2px;
+    }
+    #mcb-box-running {
+      width: 100%;
+      justify-content: space-between;
+    }
     /* Tier 1 Abort: 즉시 중지 버튼 (솔리드 레드 배경, #FFFFFF 화이트 텍스트, 무테두리, 직각 코너 + 은은한 레드 광채) */
     .btn-danger-abort {
       background: #EF4444 !important;
@@ -3466,7 +3973,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       box-shadow: none !important;
     }
     .mcb-running-info {
-      text-align: right;
+      text-align: left;
       min-width: 0;
       flex: 1;
     }
@@ -3481,10 +3988,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .mcb-running-desc {
       font-size: var(--fs-sm);
       color: var(--text-muted);
-      max-width: 520px;
+      max-width: 100%;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      margin-top: 2px;
     }
     @media (max-width: 820px) {
       .master-command-bar {
@@ -3601,7 +4109,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-top">
         <div class="logo-area">
           <div class="title">
-            <h1>모비노기 생활 지원도구 <span class="badge">v1.4.0</span></h1>
+            <h1>모비노기 생활 지원도구 <span class="badge">v1.4.1</span></h1>
           </div>
         </div>
         <div class="header-actions">
@@ -3763,7 +4271,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <span class="cli-check-box" id="mcb-discord-icon" onclick="event.stopPropagation(); toggleDiscordAlarmSetting();" title="알림 켜기/끄기">□</span>
               <span id="mcb-discord-text">디스코드 알림</span>
             </button>
-            <button class="mcb-pill-btn" id="mcb-btn-auto-collect" onclick="toggleAutoCollectSetting()" title="[옵션 #3] 가공 완료 슬롯 발생 시 대기 상태이면 자동으로 수령합니다 (옵션 ON/OFF)">
+            <button class="mcb-pill-btn" id="mcb-btn-auto-collect" onclick="toggleAutoCollectSetting()" title="[옵션 #3] 가공 시설별 걸어둔 모든 작업 완료 시 백그라운드 자동 수령 (개별 완료 무시, 옵션 ON/OFF)">
               <span class="cli-check-box" id="mcb-auto-collect-icon">□</span>
               <span id="mcb-auto-collect-text">자동 수령</span>
             </button>
@@ -3810,13 +4318,37 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span id="target-count-badge" class="badge delivery">0개 등록</span>
           </div>
           <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-            <button class="btn btn-sm btn-solid-core" onclick="openQuestSelectModal('delivery')" title="인게임 추적 중인 모든 퀘스트 목록을 띄워 원하는 품목만 체크하여 가져옵니다">퀘스트 선택 가져오기</button>
-            <button class="btn btn-sm" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 즉시 목록에 추가합니다">현재 퀘스트 즉시 등록</button>
-            <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" title="새 주간 퀘스트를 시작할 때 모든 등록 목표의 현재 보유 수량을 0개로 일괄 초기화합니다">수량 0개로 초기화</button>
-            <button class="btn btn-sm" onclick="clearDeliveryTargets()">전체 비우기</button>
+            <button type="button" class="btn btn-sm btn-boxed" id="btn-toggle-delivery-tools" onclick="toggleDeliveryToolsDrawer()" title="품목 직접 추가, 인게임 퀘스트 가져오기, 프리셋 저장/불러오기 도구를 펼치거나 접습니다">+ 품목·프리셋 관리 v</button>
+            <button class="btn btn-sm" onclick="resetAllTargetsCurrent()" title="현재 선택된 캐릭터의 모든 등록 목표 보유 수량을 0개로 일괄 초기화합니다">수량 0개 초기화</button>
+            <button class="btn btn-sm" onclick="syncTargetsWithInventory()" title="0개 초기화(고정)를 해제하고 현재 인게임 가방 수량과 다시 동기화합니다">가방 재동기화</button>
             <button class="btn btn-sm" onclick="loadDeliveryTargets()">새로고침</button>
             <button class="btn btn-sm" id="btn-toggle-delivery-targets" onclick="toggleDeliveryTargetsView()">접어두기 ^</button>
           </div>
+        </div>
+
+        <!-- Multi-Character Profile Bar & Overall Completion Summary -->
+        <div class="char-profile-section" id="delivery-character-bar">
+          <div class="char-profile-top-row">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-bright);"><span class="sym-prefix">&gt;</span>캐릭터별 납품 프로필</span>
+              <span id="char-overall-summary-badge" class="badge-dim mono-num">납품 완료: 0/1 캐릭터 (월 06시 초기화)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-sm btn-solid-core" id="btn-complete-char-delivery" onclick="completeActiveCharacterDelivery()" title="현재 선택된 캐릭터의 주간 납품을 완료 처리하고, 해당 캐릭터의 보유 수량에서 목표 수량만큼 차감합니다 (매주 월요일 오전 6시 완료 마크 자동 초기화)">✓ 납품 완료 (목표량 차감)</button>
+              <button type="button" class="btn btn-sm btn-boxed" id="btn-unmark-char-delivery" style="display: none;" onclick="unmarkActiveCharacterDelivery()" title="수량 변경 없이 현재 캐릭터의 [✓ 납품완료] 마크만 해제합니다">완료 해제</button>
+              <button type="button" class="btn btn-sm btn-boxed" id="btn-toggle-char-autoswitch" onclick="toggleCharacterAutoSwitch()" title="인게임에서 다른 캐릭터로 로그인하면 해당 캐릭터의 납품 탭으로 자동 전환합니다">
+                <span id="icon-char-autoswitch" style="font-family: var(--font-mono); margin-right: 3px;">■</span>자동전환
+              </button>
+              <button type="button" class="btn btn-sm btn-boxed" onclick="linkActiveCharacterToIngame()" title="현재 선택된 탭을 지금 게임에 접속 중인 캐릭터와 연동합니다">현 캐릭터 연동</button>
+              <button type="button" class="btn btn-sm btn-boxed" onclick="promptRenameActiveCharacter()" title="현재 선택된 캐릭터 탭의 이름을 변경합니다">이름변경</button>
+              <button type="button" class="btn btn-sm btn-boxed" onclick="deleteActiveCharacterProfile()" title="현재 선택된 캐릭터 탭을 삭제합니다">삭제</button>
+              <button type="button" class="btn btn-sm btn-boxed" onclick="promptAddCharacterProfile()" title="새로운 캐릭터 프로필을 추가하고 기본 18개 주간 납품 목록으로 초기화합니다">+ 캐릭터 추가</button>
+            </div>
+          </div>
+          <div class="char-tabs-list" id="delivery-char-tabs-list">
+            <!-- Populated dynamically by renderDeliveryCharacterBar() -->
+          </div>
+          <div id="delivery-char-context-banner" class="char-context-banner" style="display: none;"></div>
         </div>
 
         <!-- Collapsed Compact Bar (shown when collapsed) -->
@@ -3825,49 +4357,58 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Expanded Content (shown by default) -->
-        <div id="delivery-targets-expanded-content" style="margin-top: 14px;">
-          <!-- Quick Manual Add Input Form -->
-          <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line);">
-            <div class="ac-wrapper" style="flex: 2; min-width: 170px;">
-              <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (초성·부분 검색 지원)</label>
-              <input type="text" id="target-input-item" class="input-text" autocomplete="off" placeholder="예: 론 엣지소드S (또는 ㄹㅇㅈ)" style="width: 100%;" oninput="onItemInputAutocomplete(this, 'ac-target-input-item')" onkeydown="handleAutocompleteKeydown(event, this, 'ac-target-input-item', addManualTarget)">
-              <div id="ac-target-input-item" class="ac-dropdown"></div>
+        <div id="delivery-targets-expanded-content" style="margin-top: 12px;">
+          <!-- Collapsible Drawer for Manual Add, Quest Import, and Presets (Collapsed by default so 18 cards appear immediately) -->
+          <div id="delivery-tools-drawer" class="delivery-tools-drawer" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line-subtle);">
+              <span style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">&gt;</span>퀘스트 연동 및 목록 일괄 도구</span>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                <button class="btn btn-sm btn-solid-core" onclick="openQuestSelectModal('delivery')" title="인게임 추적 중인 모든 퀘스트 목록을 띄워 원하는 품목만 체크하여 가져옵니다">퀘스트 선택 가져오기</button>
+                <button class="btn btn-sm btn-boxed" onclick="addCurrentQuestTarget()" title="게임 내 추적 중인 납품 퀘스트를 즉시 목록에 추가합니다">현재 퀘스트 즉시 등록</button>
+                <button class="btn btn-sm btn-boxed" onclick="clearDeliveryTargets()" title="현재 선택된 캐릭터의 납품 목표 목록을 모두 비웁니다">전체 비우기</button>
+              </div>
             </div>
-            <div style="flex: 1; min-width: 80px;">
-              <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
-              <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="6" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
-            </div>
-            <div style="flex: 1; min-width: 90px;">
-              <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">현재 보유 (선택)</label>
-              <input type="number" id="target-input-current" class="input-number" min="0" max="100" placeholder="자동 감지" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
-            </div>
-            <div>
-              <button class="btn" onclick="addManualTarget()">+ 직접 추가</button>
-            </div>
-            <div style="width: 100%; font-size: var(--fs-sm); color: var(--text-muted); margin-top: 4px;">
-              <span><span class="sym-prefix">&gt;</span>인게임에서 주간 퀘스트를 추적하며 [현재 퀘스트 등록]을 누르거나, 아이템명과 수량을 직접 입력해 목록에 등록하세요.</span>
-            </div>
-          </div>
 
-          <!-- Preset Save/Load Section -->
-          <div style="margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-weight: 700; font-size: var(--fs-md); color: var(--text-bright);"><span class="sym-prefix">&gt;</span>주간 납품 프리셋 (퀘스트 조합 저장)</span>
-                <span id="preset-count-badge" class="badge-dim">0개 저장됨</span>
+            <!-- Quick Manual Add Input Form -->
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line-subtle);">
+              <div class="ac-wrapper" style="flex: 2; min-width: 170px;">
+                <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">납품 아이템명 (초성·부분 검색 지원)</label>
+                <input type="text" id="target-input-item" class="input-text" autocomplete="off" placeholder="예: 론 엣지소드S (또는 ㄹㅇㅈ)" style="width: 100%;" oninput="onItemInputAutocomplete(this, 'ac-target-input-item')" onkeydown="handleAutocompleteKeydown(event, this, 'ac-target-input-item', addManualTarget)">
+                <div id="ac-target-input-item" class="ac-dropdown"></div>
               </div>
-              <div style="display: flex; gap: 6px; align-items: center;">
-                <input type="text" id="preset-save-name" class="input-text" placeholder="프리셋 이름 (예: 대장간 세트)" style="width: 180px; padding: 4px 8px; font-size: var(--fs-sm);">
-                <button class="btn btn-sm" onclick="saveCurrentAsPreset()">현재 목록 저장</button>
+              <div style="flex: 1; min-width: 80px;">
+                <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">목표 수량</label>
+                <input type="number" id="target-input-goal" class="input-number" min="1" max="100" value="6" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
+              </div>
+              <div style="flex: 1; min-width: 90px;">
+                <label style="font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">현재 보유 (선택)</label>
+                <input type="number" id="target-input-current" class="input-number" min="0" max="100" placeholder="자동 감지" style="width: 100%;" onkeydown="if(event.key==='Enter') addManualTarget()">
+              </div>
+              <div>
+                <button class="btn btn-boxed" onclick="addManualTarget()">+ 직접 추가</button>
               </div>
             </div>
-            <div id="preset-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 24px;">
-              <span style="color: var(--text-muted); font-size: var(--fs-sm);"><span class="sym-prefix">&gt;</span>저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
+
+            <!-- Preset Save/Load Section -->
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-weight: 700; font-size: var(--fs-sm); color: var(--text-bright);"><span class="sym-prefix">&gt;</span>주간 납품 프리셋 (퀘스트 조합 저장)</span>
+                  <span id="preset-count-badge" class="badge-dim">0개 저장됨</span>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <input type="text" id="preset-save-name" class="input-text" placeholder="프리셋 이름 (예: 대장간 세트)" style="width: 180px; padding: 4px 8px; font-size: var(--fs-sm);">
+                  <button class="btn btn-sm btn-boxed" onclick="saveCurrentAsPreset()">현재 목록 저장</button>
+                </div>
+              </div>
+              <div id="preset-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 24px;">
+                <span style="color: var(--text-muted); font-size: var(--fs-sm);"><span class="sym-prefix">&gt;</span>저장된 프리셋이 없습니다. 납품 목표를 등록한 뒤 이름을 지정해 저장하세요.</span>
+              </div>
             </div>
           </div>
 
           <!-- Registered Delivery Targets Grid / List -->
-          <div id="delivery-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
+          <div id="delivery-targets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
             <p style="color: var(--text-muted); font-size: var(--fs-sm); grid-column: 1/-1;"><span class="sym-prefix">&gt;</span>등록된 주간 납품 목표가 없습니다.</p>
           </div>
         </div>
@@ -6920,6 +7461,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     }
 
+    function toggleDeliveryToolsDrawer() {
+      const drawer = document.getElementById('delivery-tools-drawer');
+      const btn = document.getElementById('btn-toggle-delivery-tools');
+      if (!drawer || !btn) return;
+      const isOpen = drawer.style.display !== 'none';
+      if (isOpen) {
+        drawer.style.display = 'none';
+        btn.innerText = '+ 품목·프리셋 관리 v';
+      } else {
+        drawer.style.display = 'block';
+        btn.innerText = '품목·프리셋 닫기 ^';
+      }
+    }
+
     function applyDeliveryTargetsView() {
       const isCollapsed = safeGetStorage('mabi_delivery_targets_collapsed', 'false') === 'true';
       const exp = document.getElementById('delivery-targets-expanded-content');
@@ -7034,10 +7589,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
         updateMasterCommandBar();
 
         // Option #3: Auto-collect completed altering works when idle
-        if (currentAutoCollectEnabled && !isCurrentlyBusy && !currentIsWeightOver && window.cachedAlteringCompletedTotal > 0) {
-          if (Date.now() - lastAutoCollectTriggerTime > 25000) {
+        // Strictly ignore partial completion: only collect facilities where ALL queued works are finished!
+        const readyFacilities = getFullyCompletedFacilities(works);
+        if (currentAutoCollectEnabled && !isCurrentlyBusy && !currentIsWeightOver && readyFacilities.length > 0) {
+          if (Date.now() - lastAutoCollectTriggerTime > 15000) {
             lastAutoCollectTriggerTime = Date.now();
-            fetch('/api/collect_all_completed_altering', { method: 'POST' }).then(() => {
+            fetch('/api/collect_all_completed_altering?mode=fully_completed', { method: 'POST' }).then(() => {
               pollLogs();
               updateStatus();
             }).catch(() => {});
@@ -7057,6 +7614,35 @@ HTML_PAGE = r"""<!DOCTYPE html>
         return Math.max(0, Math.ceil(diffMs / 1000));
       }
       return Math.max(0, Number(w.RemainingSeconds) || 0);
+    }
+
+    // Returns list of facility names where ALL queued works are completed (0 works in progress)
+    function getFullyCompletedFacilities(works) {
+      if (!works || works.length === 0) return [];
+      const facilityMap = {};
+      ALL_FACILITIES.forEach(f => {
+        facilityMap[f.name] = { completed: 0, incomplete: 0 };
+      });
+      works.forEach(w => {
+        const fac = w.FacilityName || (typeof getFacilityForMaterial === 'function' ? getFacilityForMaterial(w.DisplayName) : '') || '';
+        if (!facilityMap[fac]) {
+          facilityMap[fac] = { completed: 0, incomplete: 0 };
+        }
+        const isComp = w.IsCompleted || getWorkRemainingSeconds(w) === 0;
+        if (isComp) {
+          facilityMap[fac].completed += 1;
+        } else {
+          facilityMap[fac].incomplete += 1;
+        }
+      });
+      const readyFacs = [];
+      Object.keys(facilityMap).forEach(fac => {
+        const info = facilityMap[fac];
+        if (info.completed > 0 && info.incomplete === 0) {
+          readyFacs.push(fac);
+        }
+      });
+      return readyFacs;
     }
 
     function renderAlteringQueue() {
@@ -7109,12 +7695,32 @@ HTML_PAGE = r"""<!DOCTYPE html>
       ALL_FACILITIES.forEach(fac => {
         const itemsAtFac = grouped[fac.name] || [];
         const completedAtFac = itemsAtFac.filter(x => x.IsCompleted || getWorkRemainingSeconds(x) === 0);
+        const incompleteAtFac = itemsAtFac.filter(x => !x.IsCompleted && getWorkRemainingSeconds(x) > 0);
         const hasCompleted = completedAtFac.length > 0;
         const firstCompletedName = hasCompleted ? completedAtFac[0].DisplayName : '';
 
-        const collectBtn = hasCompleted
-          ? `<button class="btn-facility-collect" onclick="collectAltering('${firstCompletedName}')">완료 가공품 수령 (<span class="mono-num">${completedAtFac.length}</span>)</button>`
-          : `<button class="btn-facility-idle" disabled>수령 대기</button>`;
+        // Facility-wide alarm button (only for facilities that have works queued)
+        let alarmBtn = '';
+        if (itemsAtFac.length > 0 && incompleteAtFac.length > 0) {
+          const hasAlarm = !!activeAlarms[fac.name];
+          if (hasAlarm) {
+            alarmBtn = `<button class="btn-facility-alarm active" onclick="toggleFacilityAlarm('${fac.name}')" title="[${fac.name}] 모든 작업 완료 시 알람 울림 (클릭하여 알람 해제)">🔔 알람ON</button>`;
+          } else {
+            alarmBtn = `<button class="btn-facility-alarm" onclick="toggleFacilityAlarm('${fac.name}')" title="[${fac.name}] 걸어둔 모든 작업 완료 시 알람 울림">+시설알람</button>`;
+          }
+        }
+
+        // Collect button: full completion vs partial completion
+        let collectBtn = '';
+        if (hasCompleted) {
+          if (incompleteAtFac.length === 0) {
+            collectBtn = `<button class="btn-facility-collect" onclick="collectAltering('${firstCompletedName}')">전체 완료 수령 (<span class="mono-num">${completedAtFac.length}</span>)</button>`;
+          } else {
+            collectBtn = `<button class="btn-facility-collect-partial" onclick="collectAltering('${firstCompletedName}')" title="일부 슬롯 완료 (아직 ${incompleteAtFac.length}개 슬롯 진행 중)">부분 수령 (<span class="mono-num">${completedAtFac.length}</span>)</button>`;
+          }
+        } else {
+          collectBtn = `<button class="btn-facility-idle" disabled>수령 대기</button>`;
+        }
 
         let itemsHtml = '';
         if (itemsAtFac.length === 0) {
@@ -7131,15 +7737,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
               timeStr = `<span class="mono-num work-countdown" data-fac="${fac.name}" data-widx="${wIdx}" data-state="${w.State || ''}" style="color: var(--text-muted); font-size: var(--fs-sm);">대기 (${formatRemaining(remSec)})</span>`;
             }
 
-            const bellBtn = (!w.IsCompleted && remSec > 0)
-              ? `<button class="btn-manual-bell" title="이 작업에 알람 추가" onclick="addManualAlarm('${fac.name}', '${w.DisplayName}', ${remSec})">+알람</button>`
-              : '';
-
             itemsHtml += `
               <div class="facility-item-row">
                 <div style="display:flex; align-items:center;">
                   <span class="item-name-text" title="${w.DisplayName}">${w.DisplayName}</span>
-                  ${bellBtn}
                 </div>
                 <span>${timeStr}</span>
               </div>
@@ -7151,7 +7752,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="facility-card ${itemsAtFac.length === 0 ? 'facility-idle' : ''}">
             <div class="facility-header">
               <span class="facility-title">${formatFacilityShort(fac.name)} <span class="badge-dim mono-num" style="font-size:11px; font-weight:500;">${itemsAtFac.length}/7슬롯</span></span>
-              ${collectBtn}
+              <div style="display:flex; gap:4px; align-items:center;">
+                ${alarmBtn}
+                ${collectBtn}
+              </div>
             </div>
             <div class="facility-items">
               ${itemsHtml}
@@ -7226,6 +7830,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         `;
       });
       container.innerHTML = html;
+    }
+
+    async function toggleFacilityAlarm(facility) {
+      if (activeAlarms[facility]) {
+        await deleteAlarmServer(facility);
+      } else {
+        await addManualAlarm(facility);
+      }
     }
 
     async function addManualAlarm(facility, item_name, remaining_seconds) {
@@ -7335,23 +7947,74 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     }
 
-    // 1-second Alarm Ticker (triggers strictly for registered alarms)
+    // 1-second Alarm Ticker (triggers strictly when ALL works at a facility are finished)
     window.tickAlarms = function tickAlarms() {
       const now = Date.now();
       let changed = false;
       let hasActiveUnnotified = false;
+      const works = window.cachedAlteringWorks || [];
+
       Object.keys(activeAlarms).forEach(k => {
         const al = activeAlarms[k];
         if (!al.notified) {
-          if (now >= al.targetTimestamp) {
-            al.notified = true;
-            changed = true;
-            playChime();
-            showPushNotification(`[${al.facility}] 마지막 가공 완료`, `[${al.facility}] 모든 가공 작업이 완료되었습니다. (${al.item}) 지금 바로 수령하세요.`);
-            document.title = `[${al.facility} 가공 완료] 모비노기 생활 지원도구`;
-            setTimeout(() => { document.title = '모비노기 생활 지원도구'; }, 8000);
-          } else {
+          // 해당 가공 시설의 실제 작업 목록 조회
+          const facWorks = works.filter(w => (
+            w.FacilityName === al.facility || 
+            (typeof getFacilityForMaterial === 'function' && getFacilityForMaterial(w.DisplayName) === al.facility)
+          ));
+
+          let incompleteCount = 0;
+          let completedCount = 0;
+          let totalRemainingSec = 0;
+
+          if (facWorks.length > 0) {
+            facWorks.forEach(w => {
+              const rem = getWorkRemainingSeconds(w);
+              if (!w.IsCompleted && rem > 0) {
+                incompleteCount++;
+                totalRemainingSec += rem;
+              } else {
+                completedCount++;
+              }
+            });
+          }
+
+          if (incompleteCount > 0) {
+            // 이 가공 시설에 아직 끝나지 않은 작업이 남아있음 -> 개별 완료는 무시하고 절대 알람 울리지 않음!
             hasActiveUnnotified = true;
+            // 타깃 시간도 실제 남은 시간에 맞춰 실시간 동기화
+            const expectedTarget = now + (totalRemainingSec * 1000);
+            if (Math.abs(expectedTarget - al.targetTimestamp) > 3000) {
+              al.targetTimestamp = expectedTarget;
+              changed = true;
+            }
+          } else {
+            // 이 가공 시설에 미완료 작업이 없음 (걸어둔 모든 작업 완료)
+            if (facWorks.length > 0 && completedCount > 0) {
+              // 걸어둔 모든 작업이 완료된 상태!
+              al.notified = true;
+              changed = true;
+              playChime();
+              showPushNotification(
+                `[${al.facility}] 모든 가공 완료`,
+                `[${al.facility}] 걸어둔 모든 가공 작업(${completedCount}건)이 완료되었습니다! 지금 바로 수령하세요.`
+              );
+              document.title = `[${al.facility} 전체 가공 완료] 모비노기 생활 지원도구`;
+              setTimeout(() => { document.title = '모비노기 생활 지원도구'; }, 8000);
+            } else if (now >= al.targetTimestamp) {
+              // 캐시에 목록이 없거나 작업 완료 후 시간 도달
+              al.notified = true;
+              changed = true;
+              playChime();
+              showPushNotification(
+                `[${al.facility}] 가공 완료`,
+                `[${al.facility}] 시설의 모든 가공 작업이 완료되었습니다. (${al.item})`
+              );
+              document.title = `[${al.facility} 가공 완료] 모비노기 생활 지원도구`;
+              setTimeout(() => { document.title = '모비노기 생활 지원도구'; }, 8000);
+            } else {
+              hasActiveUnnotified = true;
+            }
           }
         }
       });
@@ -7589,21 +8252,465 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     let isDeliveryTargetsLoading = false;
+    window.deliveryCharactersInfo = null;
+    let lastKnownActiveCharId = null;
+    let lastKnownMatchedIngameCharId = null;
+
+    function renderDeliveryCharacterBar(charsInfo) {
+      if (!charsInfo) return;
+      window.deliveryCharactersInfo = charsInfo;
+      lastKnownActiveCharId = charsInfo.active_character_id || null;
+      lastKnownMatchedIngameCharId = charsInfo.matched_ingame_character_id || null;
+
+      const tabsEl = document.getElementById('delivery-char-tabs-list');
+      const overallBadge = document.getElementById('char-overall-summary-badge');
+      const autoSwitchIcon = document.getElementById('icon-char-autoswitch');
+      const bannerEl = document.getElementById('delivery-char-context-banner');
+      const btnComplete = document.getElementById('btn-complete-char-delivery');
+      const btnUnmark = document.getElementById('btn-unmark-char-delivery');
+
+      if (overallBadge && charsInfo.overall) {
+        const ov = charsInfo.overall;
+        const delivChars = ov.weekly_delivered_characters ?? 0;
+        overallBadge.innerText = `납품 완료: ${delivChars}/${ov.total_characters} 캐릭터 (월 06시 초기화) · 준비 달성: ${ov.completed_items}/${ov.total_items} 품목`;
+        if (ov.total_characters > 0 && delivChars >= ov.total_characters) {
+          overallBadge.className = 'badge mono-num';
+        } else {
+          overallBadge.className = 'badge-dim mono-num';
+        }
+      }
+
+      if (btnComplete) {
+        const actName = charsInfo.active_character_name || '현재 캐릭터';
+        if (charsInfo.active_weekly_delivered) {
+          btnComplete.innerText = `✓ ${actName} 납품 완료됨 (재차감)`;
+          if (btnUnmark) btnUnmark.style.display = 'inline-flex';
+        } else {
+          btnComplete.innerText = `✓ ${actName} 납품 완료 (목표량 차감)`;
+          if (btnUnmark) btnUnmark.style.display = 'none';
+        }
+      }
+
+      if (autoSwitchIcon) {
+        const on = !!charsInfo.auto_switch_character;
+        autoSwitchIcon.innerText = on ? '■' : '□';
+        autoSwitchIcon.style.color = on ? 'var(--text-bright)' : 'var(--text-dim)';
+      }
+
+      const chars = charsInfo.characters || [];
+      if (tabsEl) {
+        tabsEl.innerHTML = chars.map(c => {
+          const safeId = (c.id || '').replace(/'/g, "\\'");
+          const isAct = !!c.is_active;
+          const isIngame = !!c.is_ingame;
+          const isDelivered = !!c.weekly_delivered;
+          const deliveredTag = isDelivered
+            ? `<span class="char-delivered-badge" title="이번 주 납품 완료됨 (매주 월요일 오전 6시 초기화)">✓완료</span>`
+            : '';
+          const doneTag = c.is_all_completed
+            ? `<span class="char-tab-progress mono-num" style="font-weight:700;">[${c.completed_count}/${c.total_count}]</span>`
+            : `<span class="char-tab-progress mono-num" style="color:var(--text-muted);">(${c.completed_count}/${c.total_count})</span>`;
+          const ingameDot = isIngame
+            ? `<span class="char-ingame-dot" title="현재 인게임 접속 중인 캐릭터 (${c.signature_label || ''})"></span>`
+            : '';
+          const jobText = c.signature && c.signature.job ? c.signature.job : '';
+          const subLabel = jobText
+            ? `<span class="char-tab-sub" style="font-size:11px; color:var(--text-dim); white-space:nowrap;">${jobText}</span>`
+            : (!c.signature ? `<span class="char-tab-sub" style="font-size:11px; color:var(--text-dim); white-space:nowrap;">미연동</span>` : '');
+          return `
+            <button type="button" class="char-tab-btn ${isAct ? 'active' : ''}" onclick="selectDeliveryCharacter('${safeId}')" title="${c.name} — ${c.signature_label || '인게임 미연동'} (${isDelivered ? '이번 주 납품 완료 · ' : ''}${c.completed_count}/${c.total_count} 준비 완료)">
+              <span class="char-tab-left">
+                ${ingameDot}
+                <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${c.name}</span>
+                ${subLabel}
+              </span>
+              <span class="char-tab-right">
+                ${deliveredTag}
+                ${doneTag}
+              </span>
+            </button>
+          `;
+        }).join('');
+      }
+
+      if (bannerEl) {
+        const activeChar = chars.find(c => c.is_active);
+        const ingameLabel = charsInfo.last_ingame_label || '';
+        if (charsInfo.last_ingame_signature && !charsInfo.matched_ingame_character_id) {
+          bannerEl.style.display = 'flex';
+          bannerEl.innerHTML = `
+            <span><span class="sym-prefix">&gt;</span>현재 접속 중인 캐릭터(<strong>${ingameLabel}</strong>)가 아직 프로필에 연동되지 않았습니다.</span>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn btn-sm" onclick="linkActiveCharacterToIngame()">현재 탭(${activeChar ? activeChar.name : '선택 탭'})에 연동</button>
+              <button type="button" class="btn btn-sm btn-solid-core" onclick="quickAddAndLinkIngameCharacter()">+ 새 캐릭터로 추가·연동</button>
+            </div>
+          `;
+        } else if (!charsInfo.is_active_ingame) {
+          const matchedChar = chars.find(c => c.id === charsInfo.matched_ingame_character_id);
+          bannerEl.style.display = 'flex';
+          bannerEl.innerHTML = `
+            <span><span class="sym-prefix">&gt;</span>현재 인게임 접속 캐릭터(${matchedChar ? '<strong>' + matchedChar.name + '</strong>' : (ingameLabel || '다른 캐릭터')})와 다른 캐릭터(<strong>${activeChar ? activeChar.name : ''}</strong>)의 저장된 납품 현황을 조회 중입니다. (인게임 가방 수량으로 덮어쓰지 않음)</span>
+            ${matchedChar ? `<button type="button" class="btn btn-sm" onclick="selectDeliveryCharacter('${matchedChar.id}')">접속 중인 '${matchedChar.name}' 탭으로 이동</button>` : ''}
+          `;
+        } else {
+          bannerEl.style.display = 'none';
+          bannerEl.innerHTML = '';
+        }
+      }
+    }
+
+    async function selectDeliveryCharacter(charId) {
+      if (window.deliveryCharactersInfo && window.deliveryCharactersInfo.active_character_id === charId) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/delivery_characters/select', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_id: charId })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('캐릭터 전환 실패: ' + d.error);
+        } else {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+          loadDeliveryTargets();
+          loadBatchPlan();
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function promptAddCharacterProfile() {
+      const charsInfo = window.deliveryCharactersInfo;
+      const nextNum = charsInfo && charsInfo.characters ? (charsInfo.characters.length + 1) : 2;
+      const defaultName = `캐릭터 ${nextNum}`;
+      const name = prompt('추가할 캐릭터의 이름(별칭)을 입력하세요:\n(새로운 캐릭터는 기본 18개 주간 납품 목록으로 초기화됩니다)', defaultName);
+      if (name === null) return;
+      const linkNow = confirm('이 새 프로필을 현재 게임에 접속 중인 캐릭터와 바로 연동할까요?\n\n• [확인]: 현재 접속 중인 인게임 캐릭터와 연동 (가방 수량 실시간 반영)\n• [취소]: 인게임 미연동 상태로 추가 (보유 수량 0개로 시작, 나중에 해당 캐릭터 접속 시 연동)');
+      try {
+        const res = await fetch('/api/delivery_characters/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim() || defaultName,
+            init_mode: 'default_18',
+            link_current_ingame: linkNow
+          })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('캐릭터 추가 실패: ' + d.error);
+        } else {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+          loadDeliveryTargets();
+          loadBatchPlan();
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function quickAddAndLinkIngameCharacter() {
+      const charsInfo = window.deliveryCharactersInfo;
+      const nextNum = charsInfo && charsInfo.characters ? (charsInfo.characters.length + 1) : 2;
+      const sigJob = charsInfo && charsInfo.last_ingame_signature ? (charsInfo.last_ingame_signature.job || '') : '';
+      const defaultName = sigJob ? `캐릭터 ${nextNum} (${sigJob})` : `캐릭터 ${nextNum}`;
+      const name = prompt('현재 인게임에 접속 중인 캐릭터의 프로필 이름(별칭)을 입력하세요:', defaultName);
+      if (name === null) return;
+      try {
+        const res = await fetch('/api/delivery_characters/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim() || defaultName,
+            init_mode: 'default_18',
+            link_current_ingame: true
+          })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('캐릭터 추가 실패: ' + d.error);
+        } else {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+          loadDeliveryTargets();
+          loadBatchPlan();
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function promptRenameActiveCharacter() {
+      const charsInfo = window.deliveryCharactersInfo;
+      const curId = charsInfo ? charsInfo.active_character_id : '';
+      const curName = charsInfo ? (charsInfo.active_character_name || '') : '';
+      const newName = prompt('현재 선택된 캐릭터 프로필의 새 이름을 입력하세요:', curName);
+      if (newName === null || !newName.trim()) return;
+      try {
+        const res = await fetch('/api/delivery_characters/rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_id: curId, name: newName.trim() })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('이름 변경 실패: ' + d.error);
+        } else {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+          loadDeliveryTargets();
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function deleteActiveCharacterProfile() {
+      const charsInfo = window.deliveryCharactersInfo;
+      if (!charsInfo || (charsInfo.characters || []).length <= 1) {
+        alert('최소 1개의 캐릭터 프로필은 유지되어야 합니다.');
+        return;
+      }
+      const curId = charsInfo.active_character_id;
+      const curName = charsInfo.active_character_name || curId;
+      if (!confirm(`정말로 '${curName}' 캐릭터 프로필과 해당 캐릭터의 주간 납품 목록을 삭제할까요?`)) return;
+      try {
+        const res = await fetch('/api/delivery_characters/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_id: curId })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('캐릭터 삭제 실패: ' + d.error);
+        } else {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+          loadDeliveryTargets();
+          loadBatchPlan();
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function linkActiveCharacterToIngame() {
+      const charsInfo = window.deliveryCharactersInfo;
+      const curId = charsInfo ? charsInfo.active_character_id : '';
+      const curName = charsInfo ? (charsInfo.active_character_name || '현재 탭') : '현재 탭';
+      const ingameLabel = (charsInfo && charsInfo.last_ingame_label) ? `\n(감지된 인게임 캐릭터: ${charsInfo.last_ingame_label})` : '';
+      if (!confirm(`'${curName}' 프로필을 현재 게임에 로그인된 캐릭터와 연동할까요?${ingameLabel}\n\n연동하면 인게임에서 이 캐릭터로 접속할 때 자동으로 '${curName}' 탭으로 전환됩니다.`)) return;
+      try {
+        const res = await fetch('/api/delivery_characters/link_ingame', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_id: curId })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('캐릭터 연동 실패: ' + d.error);
+        } else {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+          loadDeliveryTargets();
+          loadBatchPlan();
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function toggleCharacterAutoSwitch() {
+      const charsInfo = window.deliveryCharactersInfo;
+      const nextVal = !(charsInfo && charsInfo.auto_switch_character);
+      try {
+        const res = await fetch('/api/delivery_characters/toggle_auto_switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: nextVal })
+        });
+        const d = await res.json();
+        if (!d.error && d.characters_info) {
+          renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+        }
+      } catch (e) {
+        console.error('toggleCharacterAutoSwitch error:', e);
+      }
+    }
+
+    async function syncTargetsWithInventory() {
+      const charsInfo = window.deliveryCharactersInfo;
+      const curName = charsInfo ? (charsInfo.active_character_name || '현재 캐릭터') : '현재 캐릭터';
+      if (!confirm(`[${curName}] 캐릭터의 수동 수량 고정(0개 초기화 등)을 해제하고 현재 인게임 가방 수량과 다시 동기화할까요?`)) return;
+      try {
+        const res = await fetch('/api/sync_delivery_targets_inventory', { method: 'POST' });
+        const d = await res.json();
+        if (d.status === 'success') {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+          loadDeliveryTargets();
+          loadBatchPlan();
+        } else {
+          alert('동기화 실패: ' + (d.error || '알 수 없는 오류'));
+        }
+      } catch (e) {
+        alert('동기화 요청 실패: ' + e);
+      }
+    }
+
+    async function completeActiveCharacterDelivery() {
+      const charsInfo = window.deliveryCharactersInfo;
+      const curId = charsInfo ? charsInfo.active_character_id : '';
+      const curName = charsInfo ? (charsInfo.active_character_name || '현재 캐릭터') : '현재 캐릭터';
+      const alreadyDone = !!(charsInfo && charsInfo.active_weekly_delivered);
+      const warnExtra = alreadyDone
+        ? `\n[주의] '${curName}' 캐릭터는 이미 이번 주 [✓ 납품완료] 마크가 표시되어 있습니다. 다시 실행하면 목표 수량만큼 한 번 더 차감됩니다.\n`
+        : '';
+      if (!confirm(`[${curName}] 주간 납품 완료 처리를 실행할까요?${warnExtra}\n• '${curName}' 캐릭터에 등록된 각 납품 품목의 보유 수량에서 목표 수량(Goal)만큼 차감합니다 (예: 14/6 -> 8/6, 6/6 -> 0/6).\n• 다른 캐릭터의 보유 수량에는 영향을 주지 않습니다.\n• '${curName}' 캐릭터에 [✓ 납품완료] 마크가 표시되며, 매주 월요일 오전 6시에 자동으로 초기화됩니다.`)) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/delivery_characters/complete_delivery', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_id: curId })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('납품 완료 처리 실패: ' + d.error);
+        } else {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+          loadDeliveryTargets();
+          loadBatchPlan();
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    async function unmarkActiveCharacterDelivery() {
+      const charsInfo = window.deliveryCharactersInfo;
+      const curId = charsInfo ? charsInfo.active_character_id : '';
+      const curName = charsInfo ? (charsInfo.active_character_name || '현재 캐릭터') : '현재 캐릭터';
+      if (!confirm(`'${curName}' 캐릭터의 [✓ 납품완료] 마크를 해제할까요? (보유 수량은 변경되지 않습니다)`)) return;
+      try {
+        const res = await fetch('/api/delivery_characters/set_weekly_delivered', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_id: curId, delivered: false })
+        });
+        const d = await res.json();
+        if (d.error) {
+          alert('해제 실패: ' + d.error);
+        } else {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
+          pollLogs();
+        }
+      } catch (e) {
+        alert('요청 실패: ' + e);
+      }
+    }
+
+    // Drag & Drop / Button Reordering for Weekly Delivery Target Cards
+    let draggedTargetItemName = null;
+
+    function onTargetCardDragStart(ev, itemName) {
+      // Prevent starting drag from interactive controls
+      if (ev.target && ev.target.closest && ev.target.closest('button, input, a')) {
+        ev.preventDefault();
+        return;
+      }
+      draggedTargetItemName = itemName;
+      if (ev.dataTransfer) {
+        ev.dataTransfer.effectAllowed = 'move';
+        ev.dataTransfer.setData('text/plain', itemName);
+      }
+      const card = ev.currentTarget;
+      if (card) {
+        setTimeout(() => card.classList.add('dragging'), 0);
+      }
+    }
+
+    function onTargetCardDragOver(ev) {
+      ev.preventDefault();
+      if (ev.dataTransfer) {
+        ev.dataTransfer.dropEffect = 'move';
+      }
+      const card = ev.currentTarget;
+      if (card && !card.classList.contains('dragging')) {
+        card.classList.add('drag-over');
+      }
+    }
+
+    function onTargetCardDragLeave(ev) {
+      const card = ev.currentTarget;
+      if (card) {
+        card.classList.remove('drag-over');
+      }
+    }
+
+    function onTargetCardDragEnd(ev) {
+      draggedTargetItemName = null;
+      document.querySelectorAll('.target-card.dragging, .target-card.drag-over').forEach(el => {
+        el.classList.remove('dragging', 'drag-over');
+      });
+    }
+
+    async function onTargetCardDrop(ev, targetItemName) {
+      ev.preventDefault();
+      const card = ev.currentTarget;
+      if (card) card.classList.remove('drag-over');
+      const fromItem = draggedTargetItemName || (ev.dataTransfer ? ev.dataTransfer.getData('text/plain') : '');
+      draggedTargetItemName = null;
+      if (!fromItem || !targetItemName || fromItem === targetItemName) return;
+      await swapOrMoveDeliveryTarget(fromItem, targetItemName, 'swap');
+    }
+
+    async function swapOrMoveDeliveryTarget(fromItem, toItem, mode = 'swap') {
+      try {
+        const res = await fetch('/api/reorder_delivery_targets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from_item: fromItem, to_item: toItem, mode: mode })
+        });
+        const d = await res.json();
+        if (!d.error) {
+          loadDeliveryTargets();
+          loadBatchPlan();
+        }
+      } catch (e) {
+        console.error('swapOrMoveDeliveryTarget error:', e);
+      }
+    }
+
     async function loadDeliveryTargets() {
       if (isDeliveryTargetsLoading) return;
       isDeliveryTargetsLoading = true;
       try {
         const res = await fetch('/api/delivery_targets');
         const data = await res.json();
+        if (data.characters_info) {
+          renderDeliveryCharacterBar(data.characters_info);
+        }
         const targets = data.targets || [];
+        const activeCharName = (data.characters_info && data.characters_info.active_character_name) ? data.characters_info.active_character_name : '';
         const container = document.getElementById('delivery-targets-container');
         const badge = document.getElementById('target-count-badge');
         if (badge) {
-          badge.innerText = `${targets.length}개 등록됨`;
+          const completedCount = targets.filter(t => t.is_completed || t.current >= t.goal).length;
+          badge.innerText = activeCharName ? `${activeCharName} · ${completedCount}/${targets.length} 완료` : `${targets.length}개 등록됨`;
         }
         const tabDeliveryPill = document.getElementById('tab-delivery-pill');
         if (tabDeliveryPill) {
-          tabDeliveryPill.innerText = `${targets.length}개 등록`;
+          const completedCount = targets.filter(t => t.is_completed || t.current >= t.goal).length;
+          tabDeliveryPill.innerText = activeCharName ? `${activeCharName} (${completedCount}/${targets.length})` : `${targets.length}개 등록`;
         }
 
         // Update Collapsed Bar Quick Summary
@@ -7633,10 +8740,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
 
         let html = '';
-        targets.forEach(t => {
+        targets.forEach((t, idx) => {
           const isDone = t.is_completed || (t.current >= t.goal);
           const gaugeStr = makeTextGauge(t.current, t.goal, 5);
           const safeName = (t.item_name || '').replace(/'/g, "\\'");
+          const prevItemSafe = idx > 0 ? (targets[idx - 1].item_name || '').replace(/'/g, "\\'") : '';
+          const nextItemSafe = idx < targets.length - 1 ? (targets[idx + 1].item_name || '').replace(/'/g, "\\'") : '';
 
           let recHtml = '';
           const rec = t.recipe || {};
@@ -7654,13 +8763,24 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
 
           html += `
-            <div class="target-card ${isDone ? 'target-done' : ''}">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                  <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title);">${t.item_name}</div>
-                  <div style="font-size: var(--fs-sm); color: var(--text-muted);"><span class="sym-prefix">&gt;</span>${t.quest_title || '주간 납품'}</div>
+            <div class="target-card ${isDone ? 'target-done' : ''}"
+                 draggable="true"
+                 ondragstart="onTargetCardDragStart(event, '${safeName}')"
+                 ondragover="onTargetCardDragOver(event)"
+                 ondragleave="onTargetCardDragLeave(event)"
+                 ondrop="onTargetCardDrop(event, '${safeName}')"
+                 ondragend="onTargetCardDragEnd(event)">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;">
+                <div style="display: flex; align-items: flex-start; gap: 5px; min-width: 0;">
+                  <span class="target-drag-handle" title="마우스로 드래그하여 다른 품목과 위치를 맞바꿀 수 있습니다">⠿</span>
+                  <div style="min-width: 0;">
+                    <div style="font-weight: 700; font-size: var(--fs-md); color: var(--text-title); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.item_name}</div>
+                    <div style="font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span class="sym-prefix">&gt;</span>${t.quest_title || '주간 납품'}</div>
+                  </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 3px; flex-shrink: 0;">
+                  <button class="btn btn-sm btn-move-card" ${idx === 0 ? 'disabled' : `onclick="swapOrMoveDeliveryTarget('${safeName}', '${prevItemSafe}', 'swap')"`} title="이전 위치로 이동">&lt;</button>
+                  <button class="btn btn-sm btn-move-card" ${idx === targets.length - 1 ? 'disabled' : `onclick="swapOrMoveDeliveryTarget('${safeName}', '${nextItemSafe}', 'swap')"`} title="다음 위치로 이동">&gt;</button>
                   <span class="${isDone ? 'badge' : 'badge-dim'}">${isDone ? '완료' : '진행 중'}</span>
                   <button class="btn btn-sm" onclick="deleteDeliveryTarget('${safeName}')" title="삭제">삭제</button>
                 </div>
@@ -7668,18 +8788,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
               ${recHtml}
 
-              <div style="display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-sm); flex-wrap: wrap; gap: 6px;">
-                <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-sm); flex-wrap: wrap; gap: 4px;">
+                <div style="display: flex; align-items: center; gap: 3px; flex-wrap: wrap;">
                   <span class="cli-gauge">${gaugeStr}</span>
-                  <span style="color: var(--text-muted);">보유:</span>
+                  <span style="color: var(--text-muted); font-size: 11px;">보유</span>
                   <button class="btn btn-sm" onclick="adjustTargetCurrent('${safeName}', ${t.current}, -1)" title="1개 감소">-</button>
-                  <strong class="mono-num" style="color: var(--text-main); cursor: pointer; text-decoration: underline dotted;" onclick="promptEditCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 수정">${t.current}</strong>
+                  <strong class="mono-num" style="color: var(--text-main); cursor: pointer; text-decoration: underline dotted; padding: 0 2px;" onclick="promptEditCurrent('${safeName}', ${t.current})" title="수량 클릭하여 직접 수정">${t.current}</strong>
                   <button class="btn btn-sm" onclick="adjustTargetCurrent('${safeName}', ${t.current}, 1)" title="1개 증가">+</button>
                   <span class="mono-num" style="color: var(--text-muted);">/ ${t.goal}개</span>
-                  <button class="btn btn-sm" onclick="updateTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">0개로</button>
-                  ${t.storage_count > 0 ? `<small class="mono-num" style="color: var(--text-muted); font-size: var(--fs-sm);">(가방 ${t.inventory_count || 0} + 창고 ${t.storage_count})</small>` : ''}
+                  <button class="btn btn-sm" onclick="updateTargetCurrent('${safeName}', 0)" title="현재 수량 0개로 리셋">0개</button>
+                  ${t.storage_count > 0 ? `<small class="mono-num" style="color: var(--text-muted); font-size: 11px;">(가방${t.inventory_count || 0}+창고${t.storage_count})</small>` : ''}
                 </div>
-                <span class="mono-num" style="color: ${isDone ? 'var(--text-dim)' : 'var(--text-bright)'}; font-weight: 700;">${isDone ? '=== 납품 준비 완료 ===' : `--- ${t.needed}개 부족 ---`}</span>
+                <span class="mono-num" style="color: ${isDone ? 'var(--text-dim)' : 'var(--text-bright)'}; font-weight: 700; white-space: nowrap;">${isDone ? '✓ 준비 완료' : `${t.needed}개 부족`}</span>
               </div>
             </div>
           `;
@@ -7881,11 +9001,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     async function resetAllTargetsCurrent() {
-      if (!confirm('등록된 모든 주간 납품 목표의 현재 보유 수량을 0개로 초기화할까요?\n\n(새로운 주간 퀘스트를 시작하거나 목표 품목들을 처음부터 제작하고자 할 때 유용합니다)')) return;
+      const charsInfo = window.deliveryCharactersInfo;
+      const curName = charsInfo ? (charsInfo.active_character_name || '현재 선택된 캐릭터') : '현재 선택된 캐릭터';
+      if (!confirm(`[${curName}] 캐릭터에 등록된 모든 주간 납품 목표의 현재 보유 수량을 0개로 초기화할까요?\n\n• 현재 선택된 '${curName}' 캐릭터만 0개로 초기화되며, 다른 캐릭터의 납품 현황은 그대로 유지됩니다.\n• 이후 다시 가방 재고를 읽고 싶으실 때는 [가방 재고 재동기화] 버튼을 누르시면 됩니다.`)) return;
       try {
         const res = await fetch('/api/reset_delivery_targets_current', { method: 'POST' });
         const d = await res.json();
         if (d.status === 'success') {
+          if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
           pollLogs();
           loadDeliveryTargets();
           loadBatchPlan();
@@ -8974,11 +10097,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const abortBtn = document.getElementById('btn-quick-alter-abort');
       const customAbortBtn = document.getElementById('btn-custom-abort');
 
+      const mcbBar = document.getElementById('master-command-bar');
       const mcbIdle = document.getElementById('mcb-box-idle');
       const mcbRunning = document.getElementById('mcb-box-running');
       const mcbRunningTitle = document.getElementById('mcb-running-title');
       const mcbRunningDesc = document.getElementById('mcb-running-desc');
       const mcbBtnStart = document.getElementById('mcb-btn-start');
+
+      if (mcbBar) mcbBar.classList.toggle('running', !!busy);
 
       if (busy) {
         if (busyBox) busyBox.style.display = 'inline-flex';
@@ -9028,6 +10154,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
         clearTimeout(timeoutId);
         const data = await res.json();
         statusFailCount = 0;
+
+        if (data.delivery_character) {
+          const dc = data.delivery_character;
+          const prevActId = lastKnownActiveCharId;
+          const prevMatchId = lastKnownMatchedIngameCharId;
+          renderDeliveryCharacterBar(dc);
+          if ((prevActId && dc.active_character_id !== prevActId) || (prevMatchId !== dc.matched_ingame_character_id)) {
+            if (!data.is_busy) {
+              loadDeliveryTargets();
+              loadBatchPlan();
+            }
+          }
+        }
 
         const currentlyBusy = !!data.is_busy;
         if (!currentlyBusy && wasBusy) {
