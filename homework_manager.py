@@ -957,14 +957,14 @@ class HomeworkManager:
         next_hour = (now.hour + 1) % 24
 
         if is_peak_window:
-            label = f"🔥 결계 진행 중! ({now.hour:02d}시 정각 스폰 · {minute}분 경과)"
-            short_label = f"🔥 결계 진행중 ({minute}분)"
+            label = f"결계 진행 중! ({now.hour:02d}시 정각 스폰 · {minute}분 경과)"
+            short_label = f"결계 진행중 ({minute}분)"
             level = "active"
         elif minute >= 55:
             rem_m = 59 - minute
             rem_s = 60 - second
-            label = f"⚡ {next_hour:02d}시 불길한 소환의 결계 임박! ({rem_m}분 {rem_s:02d}초 전)"
-            short_label = f"⚡ 결계 임박 {rem_m}:{rem_s:02d}"
+            label = f"{next_hour:02d}시 결계 임박! ({rem_m}분 {rem_s:02d}초 전)"
+            short_label = f"결계 임박 {rem_m}:{rem_s:02d}"
             level = "imminent"
         else:
             label = f"결계 대기 ({next_hour:02d}:00까지 {minutes_until_next}분 남음)"
@@ -1474,7 +1474,7 @@ class HomeworkManager:
                 self._auto_mark_task_locked(char_name, "daily", "정기 의뢰", True, f"사냥터 임무 달성: {label}")
             self._notify_async(
                 bool(self.config.get("webhook_notify_hunting", True)),
-                "🏹 사냥터 클리어 알림",
+                "사냥터 클리어 알림",
                 f"**[{char_name}]** **{label}** 클리어! 여신상에서 전리품을 수령하세요.",
                 0x2ECC71,
             )
@@ -1562,7 +1562,7 @@ class HomeworkManager:
 
         self._notify_async(
             bool(self.config.get("webhook_notify_dungeon", True)),
-            "⚔️ 던전 클리어 알림",
+            "던전 클리어 알림",
             f"**[{char_name}]** 캐릭터가 **{label}** 클리어를 완료했습니다!",
             0x3498DB,
         )
@@ -1588,7 +1588,7 @@ class HomeworkManager:
         self._auto_mark_task_locked(char_name, "weekly", target_task, True, f"{display_name} 클리어")
         self._notify_async(
             bool(self.config.get("webhook_notify_abyss", True)),
-            "🟣 어비스 클리어 알림",
+            "어비스 클리어 알림",
             f"**[{char_name}]** 캐릭터가 **{display_name}** 클리어를 완료했습니다!",
             0x9B59B6,
         )

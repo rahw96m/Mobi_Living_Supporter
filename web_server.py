@@ -4707,11 +4707,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
           <div class="top-mode-switcher" role="tablist" aria-label="지원도구 메인 모드 전환">
             <button type="button" id="btn-top-mode-living" class="top-mode-btn active" onclick="switchTopAppMode('living')" title="주간 납품 18개 품목, 빠른 재료 가공, 개별 아이템 제작 파이프라인">
-              <span>⚒️ 생활 지원</span>
+              <span>생활 지원</span>
               <span class="top-mode-pill" id="top-living-summary-pill">납품·가공·제작</span>
             </button>
             <button type="button" id="btn-top-mode-homework" class="top-mode-btn" onclick="switchTopAppMode('homework')" title="6캐릭터 일일·집중·주간 숙제 체크리스트, 주간 매트릭스, 인게임 미션·던전 자동 감지 및 정각 결계 알림">
-              <span>📋 숙제 지원</span>
+              <span>숙제 지원</span>
               <span class="top-mode-pill" id="top-hw-summary-pill">캐릭터 숙제</span>
             </button>
           </div>
@@ -4759,7 +4759,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span class="status-delim">|</span>
         <div class="pill" id="pill-env" title="현재 지역/채널, 에린 시간 및 포만감" style="color: var(--text-muted);">환경 확인 중</div>
         <span class="status-delim">|</span>
-        <div class="pill" id="pill-omen-barrier" onclick="switchTopAppMode('homework')" style="cursor: pointer; color: var(--text-muted);" title="매시간 정각(00분~05분) 불길한 소환의 결계 알림 타이머">⚡ 결계 확인 중</div>
+        <div class="pill" id="pill-omen-barrier" onclick="switchTopAppMode('homework')" style="cursor: pointer; color: var(--text-muted);" title="매시간 정각(00분~05분) 불길한 소환의 결계 알림 타이머">결계 확인 중</div>
       </div>
     </header>
 
@@ -5530,7 +5530,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">생활 지원 탭의 주간 납품 캐릭터 프로필과 실시간 공유됩니다.</div>
             </div>
             <div style="display: flex; gap: 6px; align-items: center;">
-              <button type="button" class="btn btn-sm btn-boxed" onclick="switchTopAppMode('living')">⚒️ 주간 납품 탭으로 이동</button>
+              <button type="button" class="btn btn-sm btn-boxed" onclick="switchTopAppMode('living')">주간 납품 탭 이동</button>
             </div>
           </div>
         </div>
@@ -6058,7 +6058,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </label>
           <input type="text" id="discord-webhook-url-input" class="input-text mono-num" style="width: 100%; box-sizing: border-box;" placeholder="https://discord.com/api/webhooks/...">
           <div style="margin-top: 10px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px dashed var(--line); font-size: var(--fs-sm); border-radius: 2px;">
-            <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 6px;">💡 디스코드 웹훅 생성 3단계 (처음이신가요?)</div>
+            <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 6px;">디스코드 웹훅 생성 3단계 (처음이신가요?)</div>
             <ol style="margin: 0; padding-left: 18px; color: var(--text-muted); line-height: 1.6;">
               <li>알림을 받고 싶은 <strong>디스코드 채널 우클릭</strong> &gt; <strong>[채널 편집]</strong> 선택</li>
               <li>왼쪽 메뉴의 <strong>[연동]</strong> &gt; <strong>[웹훅 만들기]</strong> (또는 [웹훅 보기]) 클릭</li>
@@ -8748,7 +8748,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (itemsAtFac.length > 0 && incompleteAtFac.length > 0) {
           const hasAlarm = !!activeAlarms[fac.name];
           if (hasAlarm) {
-            alarmBtn = `<button class="btn-facility-alarm active" onclick="toggleFacilityAlarm('${fac.name}')" title="[${fac.name}] 모든 작업 완료 시 알람 울림 (클릭하여 알람 해제)">🔔 알람ON</button>`;
+            alarmBtn = `<button class="btn-facility-alarm active" onclick="toggleFacilityAlarm('${fac.name}')" title="[${fac.name}] 모든 작업 완료 시 알람 울림 (클릭하여 알람 해제)">알람ON</button>`;
           } else {
             alarmBtn = `<button class="btn-facility-alarm" onclick="toggleFacilityAlarm('${fac.name}')" title="[${fac.name}] 걸어둔 모든 작업 완료 시 알람 울림">+시설알람</button>`;
           }
@@ -12200,9 +12200,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (omen.is_active_window) {
           pill.innerHTML = `<span style="color: var(--text-bright); font-weight: 700;">[결계] ${omen.label}</span>`;
         } else if (omen.is_pre_alert) {
-          pill.innerHTML = `<span style="color: var(--text-main); font-weight: 700;">⚡ ${omen.label}</span>`;
+          pill.innerHTML = `<span style="color: var(--text-main); font-weight: 700;">${omen.label}</span>`;
         } else {
-          pill.innerHTML = `<span style="color: var(--text-muted);">⚡ ${omen.label}</span>`;
+          pill.innerHTML = `<span style="color: var(--text-muted);">${omen.label}</span>`;
         }
       }
 
@@ -12507,7 +12507,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <div class="hw-task-row ${delivDone ? 'done' : ''}" style="border-top: 1px dashed var(--line); margin-top: 2px;" onclick="switchTopAppMode('living')" title="클릭하면 생활 지원(주간 납품) 화면으로 이동합니다">
               <div class="hw-task-left">
                 <span class="hw-task-check">${delivDone ? '■' : '□'}</span>
-                <span class="hw-task-name">⚒️ 주간 납품 (${delivCnt}/${delivTot} 품목)</span>
+                <span class="hw-task-name">주간 납품 (${delivCnt}/${delivTot} 품목)</span>
               </div>
               <span class="badge-dim" style="font-size: 10px; padding: 0 4px;">생활 지원 &gt;</span>
             </div>
@@ -12706,7 +12706,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       });
 
       // Add Weekly Delivery row at the bottom of the Matrix
-      bodyHtml += `<tr style="border-top: 2px solid var(--line);"><td style="font-weight: 700; color: var(--text-bright);">⚒️ 주간 납품 (18품목)</td>`;
+      bodyHtml += `<tr style="border-top: 2px solid var(--line);"><td style="font-weight: 700; color: var(--text-bright);">주간 납품 (18품목)</td>`;
       chars.forEach(c => {
         const done = !!c.weekly_delivered;
         bodyHtml += `<td class="hw-matrix-cell ${done ? 'done' : 'todo'}" onclick="switchTopAppMode('living')" title="생활 지원 탭에서 관리">${done ? '■ 완료' : `□ ${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}`}</td>`;
