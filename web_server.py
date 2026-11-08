@@ -12292,7 +12292,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           if (m) {
             btnComplete.innerHTML = `✓ ${escapeHtml(m[1].trim())} <kbd class="hw-keycap">${escapeHtml(m[2].trim())}</kbd> 완료`;
           } else {
-            btnComplete.innerHTML = `✓ [${escapeHtml(step.task_name)}] 완료`;
+            btnComplete.innerHTML = `✓ ${escapeHtml(step.task_name)} 완료`;
           }
         } else {
           btnComplete.innerText = focusMode ? '✓ 집중 숙제 완료됨' : '✓ 모든 숙제 완료됨';
