@@ -5693,7 +5693,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               </div>
             </div>
             <div style="display: flex; gap: 6px; margin-bottom: 12px;">
-              <input type="text" id="hw-new-task-input" class="input-text" placeholder="새 숙제 항목 이름 입력 (예: 필드 보스, 심층 던전 등)" style="flex: 1;">
+              <input type="text" id="hw-new-task-input" class="input-text" placeholder="새 숙제 항목 이름 입력 (예: 필드 보스, 심층 던전 등)" style="flex: 1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addHomeworkTaskItem();}">
               <button type="button" class="btn btn-solid-core btn-sm" onclick="addHomeworkTaskItem()">+ 숙제 항목 추가</button>
             </div>
             <div id="hw-settings-tasks-container" style="max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
@@ -11215,7 +11215,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         if (data.homework) {
           try {
-            onHomeworkStateReceived(data.homework, data.omen_barrier, data);
+            onHomeworkStateReceived(data.homework, data.omen_barrier, data, true);
           } catch (hwErr) {
             console.error('onHomeworkStateReceived error:', hwErr);
           }
@@ -12128,7 +12128,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       try { localStorage.setItem('mobi_hw_sub_tab', tab); } catch(e) {}
       applyHomeworkSubTabView();
       if (cachedHomeworkState) {
-        renderHomeworkDashboard(cachedHomeworkState);
+        renderHomeworkDashboard(cachedHomeworkState, false);
+        if (tab === 'settings') {
+          renderHomeworkSettings(cachedHomeworkState, true);
+        }
       }
     }
 
@@ -12147,21 +12150,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const res = await fetch('/api/homework/state');
         const hw = await res.json();
         if (hw && !hw.error) {
-          onHomeworkStateReceived(hw, hw.omen_barrier, cachedLiveStatusData);
+          onHomeworkStateReceived(hw, hw.omen_barrier, cachedLiveStatusData, false);
         }
       } catch (e) {
         console.warn('fetchHomeworkState error:', e);
       }
     }
 
-    function onHomeworkStateReceived(hw, omenBarrier, fullStatusData) {
+    function onHomeworkStateReceived(hw, omenBarrier, fullStatusData, isPolling = false) {
       if (fullStatusData) cachedLiveStatusData = fullStatusData;
       cachedHomeworkState = hw;
       if (omenBarrier || hw.omen_barrier) {
         updateOmenBarrierUI(omenBarrier || hw.omen_barrier, hw.settings);
       }
       updateTopSwitcherPills(hw);
-      renderHomeworkDashboard(hw);
+      renderHomeworkDashboard(hw, isPolling);
     }
 
     function updateTopSwitcherPills(hw) {
@@ -12231,15 +12234,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (banner) banner.style.display = 'none';
     }
 
-    function renderHomeworkDashboard(hw) {
+    function renderHomeworkDashboard(hw, isPolling = false) {
       if (!hw) return;
       try { renderHomeworkMasterCommandBar(hw); } catch(e) { console.error(e); }
       try { renderHomeworkCharacterBar(hw); } catch(e) { console.error(e); }
       try { renderHomeworkChecklists(hw); } catch(e) { console.error(e); }
       try { renderHomeworkSummaryTable(hw); } catch(e) { console.error(e); }
       try { renderHomeworkMatrixTable(hw); } catch(e) { console.error(e); }
-      if (currentHomeworkSubTab === 'settings') {
-        try { renderHomeworkSettings(hw); } catch(e) { console.error(e); }
+      if (!isPolling && currentHomeworkSubTab === 'settings') {
+        try { renderHomeworkSettings(hw, false); } catch(e) { console.error(e); }
       }
     }
 
@@ -12713,43 +12716,51 @@ HTML_PAGE = r"""<!DOCTYPE html>
       tbody.innerHTML = bodyHtml;
     }
 
-    function renderHomeworkSettings(hw) {
+    function renderHomeworkSettings(hw, force = false) {
       if (!hw) return;
+      const settingsView = document.getElementById('hw-subview-settings');
+      if (!force && settingsView && settingsView.contains(document.activeElement)) {
+        return;
+      }
       // 1. Characters CRUD table
       const charTbody = document.getElementById('hw-settings-char-tbody');
       if (charTbody) {
-        let html = '';
-        (hw.characters || []).forEach((c, idx) => {
-          const safeName = c.name.replace(/'/g, "\\'");
-          html += `
-            <tr>
-              <td><input type="text" id="hw-edit-char-name-${idx}" class="input-text" value="${escapeHtml(c.name)}" style="width: 100px;"></td>
-              <td><input type="text" id="hw-edit-char-class-${idx}" class="input-text" value="${escapeHtml(c.class || '')}" style="width: 95px;"></td>
-              <td><input type="number" id="hw-edit-char-cp-${idx}" class="input-text" value="${c.combat_power || 0}" style="width: 95px;"></td>
-              <td><input type="text" id="hw-edit-char-title-${idx}" class="input-text" value="${escapeHtml(c.title || '')}" style="width: 110px;"></td>
-              <td style="text-align: center; white-space: nowrap;">
-                <button type="button" class="btn btn-sm" onclick="saveHomeworkCharacterRow('${safeName}', ${idx})">저장</button>
-                <button type="button" class="btn btn-sm" onclick="moveHomeworkCharacter('${safeName}', -1)">▲</button>
-                <button type="button" class="btn btn-sm" onclick="moveHomeworkCharacter('${safeName}', 1)">▼</button>
-                <button type="button" class="btn btn-sm" onclick="deleteHomeworkCharacter('${safeName}')">삭제</button>
-              </td>
-            </tr>
-          `;
-        });
-        charTbody.innerHTML = html;
+        if (!force && charTbody.contains(document.activeElement)) {
+          // Keep active editing intact
+        } else {
+          let html = '';
+          (hw.characters || []).forEach((c, idx) => {
+            const safeName = c.name.replace(/'/g, "\\'");
+            html += `
+              <tr>
+                <td><input type="text" id="hw-edit-char-name-${idx}" class="input-text" value="${escapeHtml(c.name)}" style="width: 100px;" onkeydown="if(event.key==='Enter'){event.preventDefault();saveHomeworkCharacterRow('${safeName}', ${idx});}"></td>
+                <td><input type="text" id="hw-edit-char-class-${idx}" class="input-text" value="${escapeHtml(c.class || '')}" style="width: 95px;" onkeydown="if(event.key==='Enter'){event.preventDefault();saveHomeworkCharacterRow('${safeName}', ${idx});}"></td>
+                <td><input type="number" id="hw-edit-char-cp-${idx}" class="input-text" value="${c.combat_power || 0}" style="width: 95px;" onkeydown="if(event.key==='Enter'){event.preventDefault();saveHomeworkCharacterRow('${safeName}', ${idx});}"></td>
+                <td><input type="text" id="hw-edit-char-title-${idx}" class="input-text" value="${escapeHtml(c.title || '')}" style="width: 110px;" onkeydown="if(event.key==='Enter'){event.preventDefault();saveHomeworkCharacterRow('${safeName}', ${idx});}"></td>
+                <td style="text-align: center; white-space: nowrap;">
+                  <button type="button" class="btn btn-sm" onclick="saveHomeworkCharacterRow('${safeName}', ${idx})">저장</button>
+                  <button type="button" class="btn btn-sm" onclick="moveHomeworkCharacter('${safeName}', -1)">▲</button>
+                  <button type="button" class="btn btn-sm" onclick="moveHomeworkCharacter('${safeName}', 1)">▼</button>
+                  <button type="button" class="btn btn-sm" onclick="deleteHomeworkCharacter('${safeName}')">삭제</button>
+                </td>
+              </tr>
+            `;
+          });
+          charTbody.innerHTML = html;
+        }
       }
 
       // 2. Tasks & per-character target filter
-      renderHomeworkSettingsTasks();
+      renderHomeworkSettingsTasks(force);
 
       // 3. Discord webhook settings
       const st = hw.settings || {};
       const whUrl = document.getElementById('hw-discord-webhook-input');
-      if (whUrl && document.activeElement !== whUrl) whUrl.value = st.discord_webhook_url || '';
+      if (whUrl && (force || document.activeElement !== whUrl)) whUrl.value = st.discord_webhook_url || '';
       const whEvents = st.webhook_events || {};
       const setChk = (id, val) => {
         const el = document.getElementById(id);
-        if (el) el.checked = (val !== false);
+        if (el && (force || document.activeElement !== el)) el.checked = (val !== false);
       };
       setChk('hw-wh-dungeon', whEvents.dungeon);
       setChk('hw-wh-abyss', whEvents.abyss);
@@ -12758,10 +12769,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
       setChk('hw-wh-crafting', whEvents.crafting);
     }
 
-    function renderHomeworkSettingsTasks() {
+    function renderHomeworkSettingsTasks(force = false) {
       const container = document.getElementById('hw-settings-tasks-container');
       const catSel = document.getElementById('hw-settings-cat-select');
       if (!container || !catSel || !cachedHomeworkState) return;
+
+      if (!force && container.contains(document.activeElement)) {
+        return;
+      }
 
       const catKey = catSel.value || 'daily';
       const tasks = (cachedHomeworkState.categories && cachedHomeworkState.categories[catKey] && cachedHomeworkState.categories[catKey].tasks) || [];
@@ -12784,7 +12799,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         html += `
           <div style="padding: 8px 10px; background: var(--bg-sub-panel); border: 1px solid var(--line-subtle);">
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 6px;">
-              <input type="text" id="hw-edit-task-${idx}" class="input-text" value="${escapeHtml(tName)}" style="flex: 1;">
+              <input type="text" id="hw-edit-task-${idx}" class="input-text" value="${escapeHtml(tName)}" style="flex: 1;" onkeydown="if(event.key==='Enter'){event.preventDefault();renameHomeworkTaskItem('${catKey}', '${safeTask}', ${idx});}">
               <div style="display: flex; gap: 4px;">
                 <button type="button" class="btn btn-sm" onclick="renameHomeworkTaskItem('${catKey}', '${safeTask}', ${idx})">이름변경</button>
                 <button type="button" class="btn btn-sm" onclick="moveHomeworkTaskItem('${catKey}', '${safeTask}', -1)">▲</button>
@@ -12981,7 +12996,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (cpEl) cpEl.value = '';
         if (titleEl) titleEl.value = '';
         if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
       } catch (e) {
         alert('캐릭터 추가 오류: ' + e);
       }
@@ -13008,7 +13026,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const d = await res.json();
         if (!d.ok) { alert(d.message || '수정 실패'); return; }
         if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
       } catch (e) {
         alert('캐릭터 수정 오류: ' + e);
       }
@@ -13023,7 +13044,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         });
         const d = await res.json();
         if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
       } catch (e) {}
     }
 
@@ -13038,7 +13062,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const d = await res.json();
         if (!d.ok) { alert(d.message || '삭제 실패'); return; }
         if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
       } catch (e) {}
     }
 
@@ -13057,14 +13084,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const d = await res.json();
         if (!d.ok) { alert(d.message || '추가 실패'); return; }
         if (inputEl) inputEl.value = '';
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
       } catch (e) {}
     }
 
     async function renameHomeworkTaskItem(catKey, oldName, idx) {
       const el = document.getElementById(`hw-edit-task-${idx}`);
       const newName = el ? el.value.trim() : '';
-      if (!newName) return;
+      if (!newName) {
+        alert('변경할 숙제 이름을 입력해주세요.');
+        if (el) el.focus();
+        return;
+      }
+      if (newName === oldName) return;
       try {
         const res = await fetch('/api/homework/task_crud', {
           method: 'POST',
@@ -13072,8 +13107,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
           body: JSON.stringify({ action: 'rename', category: catKey, old_name: oldName, new_name: newName })
         });
         const d = await res.json();
-        if (d.state) onHomeworkStateReceived(d.state);
-      } catch (e) {}
+        if (!d.ok) { alert(d.message || '이름 변경 실패'); return; }
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
+      } catch (e) {
+        alert('이름 변경 오류: ' + e);
+      }
     }
 
     async function moveHomeworkTaskItem(catKey, taskName, direction) {
@@ -13084,7 +13125,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           body: JSON.stringify({ action: 'move', category: catKey, task_name: taskName, direction: direction })
         });
         const d = await res.json();
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
       } catch (e) {}
     }
 
@@ -13097,7 +13141,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           body: JSON.stringify({ action: 'delete', category: catKey, task_name: taskName })
         });
         const d = await res.json();
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
       } catch (e) {}
     }
 
@@ -13119,7 +13166,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           body: JSON.stringify({ action: 'set_targets', category: catKey, task_name: taskName, target_chars: targetPayload })
         });
         const d = await res.json();
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
       } catch (e) {}
     }
 
@@ -13134,7 +13184,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           body: JSON.stringify({ action: 'reset_defaults', category: catKey })
         });
         const d = await res.json();
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
       } catch (e) {}
     }
 
@@ -13170,7 +13223,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const d = await res.json();
         if (!d.ok) { alert(d.message || '백업 불러오기 실패'); return; }
         if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
         alert(d.message || '백업 데이터를 성공적으로 복원했습니다.');
       } catch (e) {
         alert('백업 파일 파싱 오류: ' + e);
@@ -13186,7 +13242,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const d = await res.json();
         if (!d.ok) { alert(d.message || '가져오기 실패'); return; }
         if (d.characters_info) renderDeliveryCharacterBar(d.characters_info);
-        if (d.state) onHomeworkStateReceived(d.state);
+        if (d.state) {
+          onHomeworkStateReceived(d.state, null, null, false);
+          renderHomeworkSettings(d.state, true);
+        }
         alert(d.message);
       } catch (e) {
         alert('레거시 데이터 가져오기 오류: ' + e);
