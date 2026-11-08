@@ -2397,6 +2397,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_error(e)
             return
 
+        if path == "/api/homework/toggle_weekly_focus":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                req_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                res = homework_instance.set_weekly_focus_done(
+                    char_name=req_json.get("char_name"),
+                    done=req_json.get("done"),
+                )
+                self._send_json(res)
+            except Exception as e:
+                self._send_error(e)
+            return
+
         if path == "/api/homework/import_backup":
             length = int(self.headers.get("Content-Length", 0))
             body_bytes = self.rfile.read(length) if length > 0 else b"{}"
@@ -4444,13 +4458,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     /* Homework Support Specific Layouts (Monochrome Living Support Style) */
     #hw-character-tabs-list {
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
     }
     .hw-checklist-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-      margin-bottom: 18px;
+      gap: 14px;
+      margin-bottom: 16px;
+      align-items: start;
     }
     @media (max-width: 1024px) {
       .hw-checklist-grid {
@@ -4461,28 +4476,51 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: var(--bg-panel);
       border-top: 2px solid var(--invert-bg);
       border-bottom: 1px solid var(--line);
-      padding: 16px 18px;
+      padding: 12px 14px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 6px;
       box-shadow: var(--panel-shadow);
+    }
+    .hw-cat-collapsed-bar {
+      padding: 4px 0 0 0;
+      font-size: var(--fs-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    .hw-cat-collapsed-bar:hover {
+      color: var(--text-bright);
+    }
+    #btn-hw-focus-mode.active {
+      background: var(--invert-bg) !important;
+      color: var(--invert-text) !important;
+      border-color: var(--invert-bg) !important;
+      font-weight: 700 !important;
+      box-shadow: var(--badge-shadow) !important;
     }
 
     .hw-task-list {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 2px;
     }
     .hw-task-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
-      padding: 7px 10px;
+      gap: 6px;
+      padding: 3px 8px;
+      min-height: 24px;
+      line-height: 1.25;
       background: var(--bg-sub-panel);
       border: 1px solid var(--line-subtle);
       cursor: pointer;
-      transition: all 0.12s ease;
+      transition: all 0.1s ease;
       user-select: none;
     }
     .hw-task-row:hover {
@@ -4505,21 +4543,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .hw-task-left {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       min-width: 0;
       flex: 1;
     }
     .hw-task-check {
       font-family: var(--font-mono);
       font-weight: 700;
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-bright);
     }
     .hw-task-row.done .hw-task-check {
       color: var(--text-muted);
     }
     .hw-task-name {
-      font-size: var(--fs-md);
+      font-size: var(--fs-sm);
       color: var(--text-bright);
       font-weight: 600;
       overflow: hidden;
@@ -4527,7 +4565,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       white-space: nowrap;
     }
     .hw-progress-bar-wrap {
-      height: 5px;
+      height: 4px;
       background: var(--bg-sub-panel);
       border: 1px solid var(--line-subtle);
       overflow: hidden;
@@ -5278,6 +5316,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
 
           <div class="mcb-right" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-boxed" id="btn-hw-focus-mode" onclick="toggleHomeworkSetting('focus_mode_enabled')" title="켜면 마스터바의 추천 순서와 완료/되돌리기 버튼이 [일일 숙제] 대신 [집중 숙제]를 대상으로 작동합니다">
+              <span id="icon-hw-focus-mode" style="font-family: var(--font-mono); margin-right: 4px;">□</span>집중 모드
+            </button>
             <button type="button" class="btn btn-boxed" id="btn-hw-rollback" onclick="rollbackHomeworkStep()" title="방금 완료한 숙제 단계를 이전 상태로 되돌립니다">
               ↩ 되돌리기
             </button>
@@ -5293,14 +5334,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="card-title" style="margin-bottom: 0;">
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <span><span class="sym-prefix">//</span>다중 캐릭터 숙제 &amp; 납품 통합 프로필</span>
-            <span id="hw-recommended-focus-badge" class="badge-dim mono-num">★ 집중 추천: 확인 중</span>
+            <span id="hw-recommended-focus-badge" class="badge-dim mono-num">집중 추천: 확인 중</span>
             <span id="hw-ingame-match-badge" class="badge-dim mono-num" style="display: none;"></span>
           </div>
           <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
             <button type="button" class="btn btn-sm btn-boxed" onclick="linkActiveCharacterToIngame()" title="현재 선택된 탭을 지금 게임에 접속 중인 캐릭터와 연동합니다">현 캐릭터 연동</button>
             <button type="button" class="btn btn-sm btn-boxed" onclick="promptRenameActiveCharacter()" title="현재 선택된 캐릭터 탭의 이름을 변경합니다">이름변경</button>
             <button type="button" class="btn btn-sm btn-boxed" onclick="promptAddCharacterProfile()" title="새로운 캐릭터 프로필을 추가합니다">+ 캐릭터 추가</button>
-            <button type="button" class="btn btn-sm" onclick="refreshHomeworkLiveMissions()" title="인게임 스펙, 재화, 일일/주간 미션, 진행 퀘스트를 즉시 새로고침합니다">새로고침</button>
+            <button type="button" class="btn btn-sm" onclick="refreshHomeworkLiveMissions()" title="인게임 미션, 진행 퀘스트를 즉시 새로고침합니다">새로고침</button>
             <button type="button" class="btn btn-sm" onclick="switchHomeworkSubTab('settings')">캐릭터·숙제 편집</button>
           </div>
         </div>
@@ -5320,103 +5361,105 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="hw-checklist-grid">
           <!-- Column 1: 일일 숙제 -->
           <div class="hw-cat-card cat-daily">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
-              <div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>일일 숙제</span>
-                  <span class="badge-dim">매일 06:00 초기화</span>
-                </div>
-              </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); flex-wrap: wrap;">
               <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>일일 숙제</span>
+                <span class="badge-dim">매일 06시</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                 <span id="hw-daily-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0</span>
                 <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('daily', true)">전체완료</button>
                 <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('daily', false)">초기화</button>
+                <button type="button" class="btn btn-sm" id="btn-toggle-hw-cat-daily" onclick="toggleHwCategoryView('daily')">접기 ^</button>
               </div>
             </div>
-            <div class="hw-progress-bar-wrap">
-              <div id="hw-daily-prog-bar" class="hw-progress-bar-fill" style="width: 0%;"></div>
+            <div id="hw-cat-collapsed-daily" class="hw-cat-collapsed-bar" style="display: none;" onclick="toggleHwCategoryView('daily')">
+              <span id="hw-cat-collapsed-text-daily"><span class="sym-prefix">&gt;</span>일일 숙제 요약...</span>
+              <span style="font-size: 11px;">펼치기 v</span>
             </div>
-            <div id="hw-daily-task-list" class="hw-task-list"></div>
+            <div id="hw-cat-body-daily" style="display: flex; flex-direction: column; gap: 6px;">
+              <div class="hw-progress-bar-wrap">
+                <div id="hw-daily-prog-bar" class="hw-progress-bar-fill" style="width: 0%;"></div>
+              </div>
+              <div id="hw-daily-task-list" class="hw-task-list"></div>
+            </div>
           </div>
 
           <!-- Column 2: 집중 숙제 -->
           <div class="hw-cat-card cat-focus">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
-              <div>
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                  <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>집중 숙제</span>
-                  <span id="hw-focus-last-date" class="badge-dim mono-num">기록 없음</span>
-                </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>집중 숙제</span>
+                <span id="hw-focus-last-date" class="badge-dim mono-num">기록 없음</span>
               </div>
-              <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                 <span id="hw-focus-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0</span>
+                <button type="button" class="btn btn-sm btn-boxed" id="btn-hw-toggle-weekly-focus" onclick="toggleActiveCharWeeklyFocus()" title="이번 주 이 캐릭터의 집중 숙제 완료(✓집중) 표시를 수동으로 체크하거나 해제합니다 (매주 월요일 오전 6시 초기화)">✓집중체크</button>
                 <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('focus', true)">전체완료</button>
                 <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('focus', false)">초기화</button>
+                <button type="button" class="btn btn-sm" id="btn-toggle-hw-cat-focus" onclick="toggleHwCategoryView('focus')">접기 ^</button>
               </div>
             </div>
-            <div class="hw-progress-bar-wrap">
-              <div id="hw-focus-prog-bar" class="hw-progress-bar-fill" style="width: 0%;"></div>
+            <div id="hw-cat-collapsed-focus" class="hw-cat-collapsed-bar" style="display: none;" onclick="toggleHwCategoryView('focus')">
+              <span id="hw-cat-collapsed-text-focus"><span class="sym-prefix">&gt;</span>집중 숙제 요약...</span>
+              <span style="font-size: 11px;">펼치기 v</span>
             </div>
-            <div id="hw-focus-task-list" class="hw-task-list"></div>
+            <div id="hw-cat-body-focus" style="display: flex; flex-direction: column; gap: 6px;">
+              <div class="hw-progress-bar-wrap">
+                <div id="hw-focus-prog-bar" class="hw-progress-bar-fill" style="width: 0%;"></div>
+              </div>
+              <div id="hw-focus-task-list" class="hw-task-list"></div>
+            </div>
           </div>
 
           <!-- Column 3: 주간 숙제 -->
           <div class="hw-cat-card cat-weekly">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
-              <div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>주간 숙제</span>
-                  <span class="badge-dim">월요일 06:00 초기화</span>
-                </div>
-              </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); flex-wrap: wrap;">
               <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: var(--fs-md); font-weight: 700; color: var(--text-bright);"><span class="sym-prefix">//</span>주간 숙제</span>
+                <span class="badge-dim">월요일 06시</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                 <span id="hw-weekly-prog-text" class="mono-num" style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">0/0</span>
                 <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('weekly', true)">전체완료</button>
                 <button type="button" class="btn btn-sm btn-boxed" onclick="batchHomeworkCategory('weekly', false)">초기화</button>
+                <button type="button" class="btn btn-sm" id="btn-toggle-hw-cat-weekly" onclick="toggleHwCategoryView('weekly')">접기 ^</button>
               </div>
             </div>
-            <div class="hw-progress-bar-wrap">
-              <div id="hw-weekly-prog-bar" class="hw-progress-bar-fill" style="width: 0%;"></div>
+            <div id="hw-cat-collapsed-weekly" class="hw-cat-collapsed-bar" style="display: none;" onclick="toggleHwCategoryView('weekly')">
+              <span id="hw-cat-collapsed-text-weekly"><span class="sym-prefix">&gt;</span>주간 숙제 요약...</span>
+              <span style="font-size: 11px;">펼치기 v</span>
             </div>
-            <div id="hw-weekly-task-list" class="hw-task-list"></div>
+            <div id="hw-cat-body-weekly" style="display: flex; flex-direction: column; gap: 6px;">
+              <div class="hw-progress-bar-wrap">
+                <div id="hw-weekly-prog-bar" class="hw-progress-bar-fill" style="width: 0%;"></div>
+              </div>
+              <div id="hw-weekly-task-list" class="hw-task-list"></div>
+            </div>
           </div>
         </div>
 
-        <!-- Middle 2-Column Grid: Character Memo & In-Game Character Telemetry -->
-        <div class="grid" style="margin-bottom: 16px;">
-          <!-- Left: 캐릭터별 메모장 & 주간 납품 연동 요약 -->
-          <div class="card" style="margin-bottom: 0;">
-            <div class="card-title">
-              <span><span class="sym-prefix">//</span><span id="hw-memo-char-title">캐릭터</span> 개별 메모장 &amp; 주간 납품 연동</span>
-              <div style="display: flex; gap: 6px; align-items: center;">
-                <span id="hw-memo-save-status" style="font-size: 11px; color: var(--text-muted);">자동 저장 지원</span>
-                <button type="button" class="btn btn-sm btn-boxed" onclick="saveActiveCharacterMemo()">메모 저장</button>
-              </div>
-            </div>
-            <textarea id="hw-char-memo-input" class="input-text" rows="3" style="width: 100%; resize: vertical; font-family: var(--font-sans); line-height: 1.5;" placeholder="이 캐릭터의 장비 목표, 룬 정가 계획, 주간 특이사항 등을 자유롭게 적어두세요. (포커스 해제 시 자동 저장)" onblur="saveActiveCharacterMemo()"></textarea>
-
-            <!-- Weekly Delivery Quick Status Box -->
-            <div id="hw-delivery-quick-box" style="margin-top: 10px; padding: 10px 12px; background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
-              <div>
-                <div style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">
-                  <span class="sym-prefix">&gt;</span>주간 납품 연동 상태: <span id="hw-delivery-quick-status" class="mono-num">확인 중...</span>
-                </div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">생활 지원 탭의 주간 납품 캐릭터 프로필과 실시간 공유됩니다.</div>
-              </div>
-              <div style="display: flex; gap: 6px; align-items: center;">
-                <button type="button" class="btn btn-sm btn-boxed" onclick="switchTopAppMode('living')">⚒️ 주간 납품 탭으로 이동</button>
-              </div>
+        <!-- Character Memo & Weekly Delivery Quick Status Card -->
+        <div class="card">
+          <div class="card-title">
+            <span><span class="sym-prefix">//</span><span id="hw-memo-char-title">캐릭터</span> 개별 메모장 &amp; 주간 납품 연동</span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <span id="hw-memo-save-status" style="font-size: 11px; color: var(--text-muted);">자동 저장 지원</span>
+              <button type="button" class="btn btn-sm btn-boxed" onclick="saveActiveCharacterMemo()">메모 저장</button>
             </div>
           </div>
+          <textarea id="hw-char-memo-input" class="input-text" rows="2" style="width: 100%; resize: vertical; font-family: var(--font-sans); line-height: 1.5;" placeholder="이 캐릭터의 장비 목표, 룬 정가 계획, 주간 특이사항 등을 자유롭게 적어두세요. (포커스 해제 시 자동 저장)" onblur="saveActiveCharacterMemo()"></textarea>
 
-          <!-- Right: 인게임 캐릭터 실시간 스펙 & 주요 재화 현황 -->
-          <div class="card" style="margin-bottom: 0;">
-            <div class="card-title">
-              <span><span class="sym-prefix">//</span>캐릭터 스펙 &amp; 주요 재화 현황 (인게임 수집)</span>
-              <span id="hw-telemetry-updated-badge" class="badge-dim mono-num">실시간 연동</span>
+          <!-- Weekly Delivery Quick Status Box -->
+          <div id="hw-delivery-quick-box" style="margin-top: 10px; padding: 8px 12px; background: var(--bg-sub-panel); border: 1px solid var(--line-subtle); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div>
+              <div style="font-size: var(--fs-sm); font-weight: 700; color: var(--text-bright);">
+                <span class="sym-prefix">&gt;</span>주간 납품 연동 상태: <span id="hw-delivery-quick-status" class="mono-num">확인 중...</span>
+              </div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">생활 지원 탭의 주간 납품 캐릭터 프로필과 실시간 공유됩니다.</div>
             </div>
-            <div id="hw-telemetry-grid" class="hw-telemetry-grid">
-              <!-- Populated by renderHomeworkTelemetry() -->
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button type="button" class="btn btn-sm btn-boxed" onclick="switchTopAppMode('living')">⚒️ 주간 납품 탭으로 이동</button>
             </div>
           </div>
         </div>
@@ -12122,7 +12165,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
       try { renderHomeworkMasterCommandBar(hw); } catch(e) { console.error(e); }
       try { renderHomeworkCharacterBar(hw); } catch(e) { console.error(e); }
       try { renderHomeworkChecklists(hw); } catch(e) { console.error(e); }
-      try { renderHomeworkTelemetry(hw); } catch(e) { console.error(e); }
       try { renderHomeworkSummaryTable(hw); } catch(e) { console.error(e); }
       try { renderHomeworkMatrixTable(hw); } catch(e) { console.error(e); }
       if (currentHomeworkSubTab === 'settings') {
@@ -12134,23 +12176,36 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const actName = hw.active_character || '';
       const actChar = (hw.characters || []).find(c => c.name === actName) || (hw.characters || [])[0];
       const step = hw.active_step;
+      const focusMode = !!(hw.focus_mode_enabled || (hw.settings && hw.settings.focus_mode_enabled));
       const briefingEl = document.getElementById('hw-mcb-briefing');
       const btnComplete = document.getElementById('btn-hw-complete-step');
       const btnRollback = document.getElementById('btn-hw-rollback');
+      const btnFocusMode = document.getElementById('btn-hw-focus-mode');
+      const iconFocusMode = document.getElementById('icon-hw-focus-mode');
+
+      if (btnFocusMode) {
+        btnFocusMode.classList.toggle('active', focusMode);
+      }
+      if (iconFocusMode) {
+        iconFocusMode.innerText = focusMode ? '■' : '□';
+      }
 
       if (briefingEl && actChar) {
         const clsText = actChar.class ? `(${actChar.class})` : '';
+        const modeTag = focusMode ? `<span class="badge" style="margin-right: 4px;">집중 모드</span>` : '';
         if (step && step.task_name) {
           const gaugeStr = typeof makeTextGauge === 'function' ? makeTextGauge(step.cat_done, step.cat_total, 5) : '';
-          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span><strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <span class="badge" style="margin: 0 4px;">${escapeHtml(step.cat_title)}</span> <strong style="color: var(--text-bright);">${escapeHtml(step.task_name)}</strong> <span class="cli-gauge" style="margin-left: 4px;">${gaugeStr}</span> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
+          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <span class="badge-dim" style="margin: 0 4px;">${escapeHtml(step.cat_title)}</span> <strong style="color: var(--text-bright);">${escapeHtml(step.task_name)}</strong> <span class="cli-gauge" style="margin-left: 4px;">${gaugeStr}</span> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
         } else {
-          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span><strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> <span class="badge">=== 모든 숙제 100% 달성 ===</span>`;
+          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> <span class="badge">${focusMode ? '=== 집중 숙제 100% 달성 ===' : '=== 일일·주간 숙제 100% 달성 ==='}</span>`;
         }
       }
 
       if (btnComplete) {
         btnComplete.disabled = !(step && step.task_name);
-        btnComplete.innerText = (step && step.task_name) ? `✓ [${step.task_name}] 완료` : '✓ 모든 숙제 완료됨';
+        btnComplete.innerText = (step && step.task_name)
+          ? `✓ [${step.task_name}] 완료`
+          : (focusMode ? '✓ 집중 숙제 완료됨' : '✓ 모든 숙제 완료됨');
       }
       if (btnRollback) {
         btnRollback.disabled = !hw.can_rollback;
@@ -12220,6 +12275,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const isActive = !!c.is_active;
         const isIngame = !!(hw.matched_ingame_character && hw.matched_ingame_character === c.name);
         const dp = (c.progress && c.progress.daily) || { done: 0, total: 0, pct: 0 };
+        const fp = (c.progress && c.progress.focus) || { done: 0, total: 0, pct: 0 };
         const wp = (c.progress && c.progress.weekly) || { done: 0, total: 0, pct: 0 };
         const safeName = c.name.replace(/'/g, "\\'");
         const ingameDot = isIngame
@@ -12228,31 +12284,61 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const subLabel = c.class
           ? `<span class="char-tab-sub" style="font-size:11px; color:var(--text-dim); white-space:nowrap;">${escapeHtml(c.class)}</span>`
           : '';
-        const recMark = c.is_recommended_focus
-          ? `<span class="char-tab-sub" style="font-size:10px; font-weight:700; color:var(--text-bright);" title="집중 숙제 권장 로테이션 캐릭터">[집중]</span>`
-          : '';
-        const deliveredTag = c.weekly_delivered
-          ? `<span class="char-delivered-badge" title="이번 주 납품 완료됨 (매주 월요일 오전 6시 초기화)">✓납품</span>`
+        const focusDoneTag = c.weekly_focus_done
+          ? `<span class="char-delivered-badge" title="이번 주 집중 숙제 완료됨 (매주 월요일 오전 6시 초기화)">✓집중</span>`
           : '';
         const isDailyDone = dp.total > 0 && dp.done >= dp.total;
         const doneTag = `<span class="char-tab-progress mono-num" style="font-size:11px; ${isDailyDone ? 'font-weight:700; color:var(--text-bright);' : 'color:var(--text-muted);'}">일${dp.done}/${dp.total}·주${wp.done}/${wp.total}</span>`;
 
         html += `
-          <button type="button" class="char-tab-btn ${isActive ? 'active' : ''}" onclick="selectHomeworkCharacter('${safeName}')" title="${escapeHtml(c.name)} (${escapeHtml(c.class || '미지정')}) — 일일 ${dp.done}/${dp.total} · 주간 ${wp.done}/${wp.total} · 납품 ${c.delivery_completed_count || 0}/${c.delivery_target_count || 18}">
+          <button type="button" class="char-tab-btn ${isActive ? 'active' : ''}" onclick="selectHomeworkCharacter('${safeName}')" title="${escapeHtml(c.name)} (${escapeHtml(c.class || '미지정')}) — 일일 ${dp.done}/${dp.total} · 집중 ${fp.done}/${fp.total}${c.weekly_focus_done ? '(이번주 완료)' : ''} · 주간 ${wp.done}/${wp.total}">
             <span class="char-tab-left">
               ${ingameDot}
               <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(c.name)}</span>
               ${subLabel}
-              ${recMark}
             </span>
             <span class="char-tab-right">
-              ${deliveredTag}
+              ${focusDoneTag}
               ${doneTag}
             </span>
           </button>
         `;
       });
       container.innerHTML = html;
+    }
+
+    function toggleHwCategoryView(catKey) {
+      const storageKey = `mobi_hw_collapsed_${catKey}`;
+      const curCollapsed = localStorage.getItem(storageKey) === '1';
+      localStorage.setItem(storageKey, curCollapsed ? '0' : '1');
+      applyHwCategoryCollapsedView(catKey);
+    }
+
+    function applyHwCategoryCollapsedView(catKey) {
+      const storageKey = `mobi_hw_collapsed_${catKey}`;
+      const isCollapsed = localStorage.getItem(storageKey) === '1';
+      const bodyEl = document.getElementById(`hw-cat-body-${catKey}`);
+      const colBarEl = document.getElementById(`hw-cat-collapsed-${catKey}`);
+      const btnEl = document.getElementById(`btn-toggle-hw-cat-${catKey}`);
+      if (bodyEl) bodyEl.style.display = isCollapsed ? 'none' : 'flex';
+      if (colBarEl) colBarEl.style.display = isCollapsed ? 'flex' : 'none';
+      if (btnEl) btnEl.innerText = isCollapsed ? '펼치기 v' : '접기 ^';
+    }
+
+    async function toggleActiveCharWeeklyFocus() {
+      if (!cachedHomeworkState) return;
+      const actName = cachedHomeworkState.active_character || '';
+      try {
+        const res = await fetch('/api/homework/toggle_weekly_focus', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ char_name: actName })
+        });
+        const d = await res.json();
+        if (d.state) onHomeworkStateReceived(d.state);
+      } catch (e) {
+        console.error('toggleActiveCharWeeklyFocus error:', e);
+      }
     }
 
     function renderHomeworkChecklists(hw) {
@@ -12262,26 +12348,44 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       const step = hw.active_step || null;
       const cats = [
-        { key: 'daily', progTextId: 'hw-daily-prog-text', progBarId: 'hw-daily-prog-bar', listId: 'hw-daily-task-list' },
-        { key: 'focus', progTextId: 'hw-focus-prog-text', progBarId: 'hw-focus-prog-bar', listId: 'hw-focus-task-list' },
-        { key: 'weekly', progTextId: 'hw-weekly-prog-text', progBarId: 'hw-weekly-prog-bar', listId: 'hw-weekly-task-list' },
+        { key: 'daily', title: '일일 숙제', progTextId: 'hw-daily-prog-text', progBarId: 'hw-daily-prog-bar', listId: 'hw-daily-task-list', colTextId: 'hw-cat-collapsed-text-daily' },
+        { key: 'focus', title: '집중 숙제', progTextId: 'hw-focus-prog-text', progBarId: 'hw-focus-prog-bar', listId: 'hw-focus-task-list', colTextId: 'hw-cat-collapsed-text-focus' },
+        { key: 'weekly', title: '주간 숙제', progTextId: 'hw-weekly-prog-text', progBarId: 'hw-weekly-prog-bar', listId: 'hw-weekly-task-list', colTextId: 'hw-cat-collapsed-text-weekly' },
       ];
 
       const focusDateBadge = document.getElementById('hw-focus-last-date');
       if (focusDateBadge) {
-        focusDateBadge.innerText = actChar.last_focus_completed ? `최근 완료: ${actChar.last_focus_completed}` : '완료 기록 없음';
+        focusDateBadge.innerText = actChar.last_focus_completed ? `최근 완료: ${actChar.last_focus_completed}` : '기록 없음';
+      }
+      const btnWkFocus = document.getElementById('btn-hw-toggle-weekly-focus');
+      if (btnWkFocus) {
+        if (actChar.weekly_focus_done) {
+          btnWkFocus.innerText = '✓집중완료(해제)';
+          btnWkFocus.style.color = '#34D399';
+        } else {
+          btnWkFocus.innerText = '✓집중체크';
+          btnWkFocus.style.color = '';
+        }
       }
 
       cats.forEach(cat => {
+        applyHwCategoryCollapsedView(cat.key);
         const prog = (actChar.progress && actChar.progress[cat.key]) || { done: 0, total: 0, pct: 0, items: [] };
         const txtEl = document.getElementById(cat.progTextId);
         const barEl = document.getElementById(cat.progBarId);
         const listEl = document.getElementById(cat.listId);
+        const colTxtEl = document.getElementById(cat.colTextId);
+        const gaugeStr = typeof makeTextGauge === 'function' ? makeTextGauge(prog.done, prog.total, 5) : '';
+
         if (txtEl) {
-          const gaugeStr = typeof makeTextGauge === 'function' ? makeTextGauge(prog.done, prog.total, 5) : '';
           txtEl.innerHTML = `<span class="cli-gauge" style="margin-right: 4px;">${gaugeStr}</span>${prog.done}/${prog.total}`;
         }
         if (barEl) barEl.style.width = `${prog.pct}%`;
+        if (colTxtEl) {
+          const nextTodo = (prog.items || []).find(it => !it.done);
+          const nextStr = nextTodo ? `다음: ${escapeHtml(nextTodo.name)}` : '모두 완료됨 ✓';
+          colTxtEl.innerHTML = `<span class="sym-prefix">&gt;</span><span class="cli-gauge" style="margin-right:4px;">${gaugeStr}</span><strong class="mono-num" style="color:var(--text-bright);">${prog.done}/${prog.total}</strong> 완료 · <span>${nextStr}</span>`;
+        }
         if (!listEl) return;
 
         let html = '';
@@ -12296,7 +12400,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <span class="hw-task-name">${escapeHtml(item.name)}</span>
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
-                ${isStep ? '<span class="badge" style="font-size: 10px;">▶ 현재 순서</span>' : ''}
+                ${isStep ? '<span class="badge" style="font-size: 10px; padding: 0 4px;">▶ 현재 순서</span>' : ''}
                 <span class="mono-num" style="font-size: 11px; color: ${item.done ? 'var(--text-dim)' : 'var(--text-muted)'};">${item.done ? '완료' : '대기'}</span>
               </div>
             </div>
@@ -12309,18 +12413,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const delivCnt = actChar.delivery_completed_count || 0;
           const delivTot = actChar.delivery_target_count || 18;
           html += `
-            <div class="hw-task-row ${delivDone ? 'done' : ''}" style="border-top: 1px dashed var(--line); margin-top: 4px;" onclick="switchTopAppMode('living')" title="클릭하면 생활 지원(주간 납품) 화면으로 이동합니다">
+            <div class="hw-task-row ${delivDone ? 'done' : ''}" style="border-top: 1px dashed var(--line); margin-top: 2px;" onclick="switchTopAppMode('living')" title="클릭하면 생활 지원(주간 납품) 화면으로 이동합니다">
               <div class="hw-task-left">
                 <span class="hw-task-check">${delivDone ? '■' : '□'}</span>
                 <span class="hw-task-name">⚒️ 주간 납품 (${delivCnt}/${delivTot} 품목)</span>
               </div>
-              <span class="badge-dim" style="font-size: 10px;">생활 지원 &gt;</span>
+              <span class="badge-dim" style="font-size: 10px; padding: 0 4px;">생활 지원 &gt;</span>
             </div>
           `;
         }
 
         if (!html) {
-          html = `<div style="padding: 12px; color: var(--text-muted); font-size: var(--fs-sm); text-align: center;">표시할 숙제 항목이 없습니다.</div>`;
+          html = `<div style="padding: 8px; color: var(--text-muted); font-size: var(--fs-sm); text-align: center;">표시할 숙제 항목이 없습니다.</div>`;
         }
         listEl.innerHTML = html;
       });
@@ -12720,7 +12824,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     async function toggleHomeworkSetting(key) {
       if (!cachedHomeworkState || !cachedHomeworkState.settings) return;
-      const currentVal = cachedHomeworkState.settings[key] !== false;
+      const currentVal = key === 'focus_mode_enabled'
+        ? !!cachedHomeworkState.settings[key]
+        : (cachedHomeworkState.settings[key] !== false);
       const payload = {};
       payload[key] = !currentVal;
       try {

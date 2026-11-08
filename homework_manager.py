@@ -211,6 +211,7 @@ class HomeworkManager:
                 "weekly": {},
             },
             "auto_reset_enabled": True,
+            "focus_mode_enabled": False,
             "omen_barrier_alert": True,
             "sound_alert_enabled": True,
             "ai_auto_char_detect": True,
@@ -351,6 +352,9 @@ class HomeworkManager:
             c_entry.setdefault("weekly", {})
             c_entry.setdefault("memo", "")
             c_entry.setdefault("last_focus_completed", "")
+            if "weekly_focus_done" not in c_entry:
+                last_fc = str(c_entry.get("last_focus_completed") or "")[:10]
+                c_entry["weekly_focus_done"] = bool(last_fc and last_fc >= get_monday_str())
             c_entry.setdefault("combat_power", int(c.get("combat_power") or 0))
             c_entry.setdefault("living_score", int(c.get("living_score") or 0))
             c_entry.setdefault("attractiveness_score", int(c.get("attractiveness_score") or 0))
@@ -699,6 +703,7 @@ class HomeworkManager:
                 for cname, cdata in self.data.get("characters", {}).items():
                     for k in list(cdata.get("weekly", {}).keys()):
                         cdata["weekly"][k] = False
+                    cdata["weekly_focus_done"] = False
                 self.data["last_weekly_reset"] = monday_logical
                 weekly_reset_done = True
 
@@ -753,26 +758,27 @@ class HomeworkManager:
     def get_recommended_focus_character(self) -> Optional[str]:
         """
         Determines the best character to run Focus Homework next (`★ 추천`):
-        Picks among characters who still have incomplete Focus tasks, prioritizing
-        those with no `last_focus_completed` or the oldest `last_focus_completed` date.
+        Picks among characters who still have incomplete Focus tasks (prioritizing those
+        who haven't completed weekly focus yet this week), sorted by oldest `last_focus_completed`.
         """
         with self._lock:
-            candidates: List[Tuple[str, str, int]] = []
+            candidates: List[Tuple[int, str, str, int]] = []
             for idx, hc in enumerate(self.config.get("characters", [])):
                 cname = hc["name"]
                 ftasks = self.get_char_tasks(cname, "focus")
                 if not ftasks:
                     continue
-                fdict = self.data.get("characters", {}).get(cname, {}).get("focus", {})
+                cdata = self.data.get("characters", {}).get(cname, {})
+                fdict = cdata.get("focus", {})
                 done_cnt = sum(1 for t in ftasks if fdict.get(t, False))
                 if done_cnt < len(ftasks):
-                    last_dt = str(self.data.get("characters", {}).get(cname, {}).get("last_focus_completed") or "")
-                    # Empty string sorts before any 'YYYY-MM-DD' date
-                    candidates.append((last_dt, cname, idx))
+                    wk_done = 1 if bool(cdata.get("weekly_focus_done", False)) else 0
+                    last_dt = str(cdata.get("last_focus_completed") or "")
+                    candidates.append((wk_done, last_dt, cname, idx))
             if not candidates:
                 return None
-            candidates.sort(key=lambda x: (x[0], x[2]))
-            return candidates[0][1]
+            candidates.sort(key=lambda x: (x[0], x[1], x[3]))
+            return candidates[0][2]
 
     # =========================================================================
     # 5. Character Resolution (Smart Multi-Signal Matching)
@@ -1012,6 +1018,7 @@ class HomeworkManager:
             if category == "focus" and value:
                 if all(cat_dict.get(t, False) for t in char_tasks):
                     cdata["last_focus_completed"] = get_logical_date_str()
+                    cdata["weekly_focus_done"] = True
             self.save_data()
             for t in changed_tasks:
                 cat_ko = {"daily": "일일", "focus": "집중", "weekly": "주간"}.get(category, category)
@@ -1498,6 +1505,7 @@ class HomeworkManager:
                     "altering_total": int(cdata.get("altering_total") or 0),
                     "memo": str(cdata.get("memo") or ""),
                     "last_focus_completed": str(cdata.get("last_focus_completed") or ""),
+                    "weekly_focus_done": bool(cdata.get("weekly_focus_done", False)),
                     "is_active": (idx == active_idx),
                     "is_recommended_focus": (cname == recommended_focus_char),
                     "daily_done": d_done,
@@ -1561,6 +1569,7 @@ class HomeworkManager:
                 "weekly_tasks": self.config.get("weekly_tasks", []),
                 "task_character_Mapping": self.config.get("task_character_Mapping", {}),
                 "auto_reset_enabled": bool(self.config.get("auto_reset_enabled", True)),
+                "focus_mode_enabled": bool(self.config.get("focus_mode_enabled", False)),
                 "omen_barrier_alert": bool(self.config.get("omen_barrier_alert", True)),
                 "sound_alert_enabled": bool(self.config.get("sound_alert_enabled", True)),
                 "ai_auto_char_detect": bool(self.config.get("ai_auto_char_detect", True)),
@@ -1582,6 +1591,16 @@ class HomeworkManager:
                 },
             }
 
+            focus_mode = bool(self.config.get("focus_mode_enabled", False))
+            if focus_mode:
+                can_rb = bool(active_summary.get("focus_done", 0) > 0) or any(
+                    item[1] == "focus" for item in self._rollback_stack
+                )
+            else:
+                can_rb = bool(active_summary.get("daily_done", 0) > 0) or any(
+                    item[1] != "focus" for item in self._rollback_stack
+                )
+
             return {
                 "active_char_index": active_idx,
                 "active_char_name": active_name,
@@ -1590,9 +1609,10 @@ class HomeworkManager:
                 "recommended_focus_char": recommended_focus_char,
                 "recommended_focus_character": recommended_focus_char,
                 "matched_ingame_character": self._live_telemetry.get("matched_char_name") or "",
+                "focus_mode_enabled": focus_mode,
                 "step_guide": step_info,
                 "active_step": active_step_compat,
-                "can_rollback": len(self._rollback_stack) > 0,
+                "can_rollback": can_rb,
                 "characters": char_summaries,
                 "categories": {
                     "daily": {"title": "일일 숙제", "tasks": list(self.config.get("daily_tasks", []))},
@@ -1622,7 +1642,9 @@ class HomeworkManager:
 
     def _compute_active_step_locked(self, char_name: str) -> Dict[str, Any]:
         cdata = self.data.get("characters", {}).get(char_name, {})
-        for cat, cat_label in (("daily", "일일 숙제"), ("focus", "집중 숙제"), ("weekly", "주간 숙제")):
+        focus_mode = bool(self.config.get("focus_mode_enabled", False))
+        cat_pairs = (("focus", "집중 숙제"),) if focus_mode else (("daily", "일일 숙제"), ("weekly", "주간 숙제"))
+        for cat, cat_label in cat_pairs:
             tasks = self.get_char_tasks(char_name, cat)
             cmap = cdata.get(cat, {})
             for idx, t in enumerate(tasks):
@@ -1640,8 +1662,8 @@ class HomeworkManager:
         return {
             "all_completed": True,
             "category": "done",
-            "category_label": "모든 숙제 완료",
-            "task": "현재 캐릭터의 일일·집중·주간 숙제를 모두 마쳤습니다!",
+            "category_label": "집중 숙제 완료" if focus_mode else "일일·주간 숙제 완료",
+            "task": "현재 캐릭터의 집중 숙제를 모두 마쳤습니다!" if focus_mode else "현재 캐릭터의 일일·주간 숙제를 모두 마쳤습니다!",
             "step_index": 0,
             "step_total": 0,
             "next_task": None,
@@ -1710,14 +1732,31 @@ class HomeworkManager:
                 if len(self._rollback_stack) > 50:
                     self._rollback_stack.pop(0)
 
-            # Update last_focus_completed if all focus tasks for target_name are now done
+            # Update last_focus_completed & weekly_focus_done if all focus tasks for target_name are now done
             if category == "focus":
                 ftasks = self.get_char_tasks(target_name, "focus")
                 if ftasks and all(cat_dict.get(t, False) for t in ftasks):
                     cdata["last_focus_completed"] = get_logical_date_str()
+                    cdata["weekly_focus_done"] = True
 
             self.save_data()
             return self.get_dashboard_state()
+
+    def set_weekly_focus_done(
+        self,
+        char_name: Optional[str] = None,
+        done: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        with self._lock:
+            cname = (char_name or self.get_active_char_name()).strip()
+            cdata = self.data.setdefault("characters", {}).setdefault(cname, {})
+            cur_val = bool(cdata.get("weekly_focus_done", False))
+            new_val = (not cur_val) if done is None else bool(done)
+            cdata["weekly_focus_done"] = new_val
+            if new_val and not cdata.get("last_focus_completed"):
+                cdata["last_focus_completed"] = get_logical_date_str()
+            self.save_data()
+            return {"ok": True, "weekly_focus_done": new_val, "state": self.get_dashboard_state()}
 
     def complete_current_step(
         self,
@@ -1727,7 +1766,11 @@ class HomeworkManager:
         with self._lock:
             cname = (char_name or self.get_active_char_name()).strip()
             cdata = self.data.setdefault("characters", {}).setdefault(cname, {})
-            cats = [category_filter] if category_filter in ("daily", "focus", "weekly") else ["daily", "focus", "weekly"]
+            focus_mode = bool(self.config.get("focus_mode_enabled", False))
+            if category_filter in ("daily", "focus", "weekly"):
+                cats = [category_filter]
+            else:
+                cats = ["focus"] if focus_mode else ["daily", "weekly"]
             for cat in cats:
                 tasks = self.get_char_tasks(cname, cat)
                 cmap = cdata.setdefault(cat, {})
@@ -1737,21 +1780,48 @@ class HomeworkManager:
                         self._rollback_stack.append((cname, cat, t))
                         if cat == "focus" and all(cmap.get(ft, False) for ft in tasks):
                             cdata["last_focus_completed"] = get_logical_date_str()
+                            cdata["weekly_focus_done"] = True
                         self.save_data()
                         return {"ok": True, "message": f"[{cname}] '{t}' 완료 처리되었습니다.", "state": self.get_dashboard_state()}
             return {"ok": False, "message": f"[{cname}] 이미 모든 숙제가 완료되었습니다!", "state": self.get_dashboard_state()}
 
     def rollback_last_step(self, char_name: Optional[str] = None) -> Dict[str, Any]:
         with self._lock:
-            while self._rollback_stack:
-                cname, cat, tname = self._rollback_stack.pop()
+            focus_mode = bool(self.config.get("focus_mode_enabled", False))
+            active_cname = (char_name or self.get_active_char_name()).strip()
+
+            # 1. Try popping from _rollback_stack matching current mode (focus vs daily/weekly)
+            for idx in range(len(self._rollback_stack) - 1, -1, -1):
+                cname, cat, tname = self._rollback_stack[idx]
+                if focus_mode and cat != "focus":
+                    continue
+                if (not focus_mode) and cat == "focus":
+                    continue
                 cdata = self.data.get("characters", {}).get(cname, {})
                 cmap = cdata.get(cat, {})
                 if cmap.get(tname, False):
+                    self._rollback_stack.pop(idx)
                     cmap[tname] = False
+                    if cat == "focus":
+                        cdata["weekly_focus_done"] = False
                     self.save_data()
                     return {"ok": True, "message": f"[{cname}] '{tname}' 완료 체크를 되돌렸습니다.", "state": self.get_dashboard_state()}
-            return {"ok": False, "message": "되돌릴 최근 완료 내역이 없습니다.", "state": self.get_dashboard_state()}
+
+            # 2. Fallback: uncheck the last completed task in the active category for active_cname
+            fallback_cats = ["focus"] if focus_mode else ["weekly", "daily"]
+            cdata = self.data.get("characters", {}).get(active_cname, {})
+            for cat in fallback_cats:
+                tasks = self.get_char_tasks(active_cname, cat)
+                cmap = cdata.get(cat, {})
+                for tname in reversed(tasks):
+                    if cmap.get(tname, False):
+                        cmap[tname] = False
+                        if cat == "focus":
+                            cdata["weekly_focus_done"] = False
+                        self.save_data()
+                        return {"ok": True, "message": f"[{active_cname}] '{tname}' 완료 체크를 되돌렸습니다.", "state": self.get_dashboard_state()}
+
+            return {"ok": False, "message": "되돌릴 완료 내역이 없습니다.", "state": self.get_dashboard_state()}
 
     def batch_set_category(
         self,
@@ -1790,10 +1860,14 @@ class HomeworkManager:
                     for t in tasks:
                         if cmap.get(t) != done:
                             cmap[t] = done
-                    if cat == "focus" and done:
-                        ftasks = self.get_char_tasks(cname, "focus")
-                        if ftasks and all(cmap.get(ft, False) for ft in ftasks):
-                            cdata["last_focus_completed"] = get_logical_date_str()
+                    if cat == "focus":
+                        if done:
+                            ftasks = self.get_char_tasks(cname, "focus")
+                            if ftasks and all(cmap.get(ft, False) for ft in ftasks):
+                                cdata["last_focus_completed"] = get_logical_date_str()
+                                cdata["weekly_focus_done"] = True
+                        else:
+                            cdata["weekly_focus_done"] = False
 
             self.save_data()
             return self.get_dashboard_state()
@@ -2039,6 +2113,7 @@ class HomeworkManager:
         with self._lock:
             bool_keys = (
                 "auto_reset_enabled",
+                "focus_mode_enabled",
                 "omen_barrier_alert",
                 "sound_alert_enabled",
                 "ai_auto_char_detect",
