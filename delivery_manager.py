@@ -4451,6 +4451,119 @@ class DeliveryManager:
             "alter_order": alter_order
         }
 
+    def calculate_slot_filling_gather_demands(
+        self,
+        plan: Dict[str, Any],
+        max_slots_per_facility: int = 7,
+        lookahead_batches: int = 1
+    ) -> Dict[str, int]:
+        """
+        가공 시설의 빈 슬롯(최대 7개)을 꽉 채우는 데 필요한 1차(또는 차기) 배치 분량의 기초 원자재 부족분을 계산합니다.
+        전체 마라톤 물량을 한꺼번에 채집하지 않고, 슬롯을 즉시 가동할 만큼만 단계적으로 산정하여 가방 과적을 방지하고
+        가공 쿨타임을 조기에 가동시킵니다.
+        """
+        raw_mats = plan.get("raw_materials", [])
+        if not raw_mats:
+            return {}
+
+        # 1. Total remaining deficits across all gatherable raw materials
+        total_deficits: Dict[str, int] = {}
+        for r in raw_mats:
+            if r.get("is_gatherable") and r.get("deficit", 0) > 0 and not r.get("is_special_obtain"):
+                total_deficits[r["item_name"]] = int(r["deficit"])
+
+        if not total_deficits:
+            return {}
+
+        # 2. Check current facility slot usage
+        try:
+            works_info = self.cli.get_altering_works()
+            queued_works = works_info.get("works", [])
+        except Exception:
+            queued_works = []
+
+        facility_used_slots: Dict[str, int] = defaultdict(int)
+        for w in queued_works:
+            if not w.get("IsCompleted") and w.get("State") in ("InProgress", "NotStarted"):
+                fac = w.get("FacilityName") or get_facility_for_material(w.get("DisplayName", ""))
+                facility_used_slots[fac] += 1
+
+        all_facilities = ("금속 가공대", "목재 가공대", "가죽 가공대", "옷감 가공대")
+        avail_slots: Dict[str, int] = {}
+        for fac in all_facilities:
+            used = facility_used_slots.get(fac, 0)
+            avail = max(0, max_slots_per_facility - used)
+            # If calculating for next batch (lookahead), assume slots will become free
+            if lookahead_batches > 1 and avail == 0:
+                avail = max_slots_per_facility
+            avail_slots[fac] = avail
+
+        # 3. Analyze intermediate requirements that can fill available slots
+        intermediate_reqs = plan.get("intermediate_requirements", [])
+        demands: Dict[str, int] = defaultdict(int)
+
+        fac_to_raws: Dict[str, List[str]] = {
+            "목재 가공대": ["통나무", "상급 통나무", "굵은 나무", "뾰족 나무", "나뭇가지"],
+            "금속 가공대": ["철 광석", "은 광석", "금 광석"],
+            "가죽 가공대": ["가죽", "상급 가죽"],
+            "옷감 가공대": ["양털", "상급 양털", "실크", "거미줄"],
+        }
+
+        remaining_slots = dict(avail_slots)
+        for req in intermediate_reqs:
+            mat_name = req.get("item_name", "")
+            fac = req.get("facility") or get_facility_for_material(mat_name)
+            w_needed = int(req.get("works_needed", 0))
+            if w_needed <= 0:
+                continue
+            cur_slot = remaining_slots.get(fac, 0)
+            if cur_slot <= 0:
+                continue
+
+            alloc = min(w_needed, cur_slot)
+            remaining_slots[fac] -= alloc
+
+            # Ingredients of this alter
+            ings = req.get("ingredients", {})
+            for ing_name, ing_per_w in ings.items():
+                if ing_name in total_deficits:
+                    demands[ing_name] += ing_per_w * alloc
+                else:
+                    is_alt, alt_inf = self.get_alter_info(ing_name)
+                    if is_alt and alt_inf:
+                        sub_ings = alt_inf.get("ingredients", {})
+                        sub_prod = max(1, alt_inf.get("produced", 3))
+                        for sub_sub_name, sub_sub_qty in sub_ings.items():
+                            if sub_sub_name in total_deficits:
+                                needed_sub_works = math.ceil((ing_per_w * alloc) / sub_prod)
+                                demands[sub_sub_name] += sub_sub_qty * needed_sub_works
+
+        # 4. Fallback cap per facility
+        for fac, f_raws in fac_to_raws.items():
+            f_slots = avail_slots.get(fac, 0)
+            if f_slots > 0:
+                for r_name in f_raws:
+                    for def_name, def_cnt in total_deficits.items():
+                        if r_name in def_name or def_name in r_name:
+                            slot_cap = f_slots * 4
+                            if demands[def_name] == 0:
+                                demands[def_name] = min(def_cnt, slot_cap)
+                            else:
+                                demands[def_name] = min(demands[def_name], slot_cap)
+
+        # 5. Clamp demands by total_deficits
+        final_demands: Dict[str, int] = {}
+        for k, v in demands.items():
+            if k in total_deficits and v > 0:
+                final_demands[k] = min(v, total_deficits[k])
+
+        # 6. If no altering demands were derived (e.g. only non-altering targets like eggs/milk remain)
+        if not final_demands:
+            for def_name, def_cnt in total_deficits.items():
+                final_demands[def_name] = min(def_cnt, 30)
+
+        return final_demands
+
     def execute_batch_deliveries(
         self,
         plan: Dict[str, Any],
@@ -4557,12 +4670,16 @@ class DeliveryManager:
             for sm in special_needed:
                 self.log(f"   • '{sm['item_name']}': 필요 {sm['total_needed']}개 / 보유 {sm['total_owned']}개 ({sm['deficit']}개 부족) -> 잡화점/식료품점 구매 또는 사냥으로 별도 확보 필요", "warn", callback)
 
-        # Stage 2: Gather missing raw materials (부족한 원자재 사전 자동 채집)
+        # Stage 2: Slot-Aware Smart Gathering (당장 가공 슬롯을 채울 만큼만 1차 맞춤 채집)
         if raw_mats:
-            needed_gather = [r for r in raw_mats if r.get("deficit", 0) > 0 and r.get("is_gatherable")]
-            if needed_gather:
-                self.log(f"[부족 원자재 일괄 맞춤 채집] 주간 납품/가공에 부족한 원자재 총 {len(needed_gather)}종을 필드에서 1회 맞춤 채집합니다 (정령의 날개 낭비 방지).", "action", callback)
-                for rm in needed_gather:
+            immediate_demands = self.calculate_slot_filling_gather_demands(plan, max_slots_per_facility=MAX_SLOTS, lookahead_batches=1)
+            if immediate_demands:
+                self.log(
+                    f"[1차 슬롯 충전용 스마트 채집] 가공 슬롯을 즉시 가동하기 위해 당장 필요한 원자재 {len(immediate_demands)}종만 1차 맞춤 채집합니다. "
+                    f"(과적 방지 & 가공 쿨타임 조기 시작)",
+                    "action", callback
+                )
+                for g_name, g_deficit in immediate_demands.items():
                     if self.abort_requested:
                         self.log("[사용자 중지] 채집 대기열이 중단되었습니다.", "warn", callback)
                         final_wings = self._safe_get_wings(initial_wings)
@@ -4580,8 +4697,7 @@ class DeliveryManager:
                             callback=callback
                         )
                         return {"status": "aborted", "message": "사용자에 의해 작업이 중지되었습니다.", "summary": summary}
-                    g_name = rm["item_name"]
-                    g_deficit = rm["deficit"]
+
                     is_gath, tool_ok = self.is_gatherable(g_name)
                     if not is_gath:
                         self.log(f"'{g_name}'은(는) 필드 채집이 불가능하여 건너뜁니다.", "warn", callback)
@@ -4590,9 +4706,7 @@ class DeliveryManager:
                         self.log(f"'{g_name}' 채집 도구가 없거나 내구도가 0입니다! 채집을 건너뜁니다.", "warn", callback)
                         continue
 
-                    stor_cnt = rm.get("storage_count", 0)
-                    stor_msg = f" | 창고 {stor_cnt}개 보관 중 (인게임 가공 소모를 위해 가방 기준 채집)" if stor_cnt > 0 else ""
-                    self.log(f"[맞춤 채집 시작] '{g_name}' (가방 부족 수량: {g_deficit}개{stor_msg}) 채집을 진행합니다.", "action", callback)
+                    self.log(f"[1차 맞춤 채집 시작] '{g_name}' (가공 슬롯 즉시 충전용: {g_deficit}개) 채집을 진행합니다.", "action", callback)
                     try:
                         g_res = self.auto_gather(g_name, g_deficit, callback=callback)
                         gained = g_res.get("gained", 0) if isinstance(g_res, dict) else 0
@@ -4603,7 +4717,7 @@ class DeliveryManager:
                             "status": g_res.get("status", "completed") if isinstance(g_res, dict) else "completed"
                         })
                         if isinstance(g_res, dict) and g_res.get("status") == "overweight":
-                            self.log("[가방 과적 방지] 가방 무게가 98% 기준에 도달하여 남은 사전 채집을 안전 중단하고 다음 단계로 진행합니다.", "warn", callback)
+                            self.log("[가방 과적 방지] 가방 무게가 기준에 도달하여 1차 채집을 안전 종료하고 즉시 가공으로 이동합니다.", "warn", callback)
                             break
                         if isinstance(g_res, dict) and g_res.get("status") == "aborted":
                             self.log("[사용자 중지] 파이프라인이 중단되었습니다.", "warn", callback)
@@ -4631,6 +4745,8 @@ class DeliveryManager:
                             "error": str(g_err)
                         })
                         self.log(f"'{g_name}' 채집 중 오류: {g_err}. 다음 작업으로 계속 진행합니다.", "warn", callback)
+            else:
+                self.log("[원자재 충분] 1차 가공 슬롯을 채우기 위한 원자재가 이미 준비되어 있어 채집을 건너뛰고 가공을 즉시 가동합니다.", "success", callback)
 
         if self.abort_requested:
             self.log("[사용자 중지] 가공 등록 전 작업이 중단되었습니다.", "warn", callback)
@@ -5131,6 +5247,78 @@ class DeliveryManager:
                         fac_label = "가공 시설"
 
                     wait_seconds = max(8, min_fac_remaining + 2)
+                    wait_minutes = math.ceil(wait_seconds / 60)
+
+                    # --- [스마트 파이프라인] 가공 대기 시간 중 차기 배치 예측 선채집 ---
+                    plan_current = self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
+                    next_demands = self.calculate_slot_filling_gather_demands(plan_current, max_slots_per_facility=MAX_SLOTS, lookahead_batches=2)
+
+                    if next_demands and min_fac_remaining >= 25 and not self.abort_requested:
+                        self.log(
+                            f"[가공 진행 중 차기 선채집] '{fac_label}' 가공 완료 대기 시간({wait_minutes}분) 동안, "
+                            f"다음 턴 가공 슬롯을 채울 원자재 {len(next_demands)}종을 필드에서 미리 채집합니다.",
+                            "action", callback
+                        )
+                        for n_name, n_qty in next_demands.items():
+                            if self.abort_requested or not self.cli.check_game_running():
+                                break
+
+                            # Bag weight check
+                            try:
+                                inv_check = self.cli.get_inventory()
+                                c_w = float(inv_check.get("CurrentInventoryWeightAsDecimal", 0) or 0)
+                                m_w = float(inv_check.get("MaxInventoryWeightAsDecimal", 100) or 100)
+                                if m_w > 0 and (c_w / m_w) >= get_weight_limit_ratio():
+                                    self.log("[가방 무게 관리] 선채집 중 가방 무게 기준에 도달하여 선채집을 중단하고 수령을 대기합니다.", "warn", callback)
+                                    break
+                            except Exception:
+                                pass
+
+                            is_gath, tool_ok = self.is_gatherable(n_name)
+                            if not is_gath or not tool_ok:
+                                continue
+
+                            self.log(f"[차기 선채집 시작] '{n_name}' {n_qty}개 사전 채집 (다음 가공 수령 즉시 재등록 대비)", "action", callback)
+                            try:
+                                g_res = self.auto_gather(n_name, n_qty, callback=callback)
+                                gained = g_res.get("gained", 0) if isinstance(g_res, dict) else 0
+                                gathered_list.append({
+                                    "item": n_name,
+                                    "gained": gained,
+                                    "required": n_qty,
+                                    "status": g_res.get("status", "completed") if isinstance(g_res, dict) else "completed"
+                                })
+                            except Exception as nge:
+                                self.log(f"차기 선채집 중 오류: {nge}", "warn", callback)
+
+                            # Check if altering works finished while gathering
+                            try:
+                                check_w = self.cli.get_altering_works()
+                                if int(check_w.get("completedCount", 0) or 0) > 0:
+                                    self.log("[가공 완료 감지] 선채집 중 가공품이 완성되었습니다. 즉시 수령하러 이동합니다!", "success", callback)
+                                    break
+                            except Exception:
+                                pass
+
+                    # Recalculate remaining wait after pre-gathering
+                    try:
+                        recheck_works = self.cli.get_altering_works()
+                        self.notify_altering_updated(recheck_works)
+                        if int(recheck_works.get("completedCount", 0) or 0) > 0:
+                            # Already has completed works, proceed immediately to collect
+                            cycle += 1
+                            continue
+                        all_pend = [w for w in recheck_works.get("works", []) if not w.get("IsCompleted") and w.get("State") in ("InProgress", "NotStarted")]
+                        in_p = [w for w in all_pend if w.get("State") == "InProgress" and int(w.get("RemainingSeconds", 0) or 0) > 0]
+                        cands = in_p if in_p else all_pend
+                        if cands:
+                            min_fac_remaining = min(int(w.get("RemainingSeconds", 15) or 15) for w in cands)
+                        else:
+                            min_fac_remaining = 10
+                    except Exception:
+                        min_fac_remaining = 10
+
+                    wait_seconds = max(5, min_fac_remaining + 2)
                     wait_minutes = math.ceil(wait_seconds / 60)
 
                     self.log(
