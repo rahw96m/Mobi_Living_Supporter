@@ -4601,17 +4601,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       align-items: center;
       justify-content: center;
       min-width: 17px;
-      height: 17px;
+      height: 18px;
       padding: 0 4px;
       font-family: var(--font-mono, "JetBrains Mono", Consolas, monospace);
-      font-size: 10px;
-      font-weight: 700;
-      color: #E2E8F0;
-      background: linear-gradient(180deg, #334155 0%, #1E293B 100%);
-      border: 1px solid #475569;
-      border-bottom: 2px solid #0F172A;
-      border-radius: 3px;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-bright);
+      background: var(--badge-dim-bg, #1B1D21);
+      border: 1px solid var(--line, #333842);
+      border-radius: 2px;
       line-height: 1;
       vertical-align: middle;
       text-decoration: none !important;
@@ -4619,25 +4617,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
       flex-shrink: 0;
     }
     .hw-task-row.done .hw-keycap {
-      opacity: 0.5;
-      border-color: #334155;
-      border-bottom-color: #1E293B;
-      background: #1E293B;
-      color: #94A3B8;
-      box-shadow: none;
+      opacity: 0.45;
+      border-color: var(--line, #333842);
+      background: transparent;
+      color: var(--text-dim);
       text-decoration: none !important;
     }
     #btn-hw-complete-step .hw-keycap {
-      background: rgba(0, 0, 0, 0.28);
+      background: rgba(0, 0, 0, 0.22);
       border: 1px solid rgba(255, 255, 255, 0.4);
-      border-bottom: 2px solid rgba(0, 0, 0, 0.45);
       color: #FFFFFF;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
       margin: 0 4px;
       font-size: 11px;
-      height: 19px;
-      min-width: 19px;
+      height: 20px;
+      min-width: 20px;
       padding: 0 5px;
+      border-radius: 2px;
       text-decoration: none !important;
     }
     .hw-progress-bar-wrap {
