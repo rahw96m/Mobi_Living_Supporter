@@ -4658,6 +4658,61 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .hw-matrix-cell:hover {
       background: var(--table-hover-bg) !important;
     }
+
+    /* Homework Master Command Bar Dedicated Layout */
+    #homework-master-command-bar .mcb-mode-tabs {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+    }
+    #homework-master-command-bar .mcb-mode-tab {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .hw-mcb-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+    #hw-mcb-briefing {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: var(--fs-md);
+      font-weight: 600;
+      color: var(--text-bright);
+      font-family: var(--font-sans);
+      line-height: 1.4;
+      flex-wrap: wrap;
+      width: 100%;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+    }
+    .hw-mcb-controls-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    .hw-mcb-controls-row .mcb-options-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 0;
+    }
+    .hw-mcb-controls-row .mcb-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: nowrap;
+      margin-left: auto;
+    }
     .hw-matrix-cell.done {
       color: var(--text-bright);
       background: var(--bg-sub-panel);
@@ -5345,27 +5400,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="mcb-mode-tabs" role="tablist">
           <button type="button" class="mcb-mode-tab active" id="btn-hw-tab-main" onclick="switchHomeworkSubTab('main')">
             <span>캐릭터 숙제 &amp; 인게임 상태</span>
-            <span class="mcb-tab-pill" id="hw-tab-pill-main">진행 중</span>
           </button>
           <button type="button" class="mcb-mode-tab" id="btn-hw-tab-summary" onclick="switchHomeworkSubTab('summary')">
             <span>전체 캐릭터 종합 현황표</span>
-            <span class="mcb-tab-pill" id="hw-tab-pill-summary">6캐릭</span>
           </button>
           <button type="button" class="mcb-mode-tab" id="btn-hw-tab-matrix" onclick="switchHomeworkSubTab('matrix')">
             <span>주간 숙제 매트릭스 체크표</span>
-            <span class="mcb-tab-pill" id="hw-tab-pill-matrix">주간</span>
           </button>
           <button type="button" class="mcb-mode-tab" id="btn-hw-tab-settings" onclick="switchHomeworkSubTab('settings')">
             <span>숙제·캐릭터·알림 설정</span>
-            <span class="mcb-tab-pill">관리</span>
           </button>
         </div>
 
-        <div class="mcb-inner">
-          <div class="mcb-left">
-            <div class="mcb-briefing" id="hw-mcb-briefing">
-              <span class="sym-prefix">&gt;</span>숙제 진행 현황을 불러오는 중입니다...
-            </div>
+        <div class="hw-mcb-container">
+          <div class="hw-mcb-briefing-row" id="hw-mcb-briefing">
+            <span class="sym-prefix">&gt;</span>숙제 진행 현황을 불러오는 중입니다...
+          </div>
+          <div class="hw-mcb-controls-row">
             <div class="mcb-options-row">
               <button type="button" class="mcb-pill-btn" id="btn-hw-opt-reset" onclick="toggleHomeworkSetting('auto_reset_enabled')" title="매일 오전 06:00 일일/집중 숙제 및 월요일 오전 06:00 주간 숙제 자동 초기화">
                 <span class="cli-check-box" id="icon-hw-opt-reset">■</span>
@@ -5384,18 +5435,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 <span>정각 결계 알림</span>
               </button>
             </div>
-          </div>
 
-          <div class="mcb-right" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <button type="button" class="btn btn-boxed" id="btn-hw-focus-mode" onclick="toggleHomeworkSetting('focus_mode_enabled')" title="켜면 마스터바의 추천 순서와 완료/되돌리기 버튼이 [일일 숙제] 대신 [집중 숙제]를 대상으로 작동합니다">
-              <span id="icon-hw-focus-mode" style="font-family: var(--font-mono); margin-right: 4px;">□</span>집중 모드
-            </button>
-            <button type="button" class="btn btn-boxed" id="btn-hw-rollback" onclick="rollbackHomeworkStep()" title="방금 완료한 숙제 단계를 이전 상태로 되돌립니다">
-              ↩ 되돌리기
-            </button>
-            <button type="button" class="btn btn-mcb-start" id="btn-hw-complete-step" onclick="completeCurrentHomeworkStep()" title="현재 순서의 숙제를 즉시 완료 처리하고 다음 순서로 넘어갑니다">
-              ✓ 현재 숙제 완료
-            </button>
+            <div class="mcb-right">
+              <button type="button" class="btn btn-boxed" id="btn-hw-focus-mode" onclick="toggleHomeworkSetting('focus_mode_enabled')" title="켜면 마스터바의 추천 순서와 완료/되돌리기 버튼이 [일일 숙제] 대신 [집중 숙제]를 대상으로 작동합니다">
+                <span id="icon-hw-focus-mode" style="font-family: var(--font-mono); margin-right: 4px;">□</span>집중 모드
+              </button>
+              <button type="button" class="btn btn-boxed" id="btn-hw-rollback" onclick="rollbackHomeworkStep()" title="방금 완료한 숙제 단계를 이전 상태로 되돌립니다">
+                ↩ 되돌리기
+              </button>
+              <button type="button" class="btn btn-mcb-start" id="btn-hw-complete-step" onclick="completeCurrentHomeworkStep()" title="현재 순서의 숙제를 즉시 완료 처리하고 다음 순서로 넘어갑니다">
+                ✓ 현재 숙제 완료
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -12300,29 +12351,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
       if (btnRollback) {
         btnRollback.disabled = !hw.can_rollback;
-      }
-
-      // Pills on Homework sub-tabs
-      const pillMain = document.getElementById('hw-tab-pill-main');
-      if (pillMain && actChar && actChar.progress) {
-        const d = actChar.progress.daily || { done: 0, total: 0 };
-        pillMain.innerText = `${actChar.name} ${d.done}/${d.total}`;
-      }
-      const pillSummary = document.getElementById('hw-tab-pill-summary');
-      if (pillSummary && hw.characters) {
-        const allDailyDone = hw.characters.filter(c => c.progress && c.progress.daily && c.progress.daily.pct >= 100).length;
-        pillSummary.innerText = `일일완 ${allDailyDone}/${hw.characters.length}`;
-      }
-      const pillMatrix = document.getElementById('hw-tab-pill-matrix');
-      if (pillMatrix && hw.characters) {
-        let wDone = 0, wTotal = 0;
-        hw.characters.forEach(c => {
-          if (c.progress && c.progress.weekly) {
-            wDone += c.progress.weekly.done;
-            wTotal += c.progress.weekly.total;
-          }
-        });
-        pillMatrix.innerText = `${wDone}/${wTotal}`;
       }
 
       // Option check icons
