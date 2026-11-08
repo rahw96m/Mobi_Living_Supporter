@@ -6,7 +6,7 @@ import time
 import copy
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # pythonw execution support: Ensure sys.stdout and sys.stderr are valid streams
 if sys.stdout is None:
@@ -28,9 +28,9 @@ else:
 
 import webbrowser
 import subprocess
-from mabi_cli import MabinogiCLI, MabinogiCLIError, get_saved_cli_path, find_cli_path, get_user_data_dir, get_user_data_path
+from mabi_cli import MabinogiCLI, MabinogiCLIError, get_saved_cli_path, get_user_data_dir
 from delivery_manager import (
-    DeliveryManager, DeliveryTask, alarm_store, delivery_target_store,
+    DeliveryManager, alarm_store, delivery_target_store,
     delivery_preset_store, custom_target_store, settings_store, get_facility_for_material,
     send_discord_test_message, notify_discord_goal_completion,
     STANDARD_ALTER_RECIPES, KNOWN_GATHERABLE_ITEMS, KNOWN_NON_GATHERABLE_MATERIALS
@@ -128,7 +128,7 @@ def schedule_shutdown(delay: float = 1800.0, reason: str = "웹 대시보드가 
         shutdown_timer.start()
 
 def shutdown_server():
-    global is_shutting_down, server_instance
+    global is_shutting_down
     if is_shutting_down:
         return
     is_shutting_down = True
@@ -184,8 +184,31 @@ def watchdog_loop():
             break
 
 
+def homework_telemetry_loop():
+    """
+    Keeps homework auto-detection alive even when the dashboard tab is hidden/minimized
+    (Chrome throttles background timers to ~1/min, which made dungeon clears and quest
+    progress go unnoticed). get_cached_status() reuses its 5s cache, so this adds no
+    extra CLI load while the dashboard is actively polling.
+    """
+    interval = HOMEWORK_POLL_INTERVAL_SEC
+    while not is_shutting_down:
+        time.sleep(interval)
+        if is_busy:
+            continue
+        try:
+            get_cached_status()
+            interval = HOMEWORK_POLL_INTERVAL_SEC
+        except Exception:
+            # Game closed / CLI disconnected: back off to avoid spawning CLI processes needlessly
+            interval = HOMEWORK_POLL_BACKOFF_SEC
+
+
 cached_status_data = None
 cached_status_time = 0
+last_homework_error_log = 0.0
+HOMEWORK_POLL_INTERVAL_SEC = 6.0
+HOMEWORK_POLL_BACKOFF_SEC = 30.0
 cached_character_info = None
 cached_character_time = 0
 cached_altering_works = None
@@ -355,8 +378,12 @@ def get_cached_status() -> Dict[str, Any]:
                 env_info or {},
                 is_busy=is_busy,
             )
-        except Exception:
-            pass
+        except Exception as hw_err:
+            # Never break status polling, but surface the error (throttled) instead of hiding it
+            global last_homework_error_log
+            if (time.time() - last_homework_error_log) > 60.0:
+                last_homework_error_log = time.time()
+                add_log("warn", f"[숙제 지원] 인게임 자동 체크 처리 중 오류: {hw_err}")
 
         data = {
             "connected": True,
@@ -1131,7 +1158,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 url = req_json.get("webhook_url") or settings_store.get("discord_webhook_url", "")
                 success, msg = send_discord_test_message(url)
                 if success:
-                    add_log("success", f"[디스코드] 테스트 웹훅 메시지가 성공적으로 전송되었습니다.")
+                    add_log("success", "[디스코드] 테스트 웹훅 메시지가 성공적으로 전송되었습니다.")
                     self._send_json({"status": "success", "message": msg})
                 else:
                     add_log("warn", f"[디스코드] 테스트 웹훅 전송 실패: {msg}")
@@ -2571,6 +2598,8 @@ def start_server(port=8080):
 
     # Start auto-shutdown watchdog thread
     threading.Thread(target=watchdog_loop, daemon=True).start()
+    # Background homework telemetry (auto-check works even with the dashboard minimized)
+    threading.Thread(target=homework_telemetry_loop, daemon=True).start()
 
     # Automatically launch standalone desktop app window once server is confirmed listening
     def _open_app_when_ready():
@@ -13272,7 +13301,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 if __name__ == "__main__":
     try:
         start_server(8080)
-    except Exception as e:
+    except Exception:
         import traceback
         base_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
         crash_path = os.path.join(base_dir, "crash.log")

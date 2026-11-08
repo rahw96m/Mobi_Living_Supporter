@@ -16,7 +16,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from mabi_cli import MabinogiCLI, MabinogiCLIError, get_user_data_path
+from mabi_cli import MabinogiCLI, get_user_data_path
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 KST_TZ = timezone(timedelta(hours=9))
@@ -83,6 +83,37 @@ DEFAULT_WEEKLY_TASKS: List[str] = [
 ]
 
 
+# --- In-game auto-detection rules (verified against live MabinogiMobile_CLI output) ---
+
+# get_daily_missions: number of claimed rewards that counts as '일일 미션' done
+DAILY_MISSION_REWARD_THRESHOLD = 6
+
+# get_weekly_missions Description keyword (spaces removed) -> weekly homework task
+WEEKLY_MISSION_RULES: Tuple[Tuple[str, str], ...] = (
+    ("검은구멍", "검은 구멍"),        # '검은 구멍 1회 입장'
+    ("소환결계", "소환의 결계"),      # '소환결계 1회 파괴'
+    ("필드보스", "필드 보스"),        # '필드 보스 N회 토벌'
+    ("뱅가드브리치", "뱅가드 브리치"),  # '뱅가드 브리치 N회 토벌'
+)
+
+# 요일 던전: 월/목 빛나는 동굴, 화/금 눈부신 저택, 수/토 찬란한 유적, 일 택1
+DAY_DUNGEON_KEYWORDS: Tuple[str, ...] = ("빛나는 동굴", "눈부신 저택", "찬란한 유적", "요일")
+ABYSS_KEYWORDS: Tuple[str, ...] = ("허상의 정박지", "광기의 동굴", "흩어진 물길", "어비스")
+ABYSS_TASKS: Tuple[str, ...] = ("어비스: 허상의 정박지", "어비스: 광기의 동굴", "어비스: 흩어진 물길")
+WEEKLY_BOSS_RULES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
+    (("페리", "크라브바흐", "크라마", "드로흐에넴", "토르모그", "앙그르바한", "필드 보스", "필드보스"), "필드 보스"),
+    (("카브락",), "레이드: 카브락"),
+    (("에이렐",), "레이드: 에이렐"),
+    (("서큐버스",), "레이드: 화이트 서큐버스"),
+)
+
+# A dungeon-clear counter increase within this many seconds after leaving a dungeon
+# is attributed to that run (covers clears missed by a throttled poller).
+DUNGEON_EVIDENCE_WINDOW_SEC = 90.0
+
+CURRENCY_KEYWORDS: Tuple[str, ...] = ("은동전", "마족 공물", "골드", "데카", "날개", "주화")
+
+
 def get_logical_now_kst() -> datetime:
     """Returns current datetime in KST shifted back by 6 hours (06:00 AM reset boundary)."""
     return datetime.now(KST_TZ) - timedelta(hours=6)
@@ -144,6 +175,7 @@ class HomeworkManager:
 
         # Live telemetry cache & state tracking for event transitions
         self._last_extended_poll_ts: float = 0.0
+        self._data_dirty: bool = False
         self._live_telemetry: Dict[str, Any] = {
             "currencies": [],
             "daily_missions": [],
@@ -154,18 +186,15 @@ class HomeworkManager:
             "updated_at": 0,
         }
         self._prev_state: Dict[str, Any] = {
-            "char_name": None,
-            "is_gathering": False,
-            "gather_target": "",
-            "is_crafting": False,
-            "craft_action": "",
+            "char_name": None,          # last auto-switched character
+            "telemetry_char": None,     # character the transient state below belongs to
             "dungeon_state": "",
-            "dungeon_name": "",
+            "dungeon_run": None,        # {active, handled, name, ended_at}
             "abyss_result_playing": False,
-            "abyss_mission_counts": {},
+            "last_abyss_at": 0.0,
             "goddess_loot_ready": set(),
-            "regular_quest_counts": {},
-            "altering_ready": 0,
+            "last_interaction": "",
+            "altering_ready": None,
         }
 
         self.load()
@@ -395,21 +424,23 @@ class HomeworkManager:
             if idx < 0 or idx >= len(chars):
                 self.data["current_char_index"] = 0
 
+    def _atomic_write_json(self, path: str, payload: Dict[str, Any]) -> None:
+        """Writes JSON via temp file + os.replace so a crash never leaves a truncated file."""
+        tmp_path = f"{path}.tmp"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, path)
+        except Exception as e:
+            print(f"[숙제 지원] 저장 실패 ({os.path.basename(path)}): {e}")
+
     def save_config(self):
         with self._lock:
-            try:
-                with open(self.config_file, "w", encoding="utf-8") as f:
-                    json.dump(self.config, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
+            self._atomic_write_json(self.config_file, self.config)
 
     def save_data(self):
         with self._lock:
-            try:
-                with open(self.data_file, "w", encoding="utf-8") as f:
-                    json.dump(self.data, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
+            self._atomic_write_json(self.data_file, self.data)
 
     # =========================================================================
     # 2. Unification with RegisteredDeliveryStore (Weekly Delivery Profiles)
@@ -1029,6 +1060,89 @@ class HomeworkManager:
                 self._log("success" if value else "info", msg)
         return changed_tasks
 
+    # --- Telemetry text helpers ---------------------------------------------------
+
+    @staticmethod
+    def _clean_text(text: Any) -> str:
+        """Strips rich-text tags (e.g. '<color=orange>') and collapses whitespace."""
+        s = re.sub(r"<[^>]+>", "", str(text or ""))
+        return re.sub(r"\s+", " ", s).strip()
+
+    @classmethod
+    def _compact(cls, text: Any) -> str:
+        """Cleaned text with all spaces removed, for robust keyword matching."""
+        return cls._clean_text(text).replace(" ", "")
+
+    @classmethod
+    def _objective_key(cls, desc: Any) -> str:
+        """
+        Stable identity for a quest objective. The game embeds live progress in the
+        description (e.g. '사냥터 클리어 2/5'), so the trailing 'n/m' must be stripped,
+        otherwise the key changes on every clear and progress can never be compared.
+        """
+        s = re.sub(r"\s*\d+\s*/\s*\d+\s*$", "", cls._clean_text(desc))
+        return s.replace(" ", "")
+
+    @staticmethod
+    def _to_int(val: Any) -> int:
+        try:
+            return int(val or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    # --- Auto-mark primitives --------------------------------------------------------
+
+    def _mark_once_locked(self, char_name: str, category: str, keyword: str, reason: str) -> None:
+        """
+        Auto-marks a task from a *state* signal (e.g. a mission that stays completed) only
+        once per reset period, so a manual un-check by the user is not overwritten on
+        every poll. Daily/focus periods roll at 06:00, weekly at Monday 06:00.
+        """
+        cdata = self.data.setdefault("characters", {}).setdefault(char_name, {})
+        period = get_monday_str() if category == "weekly" else get_logical_date_str()
+        reg_key = "auto_marked_weekly" if category == "weekly" else "auto_marked_daily"
+        reg = cdata.get(reg_key)
+        if not isinstance(reg, dict) or reg.get("period") != period:
+            reg = {"period": period, "keys": []}
+            cdata[reg_key] = reg
+        mark_key = f"{category}:{keyword}"
+        if mark_key in reg["keys"]:
+            return
+        reg["keys"].append(mark_key)
+        self._data_dirty = True
+        self._auto_mark_task_locked(char_name, category, keyword, True, reason)
+
+    def _counter_increased_locked(self, cdata: Dict[str, Any], key: str, count: int) -> bool:
+        """
+        Per-character progress snapshot for cumulative counters (e.g. weekly 정기 의뢰
+        objectives). Returns True when `count` grew since it was last observed during the
+        current logical day. The snapshot is persisted so character switches and app
+        restarts within the same day do not lose the baseline.
+        """
+        today = get_logical_date_str()
+        snap = cdata.get("progress_snapshot")
+        if not isinstance(snap, dict) or snap.get("date") != today:
+            snap = {"date": today, "counts": {}}
+            cdata["progress_snapshot"] = snap
+            self._data_dirty = True
+        counts = snap.setdefault("counts", {})
+        prev = counts.get(key)
+        if prev != count:
+            counts[key] = count
+            self._data_dirty = True
+        return prev is not None and count > prev
+
+    def _notify_async(self, enabled: bool, title: str, description: str, color: int) -> None:
+        if not enabled:
+            return
+        threading.Thread(
+            target=self.send_homework_discord_webhook,
+            args=(title, description, color),
+            daemon=True,
+        ).start()
+
+    # --- Main entry point ------------------------------------------------------------
+
     def update_from_ingame_state(
         self,
         my_info: Optional[Dict[str, Any]],
@@ -1038,381 +1152,433 @@ class HomeworkManager:
         is_busy: bool = False,
     ):
         """
-        Called by `get_cached_status()` when live CLI status is fetched.
-        Updates character stats, performs smart character auto-detection/switching,
-        and polls missions/quests/currencies/altering works on a lightweight 8s cadence
-        to auto-check homework tasks and trigger Discord notifications.
+        Called whenever live CLI status is fetched (dashboard polling and the server's
+        background telemetry loop). Updates character stats, performs character
+        auto-detection/switching, and auto-checks homework from missions, the quest
+        tracker and dungeon activity transitions.
         """
         self.check_auto_reset()
-        now = time.time()
-
-        # Poll extended telemetry (currencies, missions, quests, altering) at most every 8 seconds when not busy
-        need_extended = (not is_busy) and ((now - self._last_extended_poll_ts) >= 8.0)
-        currencies = self._live_telemetry.get("currencies", [])
-        daily_missions = self._live_telemetry.get("daily_missions", [])
-        weekly_missions = self._live_telemetry.get("weekly_missions", [])
-        quests = self._live_telemetry.get("quests", [])
-        altering_summary = self._live_telemetry.get("altering_summary", {"ready": 0, "total": 0, "works": []})
-
-        if need_extended:
-            self._last_extended_poll_ts = now
-            try:
-                currencies = self.cli.get_currencies()
-            except Exception:
-                pass
-            try:
-                daily_missions = self.cli.get_daily_missions()
-            except Exception:
-                pass
-            try:
-                weekly_missions = self.cli.get_weekly_missions()
-            except Exception:
-                pass
-            try:
-                quests = self.cli.get_quests()
-            except Exception:
-                pass
-            try:
-                alt_raw = self.cli.get_altering_works()
-                works_list = alt_raw.get("works", []) if isinstance(alt_raw, dict) else []
-                ready_cnt = sum(1 for w in works_list if w.get("IsCompleted") or int(w.get("RemainingSeconds", 0) or 0) <= 0)
-                altering_summary = {
-                    "ready": ready_cnt,
-                    "total": len(works_list),
-                    "works": works_list,
-                }
-            except Exception:
-                pass
-
-            with self._lock:
-                prev_matched = self._live_telemetry.get("matched_char_name") or ""
-                self._live_telemetry = {
-                    "matched_char_name": prev_matched,
-                    "currencies": currencies,
-                    "daily_missions": daily_missions,
-                    "weekly_missions": weekly_missions,
-                    "quests": quests,
-                    "altering_summary": altering_summary,
-                    "omen_barrier": self.get_omen_barrier_status(),
-                    "updated_at": int(now * 1000),
-                }
-
+        telemetry = self._refresh_extended_telemetry(is_busy)
         if not my_info:
             return
 
         with self._lock:
-            resolved_name = self.resolve_character(my_info)
-            if not resolved_name and self.delivery_store.matched_ingame_character_id:
-                dc_matched = self.delivery_store.characters.get(self.delivery_store.matched_ingame_character_id)
-                if dc_matched:
-                    bname, _ = extract_base_char_name(dc_matched.get("name", ""))
-                    if bname:
-                        resolved_name = bname
-
-            self._live_telemetry["matched_char_name"] = resolved_name or ""
-
-            if resolved_name:
-                deliv_cid = self._find_delivery_char_id_by_name(resolved_name)
-                if deliv_cid:
-                    with self.delivery_store._lock:
-                        self.delivery_store.matched_ingame_character_id = deliv_cid
-
-            active_name = self.get_active_char_name()
-
-            # Auto character switch if enabled
-            if (
-                resolved_name
-                and self.config.get("ai_auto_char_detect", True)
-                and not is_busy
-                and resolved_name != self._prev_state.get("char_name")
-            ):
-                self._prev_state["char_name"] = resolved_name
-                for idx, hc in enumerate(self.config.get("characters", [])):
-                    if hc["name"] == resolved_name:
-                        if self.data.get("current_char_index") != idx:
-                            self.data["current_char_index"] = idx
-                            self.save_data()
-                            self._log("info", f"인게임 접속 캐릭터 감지 -> '{resolved_name}({hc.get('class', '')})' 프로필로 자동 전환되었습니다.")
-                        # Also sync delivery_store active character!
-                        deliv_cid = self._find_delivery_char_id_by_name(resolved_name)
-                        if deliv_cid and self.delivery_store.active_character_id != deliv_cid:
-                            self.delivery_store.select_character(deliv_cid)
-                        active_name = resolved_name
-                        break
-
-            target_char_name = resolved_name or active_name
+            target_char_name = self._resolve_and_switch_character_locked(my_info, is_busy)
+            if not target_char_name:
+                return
             cdata = self.data.setdefault("characters", {}).setdefault(target_char_name, {})
             cdata["updated_at"] = datetime.now(KST_TZ).strftime("%H:%M:%S")
 
-            # Update character stats from my_info & inventory & currencies
-            cp = self._extract_stat_int(my_info.get("CombatScore") or my_info.get("CombatPower"))
-            ls = self._extract_stat_int(my_info.get("LivingScore"))
-            cs = self._extract_stat_int(my_info.get("AttractivenessScore"))
-            ds = self._extract_stat_int(my_info.get("DecorScore"))
-            lvl = self._extract_stat_int(my_info.get("Level"))
-            title = str(my_info.get("Title") or my_info.get("EquippedTitleName") or "").strip()
-            job_disp = str(my_info.get("EnabledCombatJobDisplayName") or "").strip()
-
-            stats_dirty = False
-            for hc in self.config.get("characters", []):
-                if hc["name"] == target_char_name:
-                    if cp > 0 and hc.get("combat_power") != cp:
-                        hc["combat_power"] = cp
-                        cdata["combat_power"] = cp
-                        stats_dirty = True
-                    if ls > 0 and hc.get("living_score") != ls:
-                        hc["living_score"] = ls
-                        cdata["living_score"] = ls
-                        stats_dirty = True
-                    if cs > 0 and hc.get("attractiveness_score") != cs:
-                        hc["attractiveness_score"] = cs
-                        cdata["attractiveness_score"] = cs
-                        stats_dirty = True
-                    if ds > 0 and hc.get("decor_score") != ds:
-                        hc["decor_score"] = ds
-                        cdata["decor_score"] = ds
-                        stats_dirty = True
-                    if title and hc.get("title") != title:
-                        hc["title"] = title
-                        cdata["title"] = title
-                        stats_dirty = True
-                    if job_disp and hc.get("class") in ("", "미지정"):
-                        hc["class"] = job_disp
-                        stats_dirty = True
-                    break
-
-            if lvl > 0 and cdata.get("level") != lvl:
-                cdata["level"] = lvl
-                stats_dirty = True
-
-            vitals = my_info.get("Vitals") if isinstance(my_info.get("Vitals"), dict) else {}
-            cur_w = 0.0
-            max_w = 0.0
-            if inventory and isinstance(inventory, dict):
-                cur_w = float(inventory.get("CurrentInventoryWeightAsDecimal", 0) or inventory.get("CurrentInventoryWeight", 0) or 0)
-                max_w = float(inventory.get("MaxInventoryWeightAsDecimal", 0) or inventory.get("MaxInventoryWeight", 0) or 0)
-            if max_w <= 0 and vitals:
-                cur_w = float(vitals.get("InventoryWeightCurrent", 0) or 0)
-                max_w = float(vitals.get("InventoryWeightMax", 0) or 0)
-            if max_w > 0:
-                pct = int(round((cur_w / max_w) * 100))
-                w_str = f"{cur_w:.0f}/{max_w:.0f}"
-                if cdata.get("bag_weight_pct") != pct or cdata.get("bag_weight_str") != w_str:
-                    cdata["bag_weight_pct"] = pct
-                    cdata["bag_weight_str"] = w_str
-                    stats_dirty = True
-
-            if currencies and isinstance(currencies, list):
-                curr_map = {}
-                for item in currencies:
-                    if not isinstance(item, dict):
-                        continue
-                    cname_cur = str(item.get("Name") or item.get("DisplayName") or "").strip()
-                    amt = int(item.get("Amount") or item.get("Count") or 0)
-                    max_amt = int(item.get("MaxAmount") or 0)
-                    if any(k in cname_cur for k in ("은동전", "마족 공물", "골드", "데카", "날개", "주화")):
-                        curr_map[cname_cur] = f"{amt}/{max_amt}" if max_amt > 0 else amt
-                if curr_map and cdata.get("currencies") != curr_map:
-                    cdata["currencies"] = curr_map
-                    stats_dirty = True
-
-            if altering_summary:
-                ar = int(altering_summary.get("ready") or 0)
-                at = int(altering_summary.get("total") or 0)
-                if cdata.get("altering_ready") != ar or cdata.get("altering_total") != at:
-                    cdata["altering_ready"] = ar
-                    cdata["altering_total"] = at
-                    stats_dirty = True
-
-            if stats_dirty:
+            if self._update_character_stats_locked(target_char_name, cdata, my_info, inventory, telemetry):
                 self.save_config()
                 self.save_data()
 
-            # Auto-task check & event triggers
             if not self.config.get("ai_auto_task_check", True):
                 return
 
-            # 1) Daily Missions Bidirectional Sync ('검은 구멍 [M]', '일일 미션 [N]')
-            if daily_missions and isinstance(daily_missions, list):
-                claimed_rewards = sum(1 for m in daily_missions if isinstance(m, dict) and m.get("IsRewardReceived"))
-                for m in daily_missions:
-                    if not isinstance(m, dict):
-                        continue
-                    m_title = str(m.get("Title") or "").replace(" ", "")
-                    is_comp = bool(m.get("IsCompleted")) or bool(m.get("IsRewardReceived"))
-                    if "검은구멍" in m_title and is_comp:
-                        self._auto_mark_task_locked(target_char_name, "daily", "검은 구멍", True, "인게임 일일 미션 달성")
-                if claimed_rewards >= 6:
-                    self._auto_mark_task_locked(target_char_name, "daily", "일일 미션", True, f"일일 미션 보상 {claimed_rewards}개 수령")
-
-            # 2) Activity Transitions (Dungeon Clear, Abyss Clear, Gathering, Crafting)
+            self._data_dirty = False
             act = activity if isinstance(activity, dict) else {}
-            dungeon_info = act.get("Dungeon") if isinstance(act.get("Dungeon"), dict) else {}
-            cur_d_state = str(dungeon_info.get("State") or "")
-            cur_d_name = str(dungeon_info.get("Name") or "")
-            cur_abyss_seq = bool(dungeon_info.get("IsAbyssResultSequencePlaying", False))
+            env = environment if isinstance(environment, dict) else {}
 
-            prev_d_state = str(self._prev_state.get("dungeon_state") or "")
-            prev_abyss_seq = bool(self._prev_state.get("abyss_result_playing", False))
+            dungeon_evidence = self._detect_from_daily_missions_locked(target_char_name, cdata, telemetry["daily_missions"])
+            abyss_evidence = self._detect_from_weekly_missions_locked(target_char_name, cdata, telemetry["weekly_missions"])
+            dungeon_evidence |= self._detect_from_quests_locked(target_char_name, cdata, telemetry["quests"])
+            self._detect_dungeon_events_locked(target_char_name, act, env, dungeon_evidence, abyss_evidence)
+            self._detect_gathering_locked(target_char_name, act)
+            self._detect_altering_locked(target_char_name, telemetry["altering_summary"])
 
-            # General Dungeon / Raid / Field Boss Clear
-            if cur_d_state == "Cleared" and prev_d_state and prev_d_state != "Cleared":
-                d_label = cur_d_name or "던전"
-                self._auto_mark_task_locked(target_char_name, "daily", "정기 의뢰", True, f"{d_label} 클리어")
-                if any(k in d_label for k in ("찬란한 유적", "빛나는 동굴", "눈부신 저택", "요일")):
-                    self._auto_mark_task_locked(target_char_name, "daily", "요일 던전", True, f"{d_label} 클리어")
-                if any(k in d_label for k in ("페리", "크라브바흐", "크라마", "드로흐에넴", "토르모그", "앙그르바한", "필드 보스", "필드보스")):
-                    self._auto_mark_task_locked(target_char_name, "weekly", "필드 보스", True, f"{d_label} 처치")
-                if "카브락" in d_label:
-                    self._auto_mark_task_locked(target_char_name, "weekly", "레이드: 카브락", True, f"{d_label} 클리어")
-                if "에이렐" in d_label:
-                    self._auto_mark_task_locked(target_char_name, "weekly", "레이드: 에이렐", True, f"{d_label} 클리어")
-                if "서큐버스" in d_label:
-                    self._auto_mark_task_locked(target_char_name, "weekly", "레이드: 화이트 서큐버스", True, f"{d_label} 클리어")
+            if self._data_dirty:
+                self.save_data()
+                self._data_dirty = False
 
-                if self.config.get("webhook_notify_dungeon", True):
-                    threading.Thread(
-                        target=self.send_homework_discord_webhook,
-                        args=(
-                            "⚔️ 던전 클리어 알림",
-                            f"**[{target_char_name}]** 캐릭터가 **{d_label}** 클리어를 완료했습니다!",
-                            0x3498DB,
-                        ),
-                        daemon=True,
-                    ).start()
+    # --- Telemetry collection --------------------------------------------------------
 
-            # Abyss Clear Detection (Sequence or Dungeon Cleared on Abyss map)
-            abyss_cleared_name = ""
-            if cur_abyss_seq and not prev_abyss_seq:
-                abyss_cleared_name = cur_d_name or "어비스 던전"
-            elif cur_d_state == "Cleared" and prev_d_state != "Cleared" and any(
-                k in cur_d_name for k in ("허상의 정박지", "광기의 동굴", "흩어진 물길", "어비스")
-            ):
-                abyss_cleared_name = cur_d_name
+    def _refresh_extended_telemetry(self, is_busy: bool) -> Dict[str, Any]:
+        """Polls currencies / missions / quests / altering at most every 8s (never while busy)."""
+        now = time.time()
+        tel = self._live_telemetry
+        if is_busy or (now - self._last_extended_poll_ts) < 8.0:
+            return tel
+        self._last_extended_poll_ts = now
 
-            # Also check weekly_missions abyss count increase
-            if weekly_missions and isinstance(weekly_missions, list):
-                prev_ab_counts = self._prev_state.get("abyss_mission_counts", {})
-                new_ab_counts = {}
-                for wm in weekly_missions:
-                    if not isinstance(wm, dict):
+        def _safe(fn: Callable[[], Any], fallback: Any) -> Any:
+            try:
+                return fn()
+            except Exception:
+                return fallback
+
+        currencies = _safe(self.cli.get_currencies, tel.get("currencies", []))
+        daily_missions = _safe(self.cli.get_daily_missions, tel.get("daily_missions", []))
+        weekly_missions = _safe(self.cli.get_weekly_missions, tel.get("weekly_missions", []))
+        quests = _safe(self.cli.get_quests, tel.get("quests", []))
+        altering_summary = tel.get("altering_summary", {"ready": 0, "total": 0, "works": []})
+        alt_raw = _safe(self.cli.get_altering_works, None)
+        if isinstance(alt_raw, dict):
+            works = alt_raw.get("works", []) or []
+            altering_summary = {
+                "ready": sum(1 for w in works if w.get("IsCompleted") or self._to_int(w.get("RemainingSeconds")) <= 0),
+                "total": len(works),
+                "works": works,
+            }
+
+        with self._lock:
+            self._live_telemetry = {
+                "matched_char_name": tel.get("matched_char_name") or "",
+                "currencies": currencies if isinstance(currencies, list) else [],
+                "daily_missions": daily_missions if isinstance(daily_missions, list) else [],
+                "weekly_missions": weekly_missions if isinstance(weekly_missions, list) else [],
+                "quests": quests if isinstance(quests, list) else [],
+                "altering_summary": altering_summary,
+                "omen_barrier": self.get_omen_barrier_status(),
+                "updated_at": int(now * 1000),
+            }
+            return self._live_telemetry
+
+    def _resolve_and_switch_character_locked(self, my_info: Dict[str, Any], is_busy: bool) -> str:
+        resolved_name = self.resolve_character(my_info)
+        if not resolved_name and self.delivery_store.matched_ingame_character_id:
+            dc_matched = self.delivery_store.characters.get(self.delivery_store.matched_ingame_character_id)
+            if dc_matched:
+                resolved_name, _ = extract_base_char_name(dc_matched.get("name", ""))
+
+        self._live_telemetry["matched_char_name"] = resolved_name or ""
+        if resolved_name:
+            deliv_cid = self._find_delivery_char_id_by_name(resolved_name)
+            if deliv_cid:
+                with self.delivery_store._lock:
+                    self.delivery_store.matched_ingame_character_id = deliv_cid
+
+        active_name = self.get_active_char_name()
+        if (
+            resolved_name
+            and self.config.get("ai_auto_char_detect", True)
+            and not is_busy
+            and resolved_name != self._prev_state.get("char_name")
+        ):
+            self._prev_state["char_name"] = resolved_name
+            for idx, hc in enumerate(self.config.get("characters", [])):
+                if hc["name"] != resolved_name:
+                    continue
+                if self.data.get("current_char_index") != idx:
+                    self.data["current_char_index"] = idx
+                    self.save_data()
+                    self._log("info", f"인게임 접속 캐릭터 감지 -> '{resolved_name}({hc.get('class', '')})' 프로필로 자동 전환되었습니다.")
+                deliv_cid = self._find_delivery_char_id_by_name(resolved_name)
+                if deliv_cid and self.delivery_store.active_character_id != deliv_cid:
+                    self.delivery_store.select_character(deliv_cid)
+                active_name = resolved_name
+                break
+
+        target = resolved_name or active_name
+        # Transient edge-detection state belongs to one in-game character; reset it on change
+        # so the previous character's dungeon/quest state never triggers marks for the new one.
+        if target and target != self._prev_state.get("telemetry_char"):
+            self._reset_transient_state(target)
+        return target
+
+    def _reset_transient_state(self, char_name: str) -> None:
+        self._prev_state.update({
+            "telemetry_char": char_name,
+            "dungeon_state": "",
+            "dungeon_run": None,
+            "abyss_result_playing": False,
+            "goddess_loot_ready": set(),
+            "last_interaction": "",
+            "altering_ready": None,
+        })
+
+    def _update_character_stats_locked(
+        self,
+        char_name: str,
+        cdata: Dict[str, Any],
+        my_info: Dict[str, Any],
+        inventory: Optional[Dict[str, Any]],
+        telemetry: Dict[str, Any],
+    ) -> bool:
+        """Syncs combat power / scores / title / level / bag weight / currencies. Returns True if changed."""
+        dirty = False
+        stat_values = {
+            "combat_power": self._extract_stat_int(my_info.get("CombatScore") or my_info.get("CombatPower")),
+            "living_score": self._extract_stat_int(my_info.get("LivingScore")),
+            "attractiveness_score": self._extract_stat_int(my_info.get("AttractivenessScore")),
+            "decor_score": self._extract_stat_int(my_info.get("DecorScore")),
+        }
+        title = str(my_info.get("Title") or my_info.get("EquippedTitleName") or "").strip()
+        job_disp = str(my_info.get("EnabledCombatJobDisplayName") or "").strip()
+
+        for hc in self.config.get("characters", []):
+            if hc["name"] != char_name:
+                continue
+            for key, val in stat_values.items():
+                if val > 0 and hc.get(key) != val:
+                    hc[key] = val
+                    cdata[key] = val
+                    dirty = True
+            if title and hc.get("title") != title:
+                hc["title"] = title
+                cdata["title"] = title
+                dirty = True
+            if job_disp and hc.get("class") in ("", "미지정"):
+                hc["class"] = job_disp
+                dirty = True
+            break
+
+        lvl = self._extract_stat_int(my_info.get("Level"))
+        if lvl > 0 and cdata.get("level") != lvl:
+            cdata["level"] = lvl
+            dirty = True
+
+        cur_w = max_w = 0.0
+        if isinstance(inventory, dict):
+            cur_w = float(inventory.get("CurrentInventoryWeightAsDecimal") or inventory.get("CurrentInventoryWeight") or 0)
+            max_w = float(inventory.get("MaxInventoryWeightAsDecimal") or inventory.get("MaxInventoryWeight") or 0)
+        vitals = my_info.get("Vitals") if isinstance(my_info.get("Vitals"), dict) else {}
+        if max_w <= 0 and vitals:
+            cur_w = float(vitals.get("InventoryWeightCurrent") or 0)
+            max_w = float(vitals.get("InventoryWeightMax") or 0)
+        if max_w > 0:
+            pct = int(round((cur_w / max_w) * 100))
+            w_str = f"{cur_w:.0f}/{max_w:.0f}"
+            if cdata.get("bag_weight_pct") != pct or cdata.get("bag_weight_str") != w_str:
+                cdata["bag_weight_pct"] = pct
+                cdata["bag_weight_str"] = w_str
+                dirty = True
+
+        curr_map: Dict[str, Any] = {}
+        for item in telemetry.get("currencies") or []:
+            if not isinstance(item, dict):
+                continue
+            cname_cur = str(item.get("Name") or item.get("DisplayName") or "").strip()
+            if any(k in cname_cur for k in CURRENCY_KEYWORDS):
+                amt = self._to_int(item.get("Amount") or item.get("Count"))
+                max_amt = self._to_int(item.get("MaxAmount"))
+                curr_map[cname_cur] = f"{amt}/{max_amt}" if max_amt > 0 else amt
+        if curr_map and cdata.get("currencies") != curr_map:
+            cdata["currencies"] = curr_map
+            dirty = True
+
+        alt = telemetry.get("altering_summary") or {}
+        ar, at = self._to_int(alt.get("ready")), self._to_int(alt.get("total"))
+        if cdata.get("altering_ready") != ar or cdata.get("altering_total") != at:
+            cdata["altering_ready"] = ar
+            cdata["altering_total"] = at
+            dirty = True
+        return dirty
+
+    # --- Detectors -------------------------------------------------------------------
+
+    def _detect_from_daily_missions_locked(self, char_name: str, cdata: Dict[str, Any], missions: List[Any]) -> bool:
+        """
+        Daily missions reset at 06:00 together with daily homework, so their state is
+        authoritative for the current day. Mission titles are flavour text
+        ('구석구석 깨끗하게'); the actual objective lives in `Description`
+        ('검은 구멍 1회 입장'), so matching must use Title + Description.
+        Returns True if the daily dungeon-clear counter increased (dungeon clear evidence).
+        """
+        claimed = 0
+        dungeon_count = 0
+        for m in missions or []:
+            if not isinstance(m, dict):
+                continue
+            text = self._compact(f"{m.get('Title', '')} {m.get('Description', '')}")
+            cur = self._to_int(m.get("CurrentCount"))
+            done = bool(m.get("IsCompleted")) or bool(m.get("IsRewardReceived"))
+            if m.get("IsRewardReceived"):
+                claimed += 1
+            if "검은구멍" in text and (done or cur > 0):
+                self._mark_once_locked(char_name, "daily", "검은 구멍", "일일 미션: 검은 구멍 입장 확인")
+            if "채집" in text and done:
+                self._mark_once_locked(char_name, "daily", "재료 채집", "일일 미션: 재료 채집 달성")
+            if "던전" in text and "토벌" in text and "심층" not in text:
+                dungeon_count = max(dungeon_count, cur)
+
+        if claimed >= DAILY_MISSION_REWARD_THRESHOLD:
+            self._mark_once_locked(char_name, "daily", "일일 미션", f"일일 미션 보상 {claimed}개 수령")
+        return self._counter_increased_locked(cdata, "daily_mission:dungeon", dungeon_count)
+
+    def _detect_from_weekly_missions_locked(self, char_name: str, cdata: Dict[str, Any], missions: List[Any]) -> bool:
+        """Weekly missions reset on Monday 06:00 like weekly homework. Returns True on abyss progress."""
+        abyss_count = 0
+        for m in missions or []:
+            if not isinstance(m, dict):
+                continue
+            text = self._compact(f"{m.get('Title', '')} {m.get('Description', '')}")
+            done = bool(m.get("IsCompleted")) or bool(m.get("IsRewardReceived"))
+            if done:
+                for keyword, task in WEEKLY_MISSION_RULES:
+                    if keyword in text:
+                        self._mark_once_locked(char_name, "weekly", task, f"주간 미션 달성: {self._clean_text(m.get('Description'))}")
+            if "어비스" in text:
+                abyss_count = max(abyss_count, self._to_int(m.get("CurrentCount")))
+        return self._counter_increased_locked(cdata, "weekly_mission:abyss", abyss_count)
+
+    def _detect_from_quests_locked(self, char_name: str, cdata: Dict[str, Any], quests: List[Any]) -> bool:
+        """
+        Quest tracker detection:
+          * '[주간 목표] 모험가 길드의 정기 의뢰' objective counts (던전/심층 던전/사냥터 클리어)
+            -> any increase today marks '정기 의뢰'.
+          * 지역 임무(goddess_mission) reaching the '전리품' step -> hunting ground cleared.
+        Returns True if a dungeon-clear objective increased (dungeon clear evidence).
+        """
+        regular_progress: List[str] = []
+        dungeon_progress = False
+        hunting_progress = False
+        goddess_ready = set()
+
+        for q in quests or []:
+            if not isinstance(q, dict):
+                continue
+            title = self._clean_text(q.get("QuestTitle"))
+            src = str(q.get("Source") or "")
+            src_disp = str(q.get("SourceDisplayName") or "")
+            objs = [o for o in (q.get("Objectives") or []) if isinstance(o, dict)]
+
+            if "정기의뢰" in title.replace(" ", ""):
+                for obj in objs:
+                    okey = self._objective_key(obj.get("Description"))
+                    if not okey:
                         continue
-                    wtitle = str(wm.get("Title") or "")
-                    if "어비스" in wtitle:
-                        mid = wm.get("MissionId") or wtitle
-                        prog = int(wm.get("Progress") or 0)
-                        new_ab_counts[mid] = prog
-                        if mid in prev_ab_counts and prog > prev_ab_counts[mid] and not abyss_cleared_name:
-                            abyss_cleared_name = cur_d_name or wtitle
-                self._prev_state["abyss_mission_counts"] = new_ab_counts
+                    if self._counter_increased_locked(cdata, f"regular:{okey}", self._to_int(obj.get("Count"))):
+                        regular_progress.append(self._clean_text(obj.get("Description")))
+                        if "사냥터" in okey:
+                            hunting_progress = True
+                        elif "던전" in okey:
+                            dungeon_progress = True
 
-            if abyss_cleared_name:
-                if "허상의 정박지" in abyss_cleared_name:
-                    self._auto_mark_task_locked(target_char_name, "weekly", "어비스: 허상의 정박지", True, "어비스 클리어")
-                elif "광기의 동굴" in abyss_cleared_name:
-                    self._auto_mark_task_locked(target_char_name, "weekly", "어비스: 광기의 동굴", True, "어비스 클리어")
-                elif "흩어진 물길" in abyss_cleared_name:
-                    self._auto_mark_task_locked(target_char_name, "weekly", "어비스: 흩어진 물길", True, "어비스 클리어")
-                else:
-                    # Mark first unchecked abyss task
-                    for ab_task in ("어비스: 허상의 정박지", "어비스: 광기의 동굴", "어비스: 흩어진 물길"):
-                        if not cdata.get("weekly", {}).get(ab_task, False):
-                            self._auto_mark_task_locked(target_char_name, "weekly", ab_task, True, f"{abyss_cleared_name} 클리어")
-                            break
+            if src == "goddess_mission" or "지역 임무" in src_disp:
+                for obj in objs:
+                    if "전리품" in self._compact(obj.get("Description")) and not obj.get("IsCompleted"):
+                        goddess_ready.add(title)
 
-                if self.config.get("webhook_notify_abyss", True) or self.config.get("webhook_notify_Abyss", True):
-                    threading.Thread(
-                        target=self.send_homework_discord_webhook,
-                        args=(
-                            "🟣 어비스 클리어 알림",
-                            f"**[{target_char_name}]** 캐릭터가 **{abyss_cleared_name}** 클리어를 완료했습니다!",
-                            0x9B59B6,
-                        ),
-                        daemon=True,
-                    ).start()
+        if regular_progress:
+            self._auto_mark_task_locked(
+                char_name, "daily", "정기 의뢰", True, f"정기 의뢰 진행: {', '.join(regular_progress)}"
+            )
 
-            self._prev_state["dungeon_state"] = cur_d_state
-            self._prev_state["dungeon_name"] = cur_d_name
-            self._prev_state["abyss_result_playing"] = cur_abyss_seq
+        newly_ready = goddess_ready - self._prev_state.get("goddess_loot_ready", set())
+        self._prev_state["goddess_loot_ready"] = goddess_ready
+        if newly_ready or hunting_progress:
+            label = ", ".join(sorted(newly_ready)) if newly_ready else "사냥터"
+            if newly_ready:
+                self._auto_mark_task_locked(char_name, "daily", "정기 의뢰", True, f"사냥터 임무 달성: {label}")
+            self._notify_async(
+                bool(self.config.get("webhook_notify_hunting", True)),
+                "🏹 사냥터 클리어 알림",
+                f"**[{char_name}]** **{label}** 클리어! 여신상에서 전리품을 수령하세요.",
+                0x2ECC71,
+            )
+        return dungeon_progress
 
-            # 3) Hunting Ground / Goddess Mission / Guild Regular Quest Detection
-            if quests and isinstance(quests, list):
-                cur_goddess_ready = set()
-                cur_reg_counts = {}
-                for q in quests:
-                    if not isinstance(q, dict):
-                        continue
-                    q_src = str(q.get("Source") or "")
-                    q_src_disp = str(q.get("SourceDisplayName") or "")
-                    q_title = str(q.get("QuestTitle") or "")
-                    objs = q.get("Objectives") if isinstance(q.get("Objectives"), list) else []
+    def _detect_dungeon_events_locked(
+        self,
+        char_name: str,
+        act: Dict[str, Any],
+        env: Dict[str, Any],
+        dungeon_evidence: bool,
+        abyss_evidence: bool,
+    ) -> None:
+        """
+        `get_activity().Dungeon` only exposes `State` (NotInDungeon / Entering / InProgress /
+        Cleared) — it carries no dungeon name. The name is taken from the environment's
+        GameSpaceDisplayName while inside the dungeon and remembered per run, so the
+        clear can still be classified (요일 던전 / 레이드 / 어비스) after the player exits.
+        A run counts as cleared on the State->Cleared edge, or when a dungeon-clear counter
+        (daily mission / 정기 의뢰) increases shortly after the run, which covers clears the
+        poller missed because the browser tab was throttled.
+        """
+        dungeon = act.get("Dungeon") if isinstance(act.get("Dungeon"), dict) else {}
+        state = str(dungeon.get("State") or "")
+        prev_state = str(self._prev_state.get("dungeon_state") or "")
+        map_name = self._clean_text(env.get("GameSpaceDisplayName") or env.get("ChannelDisplayName"))
+        now = time.time()
+        run = self._prev_state.get("dungeon_run")
 
-                    if q_src == "goddess_mission" or "지역 임무" in q_src_disp:
-                        for obj in objs:
-                            if not isinstance(obj, dict):
-                                continue
-                            desc = str(obj.get("Description") or "")
-                            if "여신상에서 전리품 받기" in desc and obj.get("IsActive") and not obj.get("IsCompleted"):
-                                cur_goddess_ready.add(q_title)
+        in_dungeon = state in ("Entering", "InProgress", "Cleared")
+        if in_dungeon:
+            if not run or not run.get("active"):
+                # A run seen first in 'Cleared' right after startup was already finished
+                # before we were watching; don't re-announce it.
+                run = {"active": True, "handled": (state == "Cleared" and not prev_state), "name": "", "ended_at": 0.0}
+            if map_name:
+                run["name"] = map_name
+        elif run and run.get("active"):
+            run["active"] = False
+            run["ended_at"] = now
 
-                    if q_src == "guild" or "길드" in q_src_disp or "정기" in q_title:
-                        for obj in objs:
-                            if not isinstance(obj, dict):
-                                continue
-                            desc = str(obj.get("Description") or "")
-                            if "던전 클리어" in desc or "사냥터" in desc:
-                                key = f"{q_title}:{desc}"
-                                cnt = int(obj.get("Count") or 0)
-                                cur_reg_counts[key] = cnt
+        cleared_edge = state == "Cleared" and prev_state not in ("", "Cleared")
+        recent_run = bool(run) and (run.get("active") or (now - run.get("ended_at", 0.0)) < DUNGEON_EVIDENCE_WINDOW_SEC)
+        if run and not run.get("handled") and (cleared_edge or (dungeon_evidence and recent_run)):
+            run["handled"] = True
+            self._on_dungeon_cleared_locked(char_name, run.get("name") or "던전")
 
-                prev_goddess = self._prev_state.get("goddess_loot_ready", set())
-                newly_ready_goddess = cur_goddess_ready - prev_goddess
-                if newly_ready_goddess:
-                    q_label = ", ".join(sorted(newly_ready_goddess))
-                    self._auto_mark_task_locked(target_char_name, "daily", "정기 의뢰", True, f"사냥터 임무 달성: {q_label}")
-                    if self.config.get("webhook_notify_hunting", True):
-                        threading.Thread(
-                            target=self.send_homework_discord_webhook,
-                            args=(
-                                "🏹 사냥터 지역 임무 완료 알림",
-                                f"**[{target_char_name}]** **{q_label}** 목표 달성! 여신상에서 전리품을 수령하세요.",
-                                0x2ECC71,
-                            ),
-                            daemon=True,
-                        ).start()
+        # Abyss result sequence (top-level field in get_activity; older builds nested it in Dungeon)
+        abyss_seq = bool(act.get("IsAbyssResultSequencePlaying") or dungeon.get("IsAbyssResultSequencePlaying"))
+        if (abyss_seq and not self._prev_state.get("abyss_result_playing")) or abyss_evidence:
+            self._on_abyss_cleared_locked(char_name, (run or {}).get("name") or map_name)
 
-                prev_reg = self._prev_state.get("regular_quest_counts", {})
-                for k, cnt in cur_reg_counts.items():
-                    if k in prev_reg and cnt > prev_reg[k]:
-                        self._auto_mark_task_locked(target_char_name, "daily", "정기 의뢰", True, f"정기 의뢰 진행 ({k})")
-                self._prev_state["goddess_loot_ready"] = cur_goddess_ready
-                self._prev_state["regular_quest_counts"] = cur_reg_counts
+        self._prev_state["abyss_result_playing"] = abyss_seq
+        self._prev_state["dungeon_state"] = state
+        self._prev_state["dungeon_run"] = run
 
-            # 4) Gathering & Altering Completion Detection
-            cur_gathering = bool(act.get("IsGathering", False))
-            prev_gathering = bool(self._prev_state.get("is_gathering", False))
-            if cur_gathering:
-                self._prev_state["gather_target"] = str(act.get("TargetName") or act.get("ActionName") or "자원")
-            elif prev_gathering and not cur_gathering:
-                g_target = self._prev_state.get("gather_target") or "자원"
-                self._auto_mark_task_locked(target_char_name, "daily", "재료 채집", True, f"{g_target} 채집 진행")
-                if self.config.get("webhook_notify_gathering", False) and not is_busy:
-                    threading.Thread(
-                        target=self.send_homework_discord_webhook,
-                        args=(
-                            "🌿 채집 활동 종료 알림",
-                            f"**[{target_char_name}]** 캐릭터의 **{g_target}** 채집 활동이 완료(또는 중단)되었습니다.",
-                            0x2ECC71,
-                        ),
-                        daemon=True,
-                    ).start()
-            self._prev_state["is_gathering"] = cur_gathering
+    def _on_dungeon_cleared_locked(self, char_name: str, label: str) -> None:
+        reason = f"{label} 클리어"
+        if any(k in label for k in DAY_DUNGEON_KEYWORDS):
+            self._auto_mark_task_locked(char_name, "daily", "요일 던전", True, reason)
+        elif any(k in label for k in ABYSS_KEYWORDS):
+            self._on_abyss_cleared_locked(char_name, label)
+            return
+        else:
+            matched_weekly = False
+            for keywords, task in WEEKLY_BOSS_RULES:
+                if any(k in label for k in keywords):
+                    self._auto_mark_task_locked(char_name, "weekly", task, True, reason)
+                    matched_weekly = True
+            if not matched_weekly:
+                self._auto_mark_task_locked(char_name, "daily", "정기 의뢰", True, reason)
 
-            cur_alt_ready = int(altering_summary.get("ready") or 0)
-            prev_alt_ready = int(self._prev_state.get("altering_ready") or 0)
-            if cur_alt_ready > prev_alt_ready:
-                self._auto_mark_task_locked(target_char_name, "daily", "재료 가공", True, f"가공 완료 {cur_alt_ready}건")
-            self._prev_state["altering_ready"] = cur_alt_ready
+        self._notify_async(
+            bool(self.config.get("webhook_notify_dungeon", True)),
+            "⚔️ 던전 클리어 알림",
+            f"**[{char_name}]** 캐릭터가 **{label}** 클리어를 완료했습니다!",
+            0x3498DB,
+        )
+
+    def _on_abyss_cleared_locked(self, char_name: str, label: str) -> None:
+        # The result sequence, the Cleared edge and the weekly mission counter can all
+        # report the same abyss run; only the first signal within the window counts.
+        now = time.time()
+        if (now - float(self._prev_state.get("last_abyss_at") or 0.0)) < DUNGEON_EVIDENCE_WINDOW_SEC:
+            return
+        self._prev_state["last_abyss_at"] = now
+        label = label or "어비스"
+        weekly_map = self.data.get("characters", {}).get(char_name, {}).get("weekly", {})
+        target_task = next((t for t in ABYSS_TASKS if t.split(": ", 1)[-1] in label), None)
+        if not target_task:
+            target_task = next((t for t in ABYSS_TASKS if not weekly_map.get(t, False)), None)
+        if target_task:
+            self._auto_mark_task_locked(char_name, "weekly", target_task, True, f"{label} 클리어")
+        self._notify_async(
+            bool(self.config.get("webhook_notify_abyss", True)),
+            "🟣 어비스 클리어 알림",
+            f"**[{char_name}]** 캐릭터가 **{label}** 클리어를 완료했습니다!",
+            0x9B59B6,
+        )
+
+    def _detect_gathering_locked(self, char_name: str, act: Dict[str, Any]) -> None:
+        """`Interaction.LastRunningInteractionType` switches to 'Gathering' when the character gathers."""
+        inter = act.get("Interaction") if isinstance(act.get("Interaction"), dict) else {}
+        last = str(inter.get("LastRunningInteractionType") or "")
+        prev = self._prev_state.get("last_interaction")
+        if last == "Gathering" and prev and prev != "Gathering":
+            self._auto_mark_task_locked(char_name, "daily", "재료 채집", True, "인게임 채집 감지")
+        self._prev_state["last_interaction"] = last
+
+    def _detect_altering_locked(self, char_name: str, altering_summary: Dict[str, Any]) -> None:
+        cur_ready = self._to_int((altering_summary or {}).get("ready"))
+        prev_ready = self._prev_state.get("altering_ready")
+        if prev_ready is not None and cur_ready > prev_ready:
+            self._auto_mark_task_locked(char_name, "daily", "재료 가공", True, f"가공 완료 {cur_ready}건")
+        self._prev_state["altering_ready"] = cur_ready
 
     # =========================================================================
     # 8. Dashboard State & Summary Builders
