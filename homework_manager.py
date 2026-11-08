@@ -113,6 +113,17 @@ DUNGEON_EVIDENCE_WINDOW_SEC = 90.0
 
 CURRENCY_KEYWORDS: Tuple[str, ...] = ("은동전", "마족 공물", "골드", "데카", "날개", "주화")
 
+# Maps that are towns or non-dungeon fields (must NEVER be classified as dungeons/abyss)
+TOWN_MAP_KEYWORDS: Tuple[str, ...] = (
+    "티르코네일", "던바튼", "이멘마하", "반호르", "켈라", "카브",
+    "콜헨", "필리아", "발레스", "거주지", "하우징", "마을", "농장"
+)
+
+
+def is_town_map(map_name: str) -> bool:
+    clean = (map_name or "").strip()
+    return bool(clean and any(t in clean for t in TOWN_MAP_KEYWORDS))
+
 
 def get_logical_now_kst() -> datetime:
     """Returns current datetime in KST shifted back by 6 hours (06:00 AM reset boundary)."""
@@ -1499,8 +1510,10 @@ class HomeworkManager:
                 # A run seen first in 'Cleared' right after startup was already finished
                 # before we were watching; don't re-announce it.
                 run = {"active": True, "handled": (state == "Cleared" and not prev_state), "name": "", "ended_at": 0.0}
-            if map_name:
-                run["name"] = map_name
+            if map_name and not is_town_map(map_name):
+                # Only record as dungeon name if map_name is not a town map
+                if not run.get("name") or any(k in map_name for k in ("던전", "동굴", "유적", "저택", "정박지", "물길", "어비스", "심층", "고분", "레이드", "보스")):
+                    run["name"] = map_name
         elif run and run.get("active"):
             run["active"] = False
             run["ended_at"] = now
@@ -1509,18 +1522,29 @@ class HomeworkManager:
         recent_run = bool(run) and (run.get("active") or (now - run.get("ended_at", 0.0)) < DUNGEON_EVIDENCE_WINDOW_SEC)
         if run and not run.get("handled") and (cleared_edge or (dungeon_evidence and recent_run)):
             run["handled"] = True
-            self._on_dungeon_cleared_locked(char_name, run.get("name") or "던전")
+            run_name = run.get("name") or "던전"
+            if not is_town_map(run_name):
+                self._on_dungeon_cleared_locked(char_name, run_name)
 
         # Abyss result sequence (top-level field in get_activity; older builds nested it in Dungeon)
         abyss_seq = bool(act.get("IsAbyssResultSequencePlaying") or dungeon.get("IsAbyssResultSequencePlaying"))
-        if (abyss_seq and not self._prev_state.get("abyss_result_playing")) or abyss_evidence:
-            self._on_abyss_cleared_locked(char_name, (run or {}).get("name") or map_name)
+        if abyss_seq and not self._prev_state.get("abyss_result_playing"):
+            # Result sequence is definitively playing: identify abyss dungeon name safely
+            candidate = (run or {}).get("name") or map_name
+            abyss_label = candidate if any(k in candidate for k in ABYSS_KEYWORDS) else "어비스 던전"
+            self._on_abyss_cleared_locked(char_name, abyss_label)
+        elif abyss_evidence and recent_run and run and run.get("name") and any(k in run.get("name") for k in ABYSS_KEYWORDS):
+            # Only attribute weekly abyss counter increase if the player actually ran an abyss dungeon recently
+            run["handled"] = True
+            self._on_abyss_cleared_locked(char_name, run.get("name"))
 
         self._prev_state["abyss_result_playing"] = abyss_seq
         self._prev_state["dungeon_state"] = state
         self._prev_state["dungeon_run"] = run
 
     def _on_dungeon_cleared_locked(self, char_name: str, label: str) -> None:
+        if is_town_map(label):
+            return
         reason = f"{label} 클리어"
         if any(k in label for k in DAY_DUNGEON_KEYWORDS):
             self._auto_mark_task_locked(char_name, "daily", "요일 던전", True, reason)
@@ -1550,17 +1574,22 @@ class HomeworkManager:
         if (now - float(self._prev_state.get("last_abyss_at") or 0.0)) < DUNGEON_EVIDENCE_WINDOW_SEC:
             return
         self._prev_state["last_abyss_at"] = now
-        label = label or "어비스"
+
+        # Strict safety check: Never allow a town/field name to be treated as an abyss
+        clean_label = str(label or "").strip()
         weekly_map = self.data.get("characters", {}).get(char_name, {}).get("weekly", {})
-        target_task = next((t for t in ABYSS_TASKS if t.split(": ", 1)[-1] in label), None)
+        target_task = next((t for t in ABYSS_TASKS if t.split(": ", 1)[-1] in clean_label), None)
         if not target_task:
-            target_task = next((t for t in ABYSS_TASKS if not weekly_map.get(t, False)), None)
-        if target_task:
-            self._auto_mark_task_locked(char_name, "weekly", target_task, True, f"{label} 클리어")
+            target_task = next((t for t in ABYSS_TASKS if not weekly_map.get(t, False)), ABYSS_TASKS[0])
+
+        # If label is not a verified abyss dungeon name, extract clean name from the task
+        display_name = clean_label if any(k in clean_label for k in ABYSS_KEYWORDS) else target_task.replace("어비스: ", "")
+
+        self._auto_mark_task_locked(char_name, "weekly", target_task, True, f"{display_name} 클리어")
         self._notify_async(
             bool(self.config.get("webhook_notify_abyss", True)),
             "🟣 어비스 클리어 알림",
-            f"**[{char_name}]** 캐릭터가 **{label}** 클리어를 완료했습니다!",
+            f"**[{char_name}]** 캐릭터가 **{display_name}** 클리어를 완료했습니다!",
             0x9B59B6,
         )
 
