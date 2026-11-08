@@ -4758,7 +4758,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="header-top">
         <div class="logo-area" style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
           <div class="title">
-            <h1>모비노기 지원도구 <span class="badge">v2.0.3</span></h1>
+            <h1>모비노기 지원도구 <span class="badge">v2.0.4</span></h1>
           </div>
           <div class="top-mode-switcher" role="tablist" aria-label="지원도구 메인 모드 전환">
             <button type="button" id="btn-top-mode-living" class="top-mode-btn active" onclick="switchTopAppMode('living')" title="주간 납품 18개 품목, 빠른 재료 가공, 개별 아이템 제작 파이프라인">
