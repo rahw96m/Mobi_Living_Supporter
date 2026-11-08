@@ -118,7 +118,7 @@ with open(os.path.join(OUTPUT_DIR, "바탕화면_바로가기_만들기.bat"), "
     f.write(shortcut_bat_content)
 
 # 6. 사용방법 안내 텍스트 파일 작성
-guide_text = """[ 모비노기 지원도구 v2.0.2 ]
+guide_text = """[ 모비노기 지원도구 v2.0.3 ]
 
 ■ 실행 방법:
 1. 배포받은 압축(ZIP) 파일을 원하는 폴더에 압축 해제합니다.
@@ -198,8 +198,8 @@ with open(os.path.join(OUTPUT_DIR, "사용방법.txt"), "w", encoding="utf-8") a
 print("\n배포용 ZIP 압축 파일을 생성합니다...")
 zip_path = shutil.make_archive(OUTPUT_DIR, "zip", OUTPUT_DIR)
 
-# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v2.0.2.zip)
-VERSION = "v2.0.2"
+# GitHub Release용 영문 명칭 ZIP 파일 복사 생성 (Mobi_Living_Supporter_v2.0.3.zip)
+VERSION = "v2.0.3"
 github_zip_path = os.path.join(BASE_DIR, f"Mobi_Living_Supporter_{VERSION}.zip")
 shutil.copy2(zip_path, github_zip_path)
 
