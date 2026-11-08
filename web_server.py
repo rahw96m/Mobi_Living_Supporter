@@ -4592,6 +4592,53 @@ HTML_PAGE = r"""<!DOCTYPE html>
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .hw-keycap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 17px;
+      height: 17px;
+      padding: 0 4px;
+      font-family: var(--font-mono, "JetBrains Mono", Consolas, monospace);
+      font-size: 10px;
+      font-weight: 700;
+      color: #E2E8F0;
+      background: linear-gradient(180deg, #334155 0%, #1E293B 100%);
+      border: 1px solid #475569;
+      border-bottom: 2px solid #0F172A;
+      border-radius: 3px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+      line-height: 1;
+      vertical-align: middle;
+      text-decoration: none !important;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .hw-task-row.done .hw-keycap {
+      opacity: 0.5;
+      border-color: #334155;
+      border-bottom-color: #1E293B;
+      background: #1E293B;
+      color: #94A3B8;
+      box-shadow: none;
+      text-decoration: none !important;
+    }
+    #btn-hw-complete-step .hw-keycap {
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-bottom: 2px solid rgba(0, 0, 0, 0.45);
+      color: #FFFFFF;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+      margin: 0 4px;
+      font-size: 11px;
+      height: 19px;
+      min-width: 19px;
+      padding: 0 5px;
+      text-decoration: none !important;
     }
     .hw-progress-bar-wrap {
       height: 4px;
@@ -12201,6 +12248,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     }
 
+    const _RE_KEYCAP = /^(.*?)\s*\[([^\]]+)\]$/;
+    function formatTaskNameHtml(name) {
+      if (!name) return '';
+      const m = String(name).match(_RE_KEYCAP);
+      if (!m) return `<span>${escapeHtml(name)}</span>`;
+      const title = m[1].trim();
+      const key = m[2].trim();
+      return `<span>${escapeHtml(title)}</span><kbd class="hw-keycap">${escapeHtml(key)}</kbd>`;
+    }
+
     function renderHomeworkMasterCommandBar(hw) {
       const actName = hw.active_character || '';
       const actChar = (hw.characters || []).find(c => c.name === actName) || (hw.characters || [])[0];
@@ -12224,7 +12281,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const modeTag = focusMode ? `<span class="badge" style="margin-right: 4px;">집중 모드</span>` : '';
         if (step && step.task_name) {
           const gaugeStr = typeof makeTextGauge === 'function' ? makeTextGauge(step.cat_done, step.cat_total, 5) : '';
-          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <span class="badge-dim" style="margin: 0 4px;">${escapeHtml(step.cat_title)}</span> <strong style="color: var(--text-bright);">${escapeHtml(step.task_name)}</strong> <span class="cli-gauge" style="margin-left: 4px;">${gaugeStr}</span> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
+          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <span class="badge-dim" style="margin: 0 4px;">${escapeHtml(step.cat_title)}</span> <strong style="color: var(--text-bright); display: inline-flex; align-items: center;">${formatTaskNameHtml(step.task_name)}</strong> <span class="cli-gauge" style="margin-left: 4px;">${gaugeStr}</span> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
         } else {
           briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> <span class="badge">${focusMode ? '=== 집중 숙제 100% 달성 ===' : '=== 일일·주간 숙제 100% 달성 ==='}</span>`;
         }
@@ -12232,9 +12289,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       if (btnComplete) {
         btnComplete.disabled = !(step && step.task_name);
-        btnComplete.innerText = (step && step.task_name)
-          ? `✓ [${step.task_name}] 완료`
-          : (focusMode ? '✓ 집중 숙제 완료됨' : '✓ 모든 숙제 완료됨');
+        if (step && step.task_name) {
+          const m = String(step.task_name).match(_RE_KEYCAP);
+          if (m) {
+            btnComplete.innerHTML = `✓ ${escapeHtml(m[1].trim())} <kbd class="hw-keycap">${escapeHtml(m[2].trim())}</kbd> 완료`;
+          } else {
+            btnComplete.innerHTML = `✓ [${escapeHtml(step.task_name)}] 완료`;
+          }
+        } else {
+          btnComplete.innerText = focusMode ? '✓ 집중 숙제 완료됨' : '✓ 모든 숙제 완료됨';
+        }
       }
       if (btnRollback) {
         btnRollback.disabled = !hw.can_rollback;
@@ -12412,7 +12476,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (barEl) barEl.style.width = `${prog.pct}%`;
         if (colTxtEl) {
           const nextTodo = (prog.items || []).find(it => !it.done);
-          const nextStr = nextTodo ? `다음: ${escapeHtml(nextTodo.name)}` : '모두 완료됨 ✓';
+          const nextStr = nextTodo ? `다음: ${formatTaskNameHtml(nextTodo.name)}` : '모두 완료됨 ✓';
           colTxtEl.innerHTML = `<span class="sym-prefix">&gt;</span><span class="cli-gauge" style="margin-right:4px;">${gaugeStr}</span><strong class="mono-num" style="color:var(--text-bright);">${prog.done}/${prog.total}</strong> 완료 · <span>${nextStr}</span>`;
         }
         if (!listEl) return;
@@ -12426,7 +12490,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <div class="hw-task-row ${item.done ? 'done' : ''} ${isStep ? 'current-step' : ''}" onclick="toggleHomeworkTask('${safeChar}', '${cat.key}', '${safeTask}')">
               <div class="hw-task-left">
                 <span class="hw-task-check">${item.done ? '■' : '□'}</span>
-                <span class="hw-task-name">${escapeHtml(item.name)}</span>
+                <span class="hw-task-name">${formatTaskNameHtml(item.name)}</span>
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
                 ${isStep ? '<span class="badge" style="font-size: 10px; padding: 0 4px;">▶ 현재 순서</span>' : ''}
@@ -12624,7 +12688,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       weeklyTasks.forEach(taskName => {
         const safeTask = taskName.replace(/'/g, "\\'");
         const allowedList = targetMap[taskName];
-        bodyHtml += `<tr><td style="font-weight: 700; color: var(--text-bright);">${escapeHtml(taskName)}</td>`;
+        bodyHtml += `<tr><td style="font-weight: 700; color: var(--text-bright);">${formatTaskNameHtml(taskName)}</td>`;
         chars.forEach(c => {
           const safeChar = c.name.replace(/'/g, "\\'");
           const isAllowed = !Array.isArray(allowedList) || allowedList.includes(c.name);
