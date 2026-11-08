@@ -20,7 +20,15 @@ print("   - 빌드 방식: PyInstaller --onedir (폴더형 독립 패키지)")
 print("   - 장점: 실시간 임시폴더 압축해제(Dropper 행위)가 없어 백신 오탐 대폭 방지 및 초고속 실행")
 print("=" * 65)
 
-# 1. PyInstaller 빌드 실행
+# 1. 기존 실행 중인 지원도구 프로세스 안전 종료 (파일 잠금으로 인한 빌드/복사 오류 방지)
+if sys.platform == "win32":
+    for proc_name in ("Mobi_Living_Supporter.exe", "모비노기_지원도구.exe", "모비노기_생활_지원도구.exe"):
+        try:
+            subprocess.run(["taskkill", "/F", "/IM", proc_name], capture_output=True, timeout=2)
+        except Exception:
+            pass
+
+# 2. PyInstaller 빌드 실행
 print("\n최신 코드로 폴더형 독립 패키지를 빌드합니다...")
 build_cmd = [
     sys.executable,
