@@ -5657,8 +5657,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <span class="sym-prefix">&gt;</span>여기서 캐릭터를 추가·수정·순서 변경하면 <strong>숙제 지원</strong>과 <strong>생활 지원(주간 납품)</strong> 양쪽에 즉시 반영됩니다.
             </div>
             <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px; background: var(--bg-sub-panel); border: 1px solid var(--line-subtle);">
-              <input type="text" id="hw-new-char-name" class="input-text" placeholder="캐릭터명 (예: 카르브)" style="width: 120px;">
-              <input type="text" id="hw-new-char-class" class="input-text" placeholder="직업 (예: 수도사)" style="width: 110px;">
+              <input type="text" id="hw-new-char-name" class="input-text" placeholder="캐릭터명 (예: 캐릭터 1)" style="width: 120px;">
+              <input type="text" id="hw-new-char-class" class="input-text" placeholder="직업 (예: 전사)" style="width: 110px;">
               <input type="number" id="hw-new-char-cp" class="input-text" placeholder="전투력 (선택)" style="width: 110px;">
               <input type="text" id="hw-new-char-title" class="input-text" placeholder="칭호 (선택)" style="width: 120px;">
               <button type="button" class="btn btn-solid-core btn-sm" onclick="addHomeworkCharacter()">+ 캐릭터 추가</button>

@@ -31,12 +31,7 @@ LEGACY_OVERLAY_DIRS = [
 ]
 
 DEFAULT_CHARACTERS: List[Dict[str, Any]] = [
-    {"name": "카르브", "class": "수도사", "combat_power": 0, "title": ""},
-    {"name": "티세", "class": "전사", "combat_power": 0, "title": ""},
-    {"name": "베닐", "class": "빙결술사", "combat_power": 0, "title": ""},
-    {"name": "라으", "class": "대검전사", "combat_power": 0, "title": ""},
-    {"name": "일리브", "class": "격투가", "combat_power": 0, "title": ""},
-    {"name": "데즈", "class": "사제", "combat_power": 0, "title": ""},
+    {"name": "캐릭터 1", "class": "", "combat_power": 0, "title": ""},
 ]
 
 DEFAULT_DAILY_TASKS: List[str] = [
@@ -144,7 +139,7 @@ def get_monday_str() -> str:
 
 def extract_base_char_name(raw_name: str) -> Tuple[str, str]:
     """
-    Splits a label like '카르브 (수도사)' into ('카르브', '수도사').
+    Splits a label like '캐릭터 1 (전사)' into ('캐릭터 1', '전사').
     If no parenthetical job exists, returns (raw_name.strip(), '').
     """
     s = (raw_name or "").strip()
