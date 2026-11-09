@@ -1416,8 +1416,6 @@ class HomeworkManager:
                 claimed += 1
             if "검은구멍" in text and (done or cur > 0):
                 self._mark_once_locked(char_name, "daily", "검은 구멍", "일일 미션: 검은 구멍 입장 확인")
-            if "채집" in text and done:
-                self._mark_once_locked(char_name, "daily", "재료 채집", "일일 미션: 재료 채집 달성")
             if "던전" in text and "토벌" in text and "심층" not in text:
                 dungeon_count = max(dungeon_count, cur)
 
@@ -1475,10 +1473,6 @@ class HomeworkManager:
                             hunting_progress = True
                         elif "던전" in okey or "심층" in okey:
                             dungeon_progress = True
-                        if "심층" in okey:
-                            self._auto_mark_task_locked(char_name, "focus", "심층 던전 토벌", True, f"정기 의뢰: {desc_clean}")
-                        elif "던전" in okey:
-                            self._auto_mark_task_locked(char_name, "focus", "던전 토벌", True, f"정기 의뢰: {desc_clean}")
 
             # 2. 사냥터 전리품 수령 대기(여신상에서 전리품 받기) 퀘스트 활성화 여부 확인
             is_hunting_mission = (src == "goddess_mission" or "지역 임무" in src_disp or "지역임무" in src_disp or "사냥" in title)
@@ -1585,13 +1579,7 @@ class HomeworkManager:
         # 1) 정기 의뢰 [J]: 해당 캐릭터로 아무 던전(일반, 요일, 심층, 보스 등) 클리어 시 즉시 완료!
         self._auto_mark_task_locked(char_name, "daily", "정기 의뢰", True, reason)
 
-        # 2) 던전 토벌 vs 심층 던전 토벌
-        if "심층" in label:
-            self._auto_mark_task_locked(char_name, "focus", "심층 던전 토벌", True, reason)
-        else:
-            self._auto_mark_task_locked(char_name, "focus", "던전 토벌", True, reason)
-
-        # 3) 요일 던전
+        # 2) 요일 던전
         if any(k in label for k in DAY_DUNGEON_KEYWORDS):
             self._auto_mark_task_locked(char_name, "daily", "요일 던전", True, reason)
 
@@ -1636,20 +1624,13 @@ class HomeworkManager:
         )
 
     def _detect_gathering_locked(self, char_name: str, act: Dict[str, Any]) -> None:
-        """`Interaction.LastRunningInteractionType` switches to 'Gathering' when the character gathers."""
+        """Tracks gathering interaction state (auto-mark disabled: user manages gathering manually)."""
         inter = act.get("Interaction") if isinstance(act.get("Interaction"), dict) else {}
-        last = str(inter.get("LastRunningInteractionType") or "")
-        prev = self._prev_state.get("last_interaction")
-        if last == "Gathering" and prev and prev != "Gathering":
-            self._auto_mark_task_locked(char_name, "daily", "재료 채집", True, "인게임 채집 감지")
-        self._prev_state["last_interaction"] = last
+        self._prev_state["last_interaction"] = str(inter.get("LastRunningInteractionType") or "")
 
     def _detect_altering_locked(self, char_name: str, altering_summary: Dict[str, Any]) -> None:
-        cur_ready = self._to_int((altering_summary or {}).get("ready"))
-        prev_ready = self._prev_state.get("altering_ready")
-        if prev_ready is not None and cur_ready > prev_ready:
-            self._auto_mark_task_locked(char_name, "daily", "재료 가공", True, f"가공 완료 {cur_ready}건")
-        self._prev_state["altering_ready"] = cur_ready
+        """Tracks altering state (auto-mark disabled: user manages processing manually)."""
+        self._prev_state["altering_ready"] = self._to_int((altering_summary or {}).get("ready"))
 
     # =========================================================================
     # 8. Dashboard State & Summary Builders
