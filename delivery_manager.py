@@ -50,6 +50,9 @@ RECIPE_CACHE_FILE = get_user_data_path("recipes_cache.json", SCRIPT_DIR)
 ALARMS_FILE = get_user_data_path("delivery_alarms.json", SCRIPT_DIR)
 DELIVERY_TARGETS_FILE = get_user_data_path("registered_deliveries.json", SCRIPT_DIR)
 
+# 가공 시설별 슬롯 최대 한도 (게임 클라이언트 시설당 7슬롯)
+MAX_SLOTS: int = 7
+
 # Default known recipes for common weekly delivery items
 DEFAULT_RECIPES: Dict[str, Dict[str, int]] = {
     "론 엣지소드S": {"합금강괴": 3, "가죽+": 3},
@@ -4601,6 +4604,7 @@ class DeliveryManager:
         self.reset_abort()
         self.log(f"[통합 일괄 납품 파이프라인 가동{mode_label}] ({order_label}) 전체 목표 최적화 제작을 시작합니다.", "action", callback)
 
+        MAX_SLOTS = 7
         start_time = time.time()
         initial_wings = self._safe_get_wings()
         collected_facilities_all: List[str] = []
