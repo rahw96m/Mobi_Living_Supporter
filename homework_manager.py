@@ -184,6 +184,7 @@ class HomeworkManager:
             "daily_missions": [],
             "weekly_missions": [],
             "quests": [],
+            "growth_guide": {},
             "altering_summary": {"ready": 0, "total": 0, "works": []},
             "omen_barrier": {},
             "updated_at": 0,
@@ -196,6 +197,7 @@ class HomeworkManager:
             "abyss_result_playing": False,
             "last_abyss_at": 0.0,
             "goddess_loot_ready": set(),
+            "growth_guide_daily_rem": {},
             "last_interaction": "",
             "altering_ready": None,
         }
@@ -1207,6 +1209,7 @@ class HomeworkManager:
             abyss_evidence = self._detect_from_weekly_missions_locked(target_char_name, cdata, telemetry["weekly_missions"])
             dungeon_evidence |= self._detect_from_quests_locked(target_char_name, cdata, telemetry["quests"])
             self._detect_dungeon_events_locked(target_char_name, act, env, dungeon_evidence, abyss_evidence)
+            self._detect_from_growth_guide_locked(target_char_name, cdata, telemetry.get("growth_guide", {}))
             self._detect_gathering_locked(target_char_name, act)
             self._detect_altering_locked(target_char_name, telemetry["altering_summary"])
 
@@ -1234,6 +1237,7 @@ class HomeworkManager:
         daily_missions = _safe(self.cli.get_daily_missions, tel.get("daily_missions", []))
         weekly_missions = _safe(self.cli.get_weekly_missions, tel.get("weekly_missions", []))
         quests = _safe(self.cli.get_quests, tel.get("quests", []))
+        growth_guide = _safe(self.cli.get_growth_guide, tel.get("growth_guide", {}))
         altering_summary = tel.get("altering_summary", {"ready": 0, "total": 0, "works": []})
         alt_raw = _safe(self.cli.get_altering_works, None)
         if isinstance(alt_raw, dict):
@@ -1251,6 +1255,7 @@ class HomeworkManager:
                 "daily_missions": daily_missions if isinstance(daily_missions, list) else [],
                 "weekly_missions": weekly_missions if isinstance(weekly_missions, list) else [],
                 "quests": quests if isinstance(quests, list) else [],
+                "growth_guide": growth_guide if isinstance(growth_guide, dict) else {},
                 "altering_summary": altering_summary,
                 "omen_barrier": self.get_omen_barrier_status(),
                 "updated_at": int(now * 1000),
@@ -1310,11 +1315,13 @@ class HomeworkManager:
             "altering_ready": None,
         })
         self._prev_state.setdefault("hunting_spoils", {})[char_name] = False
+        self._prev_state.setdefault("growth_guide_daily_rem", {})[char_name] = None
         self._last_extended_poll_ts = 0.0
         if hasattr(self, "_live_telemetry"):
             self._live_telemetry["daily_missions"] = []
             self._live_telemetry["weekly_missions"] = []
             self._live_telemetry["quests"] = []
+            self._live_telemetry["growth_guide"] = {}
 
     def _update_character_stats_locked(
         self,
@@ -1431,6 +1438,85 @@ class HomeworkManager:
         Only character-specific in-game dungeon/boss clears are used.
         """
         return False
+
+    def _detect_from_growth_guide_locked(
+        self,
+        char_name: str,
+        cdata: Dict[str, Any],
+        guide: Dict[str, Any],
+    ) -> None:
+        """
+        Processes character-specific growth guide contents:
+          * Daily '검은 구멍': Auto-mark daily '검은 구멍' if remaining count decreased during session or IsCompleted
+          * Daily '요일 던전': Auto-mark daily '요일 던전' if IsCompleted
+          * Weekly tasks ('검은 구멍', '소환의 결계', '필드 보스', '뱅가드 브리치'):
+            Auto-mark if IsCompleted or (RemainingCount is not None and RemainingCount <= 0)
+          * Excludes Weekly '어비스' as requested (each abyss dungeon is individual)
+        """
+        if not isinstance(guide, dict):
+            return
+        contents = guide.get("Contents")
+        if not isinstance(contents, list) or not contents:
+            return
+
+        daily_rem_tracker = self._prev_state.setdefault("growth_guide_daily_rem", {})
+        prev_bh_daily_rem = daily_rem_tracker.get(char_name)
+        guide_summary = cdata.setdefault("growth_guide", {})
+
+        for item in contents:
+            if not isinstance(item, dict):
+                continue
+            target = str(item.get("Target") or "").strip()
+            day_type = str(item.get("DayType") or "").strip().lower()
+            is_completed = bool(item.get("IsCompleted", False))
+            rem = item.get("RemainingCount")
+            rem_count = self._to_int(rem) if rem is not None else None
+
+            summary_key = f"{day_type}:{target}"
+            guide_summary[summary_key] = {
+                "day_type": day_type,
+                "target": target,
+                "is_completed": is_completed,
+                "remaining_count": rem_count,
+            }
+
+            # 1. 일일 숙제 반영
+            if day_type == "daily":
+                if target == "검은 구멍":
+                    if rem_count is not None:
+                        # 접속 중 남은 횟수가 하나라도 차감된 경우 (소탕권 포함)
+                        if prev_bh_daily_rem is not None and rem_count < prev_bh_daily_rem:
+                            self._auto_mark_task_locked(
+                                char_name, "daily", "검은 구멍", True,
+                                f"성장 가이드: 일일 검은 구멍 횟수 차감 ({prev_bh_daily_rem} -> {rem_count})"
+                            )
+                        daily_rem_tracker[char_name] = rem_count
+
+                    if is_completed:
+                        self._auto_mark_task_locked(
+                            char_name, "daily", "검은 구멍", True,
+                            "성장 가이드: 일일 검은 구멍 완료"
+                        )
+                elif target == "요일 던전":
+                    if is_completed:
+                        self._auto_mark_task_locked(
+                            char_name, "daily", "요일 던전", True,
+                            "성장 가이드: 일일 요일 던전 완료"
+                        )
+
+            # 2. 주간 숙제 반영
+            elif day_type == "weekly":
+                # 어비스는 각 어비스 던전마다 한 번씩 돌아야 하므로 주간 남은 횟수로 카운트하는 것 제외
+                if target == "어비스":
+                    continue
+
+                is_done = is_completed or (rem_count is not None and rem_count <= 0)
+                if is_done:
+                    reason = f"성장 가이드: 주간 {target} 완료"
+                    if rem_count is not None and rem_count <= 0:
+                        reason += " (남은 0회)"
+                    if target in ("검은 구멍", "소환의 결계", "필드 보스", "뱅가드 브리치"):
+                        self._auto_mark_task_locked(char_name, "weekly", target, True, reason)
 
     def _detect_from_quests_locked(self, char_name: str, cdata: Dict[str, Any], quests: List[Any]) -> bool:
         """

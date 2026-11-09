@@ -34,6 +34,9 @@ READ_CACHE_TTL = {
     "get_craftable_items": 15.0,
     "get_alterable_items": 15.0,
     "get_gatherable_items": 15.0,
+    "get_growth_guide": 10.0,
+    "get_market_prices": 10.0,
+    "get_market_price_detail": 10.0,
 }
 
 ACTION_COMMANDS = {
@@ -850,4 +853,58 @@ class MabinogiCLI:
         msg = (message or "").strip()[:50]
         _, data = self.run_raw("write_chat", msg, timeout=15)
         return data if isinstance(data, dict) else {}
+
+    def get_growth_guide(self) -> Dict[str, Any]:
+        """Queries daily and weekly growth guide contents with unlock state, completion state, and remaining count."""
+        _, data = self.run_raw("get_growth_guide", timeout=15)
+        if isinstance(data, dict):
+            if isinstance(data.get("body"), dict):
+                return data["body"]
+            return data
+        return {"Contents": []}
+
+    def get_market_prices(
+        self,
+        names: Optional[List[str]] = None,
+        category: Optional[str] = None,
+        sub_category: Optional[str] = None,
+        favorites: bool = False,
+    ) -> Dict[str, Any]:
+        """Queries real-time market lowest prices by item names, category, or favorites."""
+        body_dict: Dict[str, Any] = {}
+        if names:
+            body_dict["names"] = names
+        elif category:
+            body_dict["category"] = category
+            if sub_category:
+                body_dict["subCategory"] = sub_category
+        elif favorites:
+            body_dict["favorites"] = True
+        else:
+            return {"Results": []}
+
+        body = json.dumps(body_dict, ensure_ascii=False)
+        _, data = self.run_raw("get_market_prices", body, timeout=15)
+        return data if isinstance(data, dict) else {}
+
+    def get_market_price_detail(
+        self,
+        display_name: str,
+        rarity: Optional[str] = None,
+        star: Optional[int] = None,
+        season: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Queries detailed market price summary and 3 lowest price tiers for a specific item."""
+        body_dict: Dict[str, Any] = {"displayName": display_name}
+        if rarity:
+            body_dict["rarity"] = rarity
+        if star is not None:
+            body_dict["star"] = star
+        if season:
+            body_dict["season"] = season
+
+        body = json.dumps(body_dict, ensure_ascii=False)
+        _, data = self.run_raw("get_market_price_detail", body, timeout=15)
+        return data if isinstance(data, dict) else {}
+
 
