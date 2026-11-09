@@ -4635,6 +4635,76 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border-radius: 2px;
       text-decoration: none !important;
     }
+    /* 숙제 마스터 커맨드 바 카테고리별(일일/집중/주간) 완료 버튼 테마 - 이전 오버레이 컬러셋 */
+    #btn-hw-complete-step.cat-daily {
+      background: #10B981 !important;
+      color: #FFFFFF !important;
+      border-color: #10B981 !important;
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.45), 0 0 4px rgba(16, 185, 129, 0.25) !important;
+    }
+    #btn-hw-complete-step.cat-daily:hover:not(:disabled) {
+      background: #34D399 !important;
+      color: #FFFFFF !important;
+      border-color: #34D399 !important;
+      box-shadow: 0 0 20px rgba(52, 211, 153, 0.65), 0 0 6px rgba(52, 211, 153, 0.35) !important;
+    }
+    #btn-hw-complete-step.cat-focus {
+      background: #6366F1 !important;
+      color: #FFFFFF !important;
+      border-color: #6366F1 !important;
+      box-shadow: 0 0 14px rgba(99, 102, 241, 0.45), 0 0 4px rgba(99, 102, 241, 0.25) !important;
+    }
+    #btn-hw-complete-step.cat-focus:hover:not(:disabled) {
+      background: #818CF8 !important;
+      color: #FFFFFF !important;
+      border-color: #818CF8 !important;
+      box-shadow: 0 0 20px rgba(129, 140, 248, 0.65), 0 0 6px rgba(129, 140, 248, 0.35) !important;
+    }
+    #btn-hw-complete-step.cat-weekly {
+      background: #F59E0B !important;
+      color: #FFFFFF !important;
+      border-color: #F59E0B !important;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35) !important;
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.45), 0 0 4px rgba(245, 158, 11, 0.25) !important;
+    }
+    #btn-hw-complete-step.cat-weekly:hover:not(:disabled) {
+      background: #FBBF24 !important;
+      color: #FFFFFF !important;
+      border-color: #FBBF24 !important;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35) !important;
+      box-shadow: 0 0 20px rgba(251, 191, 36, 0.65), 0 0 6px rgba(251, 191, 36, 0.35) !important;
+    }
+
+    /* 추천 순서 브리핑 카테고리 태그 알약 테마 */
+    .hw-cat-tag-daily {
+      background: rgba(16, 185, 129, 0.12) !important;
+      color: #10B981 !important;
+      border: 1px solid rgba(16, 185, 129, 0.45) !important;
+      font-weight: 700 !important;
+    }
+    .hw-cat-tag-focus {
+      background: rgba(99, 102, 241, 0.12) !important;
+      color: #818CF8 !important;
+      border: 1px solid rgba(99, 102, 241, 0.45) !important;
+      font-weight: 700 !important;
+    }
+    .hw-cat-tag-weekly {
+      background: rgba(245, 158, 11, 0.12) !important;
+      color: #F59E0B !important;
+      border: 1px solid rgba(245, 158, 11, 0.45) !important;
+      font-weight: 700 !important;
+    }
+
+    /* 카테고리 카드 상단 악센트 보더 테마 */
+    .hw-cat-card.cat-daily {
+      border-top: 2px solid #10B981;
+    }
+    .hw-cat-card.cat-focus {
+      border-top: 2px solid #6366F1;
+    }
+    .hw-cat-card.cat-weekly {
+      border-top: 2px solid #F59E0B;
+    }
     .hw-progress-bar-wrap {
       height: 4px;
       background: var(--bg-sub-panel);
@@ -5443,7 +5513,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <button type="button" class="btn btn-boxed" id="btn-hw-rollback" onclick="rollbackHomeworkStep()" title="방금 완료한 숙제 단계를 이전 상태로 되돌립니다">
                 ↩ 되돌리기
               </button>
-              <button type="button" class="btn btn-mcb-start" id="btn-hw-complete-step" onclick="completeCurrentHomeworkStep()" title="현재 순서의 숙제를 즉시 완료 처리하고 다음 순서로 넘어갑니다">
+              <button type="button" class="btn btn-mcb-start cat-daily" id="btn-hw-complete-step" onclick="completeCurrentHomeworkStep()" title="현재 순서의 숙제를 즉시 완료 처리하고 다음 순서로 넘어갑니다">
                 ✓ 현재 숙제 완료
               </button>
             </div>
@@ -12329,8 +12399,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const clsText = actChar.class ? `(${actChar.class})` : '';
         const modeTag = focusMode ? `<span class="badge" style="margin-right: 4px;">집중 모드</span>` : '';
         if (step && step.task_name) {
+          const catKey = step.cat_key || (step.cat_title && step.cat_title.includes('집중') ? 'focus' : (step.cat_title && step.cat_title.includes('주간') ? 'weekly' : 'daily'));
+          const catTagClass = `hw-cat-tag-${catKey}`;
           const gaugeStr = typeof makeTextGauge === 'function' ? makeTextGauge(step.cat_done, step.cat_total, 5) : '';
-          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <span class="badge-dim" style="margin: 0 4px;">${escapeHtml(step.cat_title)}</span> <strong style="color: var(--text-bright); display: inline-flex; align-items: center;">${formatTaskNameHtml(step.task_name)}</strong> <span class="cli-gauge" style="margin-left: 4px;">${gaugeStr}</span> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
+          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <span class="badge-dim ${catTagClass}" style="margin: 0 4px;">${escapeHtml(step.cat_title)}</span> <strong style="color: var(--text-bright); display: inline-flex; align-items: center;">${formatTaskNameHtml(step.task_name)}</strong> <span class="cli-gauge" style="margin-left: 4px;">${gaugeStr}</span> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
         } else {
           briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> <span class="badge">${focusMode ? '=== 집중 숙제 100% 달성 ===' : '=== 일일·주간 숙제 100% 달성 ==='}</span>`;
         }
@@ -12338,7 +12410,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       if (btnComplete) {
         btnComplete.disabled = !(step && step.task_name);
+        btnComplete.classList.remove('cat-daily', 'cat-focus', 'cat-weekly');
         if (step && step.task_name) {
+          const catKey = step.cat_key || (step.cat_title && step.cat_title.includes('집중') ? 'focus' : (step.cat_title && step.cat_title.includes('주간') ? 'weekly' : 'daily'));
+          btnComplete.classList.add(`cat-${catKey}`);
           const m = String(step.task_name).match(_RE_KEYCAP);
           if (m) {
             btnComplete.innerHTML = `✓ ${escapeHtml(m[1].trim())} <kbd class="hw-keycap">${escapeHtml(m[2].trim())}</kbd> 완료`;
