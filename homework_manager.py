@@ -80,13 +80,12 @@ DEFAULT_WEEKLY_TASKS: List[str] = [
 # get_daily_missions: number of claimed rewards that counts as '일일 미션' done
 DAILY_MISSION_REWARD_THRESHOLD = 6
 
-# get_weekly_missions Description keyword (spaces removed) -> weekly homework task
-WEEKLY_MISSION_RULES: Tuple[Tuple[str, str], ...] = (
-    ("검은구멍", "검은 구멍"),        # '검은 구멍 1회 입장'
-    ("소환결계", "소환의 결계"),      # '소환결계 1회 파괴'
-    ("필드보스", "필드 보스"),        # '필드 보스 N회 토벌'
-    ("뱅가드브리치", "뱅가드 브리치"),  # '뱅가드 브리치 N회 토벌'
-)
+# get_weekly_missions is account-wide in Mabinogi Mobile.
+# Account-wide missions must NEVER auto-mark per-character weekly homework
+# (e.g. '검은 구멍 1회 입장' should not complete a 7~14 run weekly homework,
+# and completing it on one character should never auto-check homework on alt characters).
+# Per-character raids/bosses are safely detected via actual in-game combat clears in WEEKLY_BOSS_RULES.
+WEEKLY_MISSION_RULES: Tuple[Tuple[str, str], ...] = ()
 
 # 요일 던전: 월/목 빛나는 동굴, 화/금 눈부신 저택, 수/토 찬란한 유적, 일 택1
 DAY_DUNGEON_KEYWORDS: Tuple[str, ...] = ("빛나는 동굴", "눈부신 저택", "찬란한 유적", "요일")
@@ -1162,14 +1161,22 @@ class HomeworkManager:
         tracker and dungeon activity transitions.
         """
         self.check_auto_reset()
-        telemetry = self._refresh_extended_telemetry(is_busy)
         if not my_info:
             return
 
         with self._lock:
+            prev_char = self._prev_state.get("telemetry_char")
             target_char_name = self._resolve_and_switch_character_locked(my_info, is_busy)
             if not target_char_name:
                 return
+
+            char_changed = bool(prev_char and target_char_name != prev_char)
+            if char_changed:
+                self._reset_transient_state(target_char_name)
+
+        telemetry = self._refresh_extended_telemetry(is_busy)
+
+        with self._lock:
             cdata = self.data.setdefault("characters", {}).setdefault(target_char_name, {})
             cdata["updated_at"] = datetime.now(KST_TZ).strftime("%H:%M:%S")
 
@@ -1178,6 +1185,11 @@ class HomeworkManager:
                 self.save_data()
 
             if not self.config.get("ai_auto_task_check", True):
+                return
+
+            # Safety Guard: Skip auto task-check on the very frame character switched
+            # to guarantee old character's transient events never contaminate the new character
+            if char_changed:
                 return
 
             self._data_dirty = False
@@ -1290,6 +1302,11 @@ class HomeworkManager:
             "last_interaction": "",
             "altering_ready": None,
         })
+        self._last_extended_poll_ts = 0.0
+        if hasattr(self, "_live_telemetry"):
+            self._live_telemetry["daily_missions"] = []
+            self._live_telemetry["weekly_missions"] = []
+            self._live_telemetry["quests"] = []
 
     def _update_character_stats_locked(
         self,
@@ -1401,20 +1418,13 @@ class HomeworkManager:
         return self._counter_increased_locked(cdata, "daily_mission:dungeon", dungeon_count)
 
     def _detect_from_weekly_missions_locked(self, char_name: str, cdata: Dict[str, Any], missions: List[Any]) -> bool:
-        """Weekly missions reset on Monday 06:00 like weekly homework. Returns True on abyss progress."""
-        abyss_count = 0
-        for m in missions or []:
-            if not isinstance(m, dict):
-                continue
-            text = self._compact(f"{m.get('Title', '')} {m.get('Description', '')}")
-            done = bool(m.get("IsCompleted")) or bool(m.get("IsRewardReceived"))
-            if done:
-                for keyword, task in WEEKLY_MISSION_RULES:
-                    if keyword in text:
-                        self._mark_once_locked(char_name, "weekly", task, f"주간 미션 달성: {self._clean_text(m.get('Description'))}")
-            if "어비스" in text:
-                abyss_count = max(abyss_count, self._to_int(m.get("CurrentCount")))
-        return self._counter_increased_locked(cdata, "weekly_mission:abyss", abyss_count)
+        """
+        Weekly missions in Mabinogi Mobile are account-wide.
+        To prevent cross-character contamination where clearing on the main character
+        auto-marks weekly homework on all alt characters, text-based auto marking is disabled.
+        Only character-specific in-game dungeon/boss clears are used.
+        """
+        return False
 
     def _detect_from_quests_locked(self, char_name: str, cdata: Dict[str, Any], quests: List[Any]) -> bool:
         """
