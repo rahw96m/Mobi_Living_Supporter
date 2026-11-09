@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from mabi_cli import MabinogiCLI, get_user_data_path
+from delivery_manager import extract_character_signature
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 KST_TZ = timezone(timedelta(hours=9))
@@ -833,9 +834,10 @@ class HomeworkManager:
         """
         Matches in-game `my_info` to a configured character name using:
         1. Direct Name / CharacterName match
-        2. Relative Stat Similarity (LivingScore 40% + AttractivenessScore 40% + CombatScore 20% within 8% error)
-        3. Title match
-        4. Combat Job (EnabledCombatJobDisplayName) match
+        2. Delivery Store Signature Match (Unified Profile verification)
+        3. Combat Job (EnabledCombatJobDisplayName) match
+        4. Title match
+        5. Relative Stat Similarity (only as safe fallback when job/title are unconfigured)
         """
         if not my_info or not isinstance(my_info, dict):
             return None
@@ -873,12 +875,82 @@ class HomeworkManager:
             living_score = self._extract_stat_int(my_info.get("LivingScore"))
             charm_score = self._extract_stat_int(my_info.get("AttractivenessScore"))
 
-            # 2. Relative stat similarity (works even when the user changed combat job on the same character)
+            # 2. Unified Delivery Store signature match (exact linked character profile)
+            if self.delivery_store:
+                try:
+                    sig = extract_character_signature(my_info)
+                    if sig:
+                        with self.delivery_store._lock:
+                            matched_cid = self.delivery_store._find_matching_character_id_locked(sig)
+                            if matched_cid:
+                                cinfo = self.delivery_store.characters.get(matched_cid, {})
+                                dname, _ = extract_base_char_name(cinfo.get("name", ""))
+                                for c in chars:
+                                    if c.get("name") == dname:
+                                        return dname
+                except Exception:
+                    pass
+
+            # 3. Combat Job (class) match
+            if job_name:
+                job_matches = [
+                    c for c in chars
+                    if str(c.get("class") or "").strip() == job_name
+                ]
+                if len(job_matches) == 1:
+                    return job_matches[0].get("name")
+                elif len(job_matches) > 1:
+                    # Disambiguate among multiple characters sharing the exact same combat job
+                    if title_name:
+                        t_matches = [
+                            c for c in job_matches
+                            if str(c.get("title") or "").strip() == title_name
+                            or str(self.data.get("characters", {}).get(c["name"], {}).get("title") or "").strip() == title_name
+                        ]
+                        if len(t_matches) == 1:
+                            return t_matches[0].get("name")
+                        elif len(t_matches) > 1:
+                            job_matches = t_matches
+                    if combat_score > 0:
+                        best_c = min(
+                            job_matches,
+                            key=lambda c: abs(int(c.get("combat_power") or 0) - combat_score),
+                        )
+                        return best_c.get("name")
+                    return job_matches[0].get("name")
+
+            # 4. Title match (fallback when combat job is unconfigured/미지정 or character temporarily switched class)
+            if title_name:
+                title_matches = [
+                    c for c in chars
+                    if str(c.get("title") or "").strip() == title_name
+                    or str(self.data.get("characters", {}).get(c["name"], {}).get("title") or "").strip() == title_name
+                ]
+                # Filter out characters whose configured combat class explicitly conflicts with current job
+                non_conflicting = [
+                    c for c in title_matches
+                    if not (job_name and str(c.get("class") or "").strip() and str(c.get("class") or "").strip() != "미지정" and str(c.get("class") or "").strip() != job_name)
+                ]
+                candidates = non_conflicting if non_conflicting else title_matches
+                if len(candidates) == 1:
+                    return candidates[0].get("name")
+                elif len(candidates) > 1 and combat_score > 0:
+                    best_c = min(
+                        candidates,
+                        key=lambda c: abs(int(c.get("combat_power") or 0) - combat_score),
+                    )
+                    return best_c.get("name")
+
+            # 5. Relative stat similarity (last-resort fallback when class/title cannot resolve)
             if living_score > 0 and charm_score > 0:
                 best_stat_match = None
-                min_rel_diff = 0.08  # 8% threshold
+                min_rel_diff = 0.05  # Tight 5% threshold
                 for c in chars:
                     cname = c.get("name")
+                    # CRITICAL SAFETY: Never match a character with an explicitly conflicting configured combat class
+                    c_cls = str(c.get("class") or "").strip()
+                    if job_name and c_cls and c_cls != "미지정" and c_cls != job_name:
+                        continue
                     cdata = self.data.get("characters", {}).get(cname, {})
                     saved_ls = int(cdata.get("living_score") or c.get("living_score") or 0)
                     saved_cs = int(cdata.get("attractiveness_score") or c.get("attractiveness_score") or 0)
@@ -886,7 +958,7 @@ class HomeworkManager:
                     if saved_ls > 0 and saved_cs > 0:
                         ls_diff = abs(saved_ls - living_score) / max(living_score, saved_ls, 1)
                         cs_diff = abs(saved_cs - charm_score) / max(charm_score, saved_cs, 1)
-                        if ls_diff < 0.05 and cs_diff < 0.05:
+                        if ls_diff < 0.03 and cs_diff < 0.03:
                             cp_diff = (
                                 abs(saved_cp - combat_score) / max(combat_score, saved_cp, 1)
                                 if (saved_cp > 0 and combat_score > 0)
@@ -898,40 +970,6 @@ class HomeworkManager:
                                 best_stat_match = cname
                 if best_stat_match:
                     return best_stat_match
-
-            # 3. Title match
-            if title_name:
-                title_matches = [
-                    c for c in chars
-                    if str(c.get("title") or "").strip() == title_name
-                    or str(self.data.get("characters", {}).get(c["name"], {}).get("title") or "").strip() == title_name
-                ]
-                if len(title_matches) == 1:
-                    return title_matches[0].get("name")
-                elif len(title_matches) > 1 and combat_score > 0:
-                    best_c = min(
-                        title_matches,
-                        key=lambda c: abs(int(c.get("combat_power") or 0) - combat_score),
-                    )
-                    return best_c.get("name")
-
-            # 4. Job (class) match
-            if job_name:
-                job_matches = [c for c in chars if str(c.get("class") or "").strip() == job_name]
-                if len(job_matches) == 1:
-                    return job_matches[0].get("name")
-                elif len(job_matches) > 1:
-                    if title_name:
-                        for c in job_matches:
-                            if str(c.get("title") or "").strip() == title_name:
-                                return c.get("name")
-                    if combat_score > 0:
-                        best_c = min(
-                            job_matches,
-                            key=lambda c: abs(int(c.get("combat_power") or 0) - combat_score),
-                        )
-                        return best_c.get("name")
-                    return job_matches[0].get("name")
 
             return None
 
