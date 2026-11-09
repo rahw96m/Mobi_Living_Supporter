@@ -1040,8 +1040,15 @@ class HomeworkManager:
         char_tasks = self.get_char_tasks(char_name, category)
         changed_tasks: List[str] = []
 
+        kw_compact = self._compact(keyword_or_exact)
         for t_name in char_tasks:
-            matched = (t_name == keyword_or_exact) if exact else (keyword_or_exact in t_name)
+            t_compact = self._compact(t_name)
+            if exact:
+                matched = (t_name == keyword_or_exact)
+            elif kw_compact == "던전토벌":
+                matched = (kw_compact in t_compact) and ("심층" not in t_compact)
+            else:
+                matched = (keyword_or_exact in t_name) or (bool(kw_compact) and kw_compact in t_compact)
             if matched:
                 prev_val = bool(cat_dict.get(t_name, False))
                 if prev_val != value:
@@ -1302,6 +1309,7 @@ class HomeworkManager:
             "last_interaction": "",
             "altering_ready": None,
         })
+        self._prev_state.setdefault("hunting_spoils", {})[char_name] = False
         self._last_extended_poll_ts = 0.0
         if hasattr(self, "_live_telemetry"):
             self._live_telemetry["daily_missions"] = []
@@ -1431,56 +1439,80 @@ class HomeworkManager:
         Quest tracker detection:
           * '[주간 목표] 모험가 길드의 정기 의뢰' objective counts (던전/심층 던전/사냥터 클리어)
             -> any increase today marks '정기 의뢰'.
-          * 지역 임무(goddess_mission) reaching the '전리품' step -> hunting ground cleared.
+          * 지역 임무(goddess_mission) reaching the '전리품' step -> hunting ground cleared -> marks '정기 의뢰'.
         Returns True if a dungeon-clear objective increased (dungeon clear evidence).
         """
         regular_progress: List[str] = []
         dungeon_progress = False
         hunting_progress = False
-        goddess_ready = set()
+        has_active_spoils_quest = False
+        active_spoils_title = ""
 
         for q in quests or []:
             if not isinstance(q, dict):
                 continue
             title = self._clean_text(q.get("QuestTitle"))
-            src = str(q.get("Source") or "")
+            src = str(q.get("Source") or "").lower()
             src_disp = str(q.get("SourceDisplayName") or "")
             objs = [o for o in (q.get("Objectives") or []) if isinstance(o, dict)]
 
-            if "정기의뢰" in title.replace(" ", ""):
+            # 1. 모험가 길드의 정기 의뢰 퀘스트 추적
+            is_guild_regular = (
+                ("모험가 길드" in title and "정기 의뢰" in title)
+                or ("[주간 목표]" in title and "정기 의뢰" in title)
+                or ("정기의뢰" in title.replace(" ", ""))
+            )
+            if is_guild_regular:
                 for obj in objs:
-                    okey = self._objective_key(obj.get("Description"))
+                    desc_clean = self._clean_text(obj.get("Description"))
+                    okey = self._objective_key(desc_clean)
                     if not okey:
                         continue
-                    if self._counter_increased_locked(cdata, f"regular:{okey}", self._to_int(obj.get("Count"))):
-                        regular_progress.append(self._clean_text(obj.get("Description")))
+                    cnt = self._to_int(obj.get("Count"))
+                    if self._counter_increased_locked(cdata, f"regular:{okey}", cnt):
+                        regular_progress.append(desc_clean)
                         if "사냥터" in okey:
                             hunting_progress = True
-                        elif "던전" in okey:
+                        elif "던전" in okey or "심층" in okey:
                             dungeon_progress = True
+                        if "심층" in okey:
+                            self._auto_mark_task_locked(char_name, "focus", "심층 던전 토벌", True, f"정기 의뢰: {desc_clean}")
+                        elif "던전" in okey:
+                            self._auto_mark_task_locked(char_name, "focus", "던전 토벌", True, f"정기 의뢰: {desc_clean}")
 
-            if src == "goddess_mission" or "지역 임무" in src_disp:
+            # 2. 사냥터 전리품 수령 대기(여신상에서 전리품 받기) 퀘스트 활성화 여부 확인
+            is_hunting_mission = (src == "goddess_mission" or "지역 임무" in src_disp or "지역임무" in src_disp or "사냥" in title)
+            if is_hunting_mission:
                 for obj in objs:
-                    if "전리품" in self._compact(obj.get("Description")) and not obj.get("IsCompleted"):
-                        goddess_ready.add(title)
+                    desc = self._clean_text(obj.get("Description"))
+                    if "전리품 받기" in desc or ("여신상" in desc and "전리품" in desc):
+                        has_active_spoils_quest = True
+                        active_spoils_title = title
+                        break
 
-        if regular_progress:
+        # A) 정기 의뢰 진행 카운트 증가 시 일일 숙제 자동 완료
+        if regular_progress or hunting_progress or dungeon_progress:
+            label = ", ".join(regular_progress) if regular_progress else "정기 의뢰 진행"
             self._auto_mark_task_locked(
-                char_name, "daily", "정기 의뢰", True, f"정기 의뢰 진행: {', '.join(regular_progress)}"
+                char_name, "daily", "정기 의뢰", True, f"정기 의뢰 진행: {label}"
             )
 
-        newly_ready = goddess_ready - self._prev_state.get("goddess_loot_ready", set())
-        self._prev_state["goddess_loot_ready"] = goddess_ready
-        if newly_ready or hunting_progress:
-            label = ", ".join(sorted(newly_ready)) if newly_ready else "사냥터"
-            if newly_ready:
-                self._auto_mark_task_locked(char_name, "daily", "정기 의뢰", True, f"사냥터 임무 달성: {label}")
+        # B) 사냥터 여신상 전리품 수령 대기 감지 (사냥 종료 즉시 정기 의뢰 완료)
+        spoils_tracker = self._prev_state.setdefault("hunting_spoils", {})
+        char_prev_spoils = spoils_tracker.get(char_name, False)
+        if has_active_spoils_quest and not char_prev_spoils:
+            spoils_tracker[char_name] = True
+            label = active_spoils_title or "사냥터"
+            self._auto_mark_task_locked(char_name, "daily", "정기 의뢰", True, f"사냥터 클리어 완료 ({label})")
             self._notify_async(
                 bool(self.config.get("webhook_notify_hunting", True)),
                 "사냥터 클리어 알림",
                 f"**[{char_name}]** **{label}** 클리어! 여신상에서 전리품을 수령하세요.",
                 0x2ECC71,
             )
+        elif not has_active_spoils_quest:
+            spoils_tracker[char_name] = False
+
         return dungeon_progress
 
     def _detect_dungeon_events_locked(
@@ -1521,7 +1553,7 @@ class HomeworkManager:
             run["active"] = False
             run["ended_at"] = now
 
-        cleared_edge = state == "Cleared" and prev_state not in ("", "Cleared")
+        cleared_edge = (state == "Cleared" and prev_state != "Cleared")
         recent_run = bool(run) and (run.get("active") or (now - run.get("ended_at", 0.0)) < DUNGEON_EVIDENCE_WINDOW_SEC)
         if run and not run.get("handled") and (cleared_edge or (dungeon_evidence and recent_run)):
             run["handled"] = True
@@ -1549,19 +1581,24 @@ class HomeworkManager:
         if is_town_map(label):
             return
         reason = f"{label} 클리어"
+
+        # 1) 정기 의뢰 [J]: 해당 캐릭터로 아무 던전(일반, 요일, 심층, 보스 등) 클리어 시 즉시 완료!
+        self._auto_mark_task_locked(char_name, "daily", "정기 의뢰", True, reason)
+
+        # 2) 던전 토벌 vs 심층 던전 토벌
+        if "심층" in label:
+            self._auto_mark_task_locked(char_name, "focus", "심층 던전 토벌", True, reason)
+        else:
+            self._auto_mark_task_locked(char_name, "focus", "던전 토벌", True, reason)
+
+        # 3) 요일 던전
         if any(k in label for k in DAY_DUNGEON_KEYWORDS):
             self._auto_mark_task_locked(char_name, "daily", "요일 던전", True, reason)
-        elif any(k in label for k in ABYSS_KEYWORDS):
-            self._on_abyss_cleared_locked(char_name, label)
-            return
-        else:
-            matched_weekly = False
-            for keywords, task in WEEKLY_BOSS_RULES:
-                if any(k in label for k in keywords):
-                    self._auto_mark_task_locked(char_name, "weekly", task, True, reason)
-                    matched_weekly = True
-            if not matched_weekly:
-                self._auto_mark_task_locked(char_name, "daily", "정기 의뢰", True, reason)
+
+        # 4) 주간 보스/레이드
+        for keywords, task in WEEKLY_BOSS_RULES:
+            if any(k in label for k in keywords):
+                self._auto_mark_task_locked(char_name, "weekly", task, True, reason)
 
         self._notify_async(
             bool(self.config.get("webhook_notify_dungeon", True)),
@@ -1588,6 +1625,8 @@ class HomeworkManager:
         # If label is not a verified abyss dungeon name, extract clean name from the task
         display_name = clean_label if any(k in clean_label for k in ABYSS_KEYWORDS) else target_task.replace("어비스: ", "")
 
+        # 어비스 던전 역시 던전 클리어이므로 정기 의뢰 완료 연동
+        self._auto_mark_task_locked(char_name, "daily", "정기 의뢰", True, f"어비스 던전 클리어 ({display_name})")
         self._auto_mark_task_locked(char_name, "weekly", target_task, True, f"{display_name} 클리어")
         self._notify_async(
             bool(self.config.get("webhook_notify_abyss", True)),
