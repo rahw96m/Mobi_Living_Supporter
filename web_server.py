@@ -33,7 +33,8 @@ from delivery_manager import (
     DeliveryManager, alarm_store, delivery_target_store,
     delivery_preset_store, custom_target_store, settings_store, get_facility_for_material,
     send_discord_test_message, notify_discord_goal_completion,
-    STANDARD_ALTER_RECIPES, KNOWN_GATHERABLE_ITEMS, KNOWN_NON_GATHERABLE_MATERIALS
+    STANDARD_ALTER_RECIPES, KNOWN_GATHERABLE_ITEMS, KNOWN_NON_GATHERABLE_MATERIALS,
+    extract_character_signature, is_same_character_signature
 )
 from homework_manager import HomeworkManager
 
@@ -342,15 +343,28 @@ def get_cached_status() -> Dict[str, Any]:
         new_char_info = None
         if need_char_refresh:
             try:
-                new_char_info = cli_instance.get_my_info()
+                new_char_info = cli_instance.get_my_info(bypass_cache=True)
             except Exception:
                 new_char_info = None
 
+        char_confirmed = (not need_char_refresh) or bool(new_char_info)
         char_info_now = new_char_info or prev_char_info
-        if char_info_now:
+        char_sig_changed = False
+        if prev_char_info and new_char_info:
+            prev_sig = extract_character_signature(prev_char_info)
+            new_sig = extract_character_signature(new_char_info)
+            if prev_sig and new_sig and not is_same_character_signature(prev_sig, new_sig):
+                char_sig_changed = True
+
+        if char_info_now and char_confirmed:
             switched_char_id = delivery_target_store.on_ingame_character_seen(
                 char_info_now, allow_auto_switch=(not is_busy)
             )
+            if switched_char_id or char_sig_changed:
+                cli_instance.invalidate_cache()
+                with status_lock:
+                    global cached_quests
+                    cached_quests = None
             if switched_char_id:
                 homework_instance.on_delivery_character_selected(switched_char_id)
                 invalidate_plan_caches()
@@ -370,20 +384,21 @@ def get_cached_status() -> Dict[str, Any]:
         except Exception:
             env_info = {}
 
-        try:
-            homework_instance.update_from_ingame_state(
-                char_info_now or {},
-                activity or {},
-                inv or {},
-                env_info or {},
-                is_busy=is_busy,
-            )
-        except Exception as hw_err:
-            # Never break status polling, but surface the error (throttled) instead of hiding it
-            global last_homework_error_log
-            if (time.time() - last_homework_error_log) > 60.0:
-                last_homework_error_log = time.time()
-                add_log("warn", f"[숙제 지원] 인게임 자동 체크 처리 중 오류: {hw_err}")
+        if char_confirmed and char_info_now:
+            try:
+                homework_instance.update_from_ingame_state(
+                    char_info_now,
+                    activity or {},
+                    inv or {},
+                    env_info or {},
+                    is_busy=is_busy,
+                )
+            except Exception as hw_err:
+                # Never break status polling, but surface the error (throttled) instead of hiding it
+                global last_homework_error_log
+                if (time.time() - last_homework_error_log) > 60.0:
+                    last_homework_error_log = time.time()
+                    add_log("warn", f"[숙제 지원] 인게임 자동 체크 처리 중 오류: {hw_err}")
 
         data = {
             "connected": True,

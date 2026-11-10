@@ -644,29 +644,29 @@ class MabinogiCLI:
         _, data = self.run_raw("get_my_info", timeout=15, bypass_cache=bypass_cache)
         return data if isinstance(data, dict) else {}
 
-    def get_current_environment(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_current_environment", timeout=15)
+    def get_current_environment(self, bypass_cache: bool = False) -> Dict[str, Any]:
+        _, data = self.run_raw("get_current_environment", timeout=15, bypass_cache=bypass_cache)
         return data if isinstance(data, dict) else {}
 
-    def get_activity(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_activity", timeout=15)
+    def get_activity(self, bypass_cache: bool = False) -> Dict[str, Any]:
+        _, data = self.run_raw("get_activity", timeout=15, bypass_cache=bypass_cache)
         return data if isinstance(data, dict) else {}
 
-    def get_inventory(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_inventory", timeout=15)
+    def get_inventory(self, bypass_cache: bool = False) -> Dict[str, Any]:
+        _, data = self.run_raw("get_inventory", timeout=15, bypass_cache=bypass_cache)
         return data if isinstance(data, dict) else {}
 
-    def get_quests(self) -> List[Dict[str, Any]]:
-        _, data = self.run_raw("get_quests", timeout=20)
+    def get_quests(self, bypass_cache: bool = False) -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_quests", timeout=20, bypass_cache=bypass_cache)
         return data if isinstance(data, list) else []
 
-    def get_currencies(self) -> List[Dict[str, Any]]:
-        _, data = self.run_raw("get_currencies", timeout=15)
+    def get_currencies(self, bypass_cache: bool = False) -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_currencies", timeout=15, bypass_cache=bypass_cache)
         return data if isinstance(data, list) else []
 
-    def get_wings_count(self) -> int:
+    def get_wings_count(self, bypass_cache: bool = False) -> int:
         """Returns the number of '정령의 날개'."""
-        currencies = self.get_currencies()
+        currencies = self.get_currencies(bypass_cache=bypass_cache)
         for cur in currencies:
             if cur.get("DisplayName") == "정령의 날개":
                 return int(cur.get("Amount", 0))
@@ -773,8 +773,8 @@ class MabinogiCLI:
         _, data = self.run_raw("execute_altering", body, timeout=600)
         return data
 
-    def get_altering_works(self) -> Dict[str, Any]:
-        _, data = self.run_raw("get_altering_works", timeout=20)
+    def get_altering_works(self, bypass_cache: bool = False) -> Dict[str, Any]:
+        _, data = self.run_raw("get_altering_works", timeout=20, bypass_cache=bypass_cache)
         return data if isinstance(data, dict) else {"completedCount": 0, "works": []}
 
     def complete_altering_work(self, display_name: str) -> Dict[str, Any]:
@@ -803,16 +803,16 @@ class MabinogiCLI:
 
     # --- Missions, Music, Social & Nearby ---
 
-    def get_daily_missions(self) -> List[Dict[str, Any]]:
-        _, data = self.run_raw("get_daily_missions", timeout=15)
+    def get_daily_missions(self, bypass_cache: bool = False) -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_daily_missions", timeout=15, bypass_cache=bypass_cache)
         if isinstance(data, list):
             return data
         if isinstance(data, dict) and isinstance(data.get("body"), list):
             return data["body"]
         return []
 
-    def get_weekly_missions(self) -> List[Dict[str, Any]]:
-        _, data = self.run_raw("get_weekly_missions", timeout=15)
+    def get_weekly_missions(self, bypass_cache: bool = False) -> List[Dict[str, Any]]:
+        _, data = self.run_raw("get_weekly_missions", timeout=15, bypass_cache=bypass_cache)
         if isinstance(data, list):
             return data
         if isinstance(data, dict) and isinstance(data.get("body"), list):
@@ -854,9 +854,9 @@ class MabinogiCLI:
         _, data = self.run_raw("write_chat", msg, timeout=15)
         return data if isinstance(data, dict) else {}
 
-    def get_growth_guide(self) -> Dict[str, Any]:
+    def get_growth_guide(self, bypass_cache: bool = False) -> Dict[str, Any]:
         """Queries daily and weekly growth guide contents with unlock state, completion state, and remaining count."""
-        _, data = self.run_raw("get_growth_guide", timeout=15)
+        _, data = self.run_raw("get_growth_guide", timeout=15, bypass_cache=bypass_cache)
         if isinstance(data, dict):
             if isinstance(data.get("body"), dict):
                 return data["body"]

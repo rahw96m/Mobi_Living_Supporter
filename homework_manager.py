@@ -104,6 +104,9 @@ WEEKLY_BOSS_RULES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
 # is attributed to that run (covers clears missed by a throttled poller).
 DUNGEON_EVIDENCE_WINDOW_SEC = 90.0
 
+# Cooldown after switching in-game characters before polling missions/growth guide or running detectors.
+CHAR_SWITCH_SETTLE_SEC = 3.0
+
 CURRENCY_KEYWORDS: Tuple[str, ...] = ("은동전", "마족 공물", "골드", "데카", "날개", "주화")
 
 # Maps that are towns or non-dungeon fields (must NEVER be classified as dungeons/abyss)
@@ -181,6 +184,7 @@ class HomeworkManager:
         self._last_extended_poll_ts: float = 0.0
         self._data_dirty: bool = False
         self._live_telemetry: Dict[str, Any] = {
+            "char_name": "",
             "currencies": [],
             "daily_missions": [],
             "weekly_missions": [],
@@ -193,6 +197,7 @@ class HomeworkManager:
         self._prev_state: Dict[str, Any] = {
             "char_name": None,          # last auto-switched character
             "telemetry_char": None,     # character the transient state below belongs to
+            "char_switched_at": 0.0,
             "dungeon_state": "",
             "dungeon_run": None,        # {active, handled, name, ended_at}
             "abyss_result_playing": False,
@@ -733,6 +738,13 @@ class HomeworkManager:
                         cdata["daily"][k] = False
                     for k in list(cdata.get("focus", {}).keys()):
                         cdata["focus"][k] = False
+                    cdata.pop("auto_marked_daily", None)
+                    gg = cdata.get("growth_guide")
+                    if isinstance(gg, dict):
+                        for gk in [k for k in gg if str(k).startswith("daily:")]:
+                            gg.pop(gk, None)
+                self._prev_state.get("growth_guide_daily_rem", {}).clear()
+                self._prev_state.get("hunting_spoils", {}).clear()
                 self.data["last_daily_reset"] = today_logical
                 daily_reset_done = True
 
@@ -741,10 +753,21 @@ class HomeworkManager:
                     for k in list(cdata.get("weekly", {}).keys()):
                         cdata["weekly"][k] = False
                     cdata["weekly_focus_done"] = False
+                    cdata.pop("auto_marked_weekly", None)
+                    gg = cdata.get("growth_guide")
+                    if isinstance(gg, dict):
+                        for gk in [k for k in gg if str(k).startswith("weekly:")]:
+                            gg.pop(gk, None)
                 self.data["last_weekly_reset"] = monday_logical
                 weekly_reset_done = True
 
             if daily_reset_done or weekly_reset_done:
+                self._last_extended_poll_ts = 0.0
+                if hasattr(self, "cli") and self.cli is not None:
+                    try:
+                        self.cli.invalidate_cache()
+                    except Exception:
+                        pass
                 self.save_data()
                 if daily_reset_done and weekly_reset_done:
                     self._log("info", f"오전 6시 기준 일일·집중·주간 숙제가 자동 초기화되었습니다 ({today_logical}).")
@@ -1219,27 +1242,55 @@ class HomeworkManager:
 
             char_changed = bool(prev_char and target_char_name != prev_char)
             if char_changed:
-                self._reset_transient_state(target_char_name)
+                # Transient state, _live_telemetry, and CLI cache were already reset on switch.
+                # Skip extended telemetry poll and all auto-check detectors on the switch frame so
+                # stale data from the previous character can never contaminate the new character.
+                cdata = self.data.setdefault("characters", {}).setdefault(target_char_name, {})
+                cdata["updated_at"] = datetime.now(KST_TZ).strftime("%H:%M:%S")
+                if self._update_character_stats_locked(target_char_name, cdata, my_info, inventory, {}):
+                    self.save_config()
+                    self.save_data()
+                return
 
-        telemetry = self._refresh_extended_telemetry(is_busy)
+            switched_at = float(self._prev_state.get("char_switched_at") or 0.0)
+            in_settle_window = bool(switched_at > 0.0 and (time.time() - switched_at) < CHAR_SWITCH_SETTLE_SEC)
+            need_fresh_after_switch = bool(
+                switched_at > 0.0 and self._live_telemetry.get("char_name") != target_char_name
+            )
+
+        if in_settle_window:
+            # Wait briefly after character switch for the game client to finish hydrating missions/quests.
+            return
+
+        telemetry = self._refresh_extended_telemetry(
+            is_busy,
+            for_char_name=target_char_name,
+            force_bypass=need_fresh_after_switch,
+        )
 
         with self._lock:
+            # Guard against mid-flight character switches or mismatched telemetry ownership
+            if self._prev_state.get("telemetry_char") != target_char_name:
+                return
+
             cdata = self.data.setdefault("characters", {}).setdefault(target_char_name, {})
             cdata["updated_at"] = datetime.now(KST_TZ).strftime("%H:%M:%S")
 
-            if self._update_character_stats_locked(target_char_name, cdata, my_info, inventory, telemetry):
-                self.save_config()
-                self.save_data()
+            stats_dirty = self._update_character_stats_locked(target_char_name, cdata, my_info, inventory, telemetry)
 
             if not self.config.get("ai_auto_task_check", True):
+                if stats_dirty:
+                    self.save_config()
+                    self.save_data()
                 return
 
-            # Safety Guard: Skip auto task-check on the very frame character switched
-            # to guarantee old character's transient events never contaminate the new character
-            if char_changed:
+            if telemetry.get("char_name") != target_char_name:
+                if stats_dirty:
+                    self.save_config()
+                    self.save_data()
                 return
 
-            self._data_dirty = False
+            self._data_dirty = stats_dirty
             act = activity if isinstance(activity, dict) else {}
             env = environment if isinstance(environment, dict) else {}
 
@@ -1252,22 +1303,41 @@ class HomeworkManager:
             self._detect_altering_locked(target_char_name, telemetry["altering_summary"])
 
             if self._data_dirty:
+                self.save_config()
                 self.save_data()
                 self._data_dirty = False
 
     # --- Telemetry collection --------------------------------------------------------
 
-    def _refresh_extended_telemetry(self, is_busy: bool) -> Dict[str, Any]:
-        """Polls currencies / missions / quests / altering at most every 8s (never while busy)."""
+    def _refresh_extended_telemetry(
+        self,
+        is_busy: bool,
+        for_char_name: str = "",
+        force_bypass: bool = False,
+    ) -> Dict[str, Any]:
+        """Polls currencies / missions / quests / growth guide / altering at most every 8s (never while busy)."""
         now = time.time()
         tel = self._live_telemetry
-        if is_busy or (now - self._last_extended_poll_ts) < 8.0:
+        same_owner = (not for_char_name) or (tel.get("char_name") == for_char_name)
+        if not force_bypass and same_owner and (is_busy or (now - self._last_extended_poll_ts) < 8.0):
             return tel
+        if is_busy and not same_owner:
+            return tel
+        if force_bypass and hasattr(self, "cli") and self.cli is not None:
+            try:
+                self.cli.invalidate_cache()
+            except Exception:
+                pass
         self._last_extended_poll_ts = now
 
-        def _safe(fn: Callable[[], Any], fallback: Any) -> Any:
+        def _safe(fn: Callable[..., Any], fallback: Any) -> Any:
             try:
-                return fn()
+                return fn(bypass_cache=force_bypass)
+            except TypeError:
+                try:
+                    return fn()
+                except Exception:
+                    return fallback
             except Exception:
                 return fallback
 
@@ -1287,7 +1357,11 @@ class HomeworkManager:
             }
 
         with self._lock:
+            cur_tel_char = self._prev_state.get("telemetry_char")
+            if for_char_name and cur_tel_char and cur_tel_char != for_char_name:
+                return self._live_telemetry
             self._live_telemetry = {
+                "char_name": for_char_name or cur_tel_char or "",
                 "matched_char_name": tel.get("matched_char_name") or "",
                 "currencies": currencies if isinstance(currencies, list) else [],
                 "daily_missions": daily_missions if isinstance(daily_missions, list) else [],
@@ -1302,10 +1376,7 @@ class HomeworkManager:
 
     def _resolve_and_switch_character_locked(self, my_info: Dict[str, Any], is_busy: bool) -> str:
         resolved_name = self.resolve_character(my_info)
-        if not resolved_name and self.delivery_store.matched_ingame_character_id:
-            dc_matched = self.delivery_store.characters.get(self.delivery_store.matched_ingame_character_id)
-            if dc_matched:
-                resolved_name, _ = extract_base_char_name(dc_matched.get("name", ""))
+        chars_cfg = self.config.get("characters", [])
 
         self._live_telemetry["matched_char_name"] = resolved_name or ""
         if resolved_name:
@@ -1322,7 +1393,7 @@ class HomeworkManager:
             and resolved_name != self._prev_state.get("char_name")
         ):
             self._prev_state["char_name"] = resolved_name
-            for idx, hc in enumerate(self.config.get("characters", [])):
+            for idx, hc in enumerate(chars_cfg):
                 if hc["name"] != resolved_name:
                     continue
                 if self.data.get("current_char_index") != idx:
@@ -1335,19 +1406,24 @@ class HomeworkManager:
                 active_name = resolved_name
                 break
 
+        if not resolved_name and len(chars_cfg) > 1:
+            return ""
         target = resolved_name or active_name
         # Transient edge-detection state belongs to one in-game character; reset it on change
         # so the previous character's dungeon/quest state never triggers marks for the new one.
-        if target and target != self._prev_state.get("telemetry_char"):
-            self._reset_transient_state(target)
+        prev_tel_char = self._prev_state.get("telemetry_char")
+        if target and target != prev_tel_char:
+            self._reset_transient_state(target, is_switch=(prev_tel_char is not None))
         return target
 
-    def _reset_transient_state(self, char_name: str) -> None:
+    def _reset_transient_state(self, char_name: str, is_switch: bool = False) -> None:
         self._prev_state.update({
             "telemetry_char": char_name,
+            "char_switched_at": time.time() if is_switch else 0.0,
             "dungeon_state": "",
             "dungeon_run": None,
             "abyss_result_playing": False,
+            "last_abyss_at": 0.0,
             "goddess_loot_ready": set(),
             "last_interaction": "",
             "altering_ready": None,
@@ -1355,11 +1431,20 @@ class HomeworkManager:
         self._prev_state.setdefault("hunting_spoils", {})[char_name] = False
         self._prev_state.setdefault("growth_guide_daily_rem", {})[char_name] = None
         self._last_extended_poll_ts = 0.0
+        if hasattr(self, "cli") and self.cli is not None:
+            try:
+                self.cli.invalidate_cache()
+            except Exception:
+                pass
         if hasattr(self, "_live_telemetry"):
+            self._live_telemetry["char_name"] = ""
+            self._live_telemetry["currencies"] = []
             self._live_telemetry["daily_missions"] = []
             self._live_telemetry["weekly_missions"] = []
             self._live_telemetry["quests"] = []
             self._live_telemetry["growth_guide"] = {}
+            self._live_telemetry["altering_summary"] = {"ready": 0, "total": 0, "works": []}
+            self._live_telemetry["updated_at"] = 0
 
     def _update_character_stats_locked(
         self,
@@ -1511,12 +1596,15 @@ class HomeworkManager:
             rem_count = self._to_int(rem) if rem is not None else None
 
             summary_key = f"{day_type}:{target}"
-            guide_summary[summary_key] = {
+            new_entry = {
                 "day_type": day_type,
                 "target": target,
                 "is_completed": is_completed,
                 "remaining_count": rem_count,
             }
+            if guide_summary.get(summary_key) != new_entry:
+                guide_summary[summary_key] = new_entry
+                self._data_dirty = True
 
             # 1. 일일 숙제 반영
             if day_type == "daily":
@@ -1531,14 +1619,14 @@ class HomeworkManager:
                         daily_rem_tracker[char_name] = rem_count
 
                     if is_completed:
-                        self._auto_mark_task_locked(
-                            char_name, "daily", "검은 구멍", True,
+                        self._mark_once_locked(
+                            char_name, "daily", "검은 구멍",
                             "성장 가이드: 일일 검은 구멍 완료"
                         )
                 elif target == "요일 던전":
                     if is_completed:
-                        self._auto_mark_task_locked(
-                            char_name, "daily", "요일 던전", True,
+                        self._mark_once_locked(
+                            char_name, "daily", "요일 던전",
                             "성장 가이드: 일일 요일 던전 완료"
                         )
 
@@ -1554,7 +1642,7 @@ class HomeworkManager:
                     if rem_count is not None and rem_count <= 0:
                         reason += " (남은 0회)"
                     if target in ("검은 구멍", "소환의 결계", "필드 보스", "뱅가드 브리치"):
-                        self._auto_mark_task_locked(char_name, "weekly", target, True, reason)
+                        self._mark_once_locked(char_name, "weekly", target, reason)
 
     def _detect_from_quests_locked(self, char_name: str, cdata: Dict[str, Any], quests: List[Any]) -> bool:
         """
