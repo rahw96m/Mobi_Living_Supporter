@@ -972,10 +972,10 @@ def is_same_character_signature(sig_a: Optional[Dict[str, Any]], sig_b: Optional
     att_a = int(sig_a.get("attractiveness_score") or 0)
     att_b = int(sig_b.get("attractiveness_score") or 0)
 
-    # Same job + same level + close living score
+    # Same job + same level + close living score (allow up to 3000 growth between sessions)
     if job_a and job_b and job_a == job_b:
         if ls_a > 0 and ls_b > 0:
-            return abs(ls_a - ls_b) <= 500
+            return abs(ls_a - ls_b) <= 3000
         return True
 
     # If the user changed combat class on the same character, living_score + attractiveness_score + level stay identical

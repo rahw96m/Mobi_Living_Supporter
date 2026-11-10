@@ -105,7 +105,12 @@ WEEKLY_BOSS_RULES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
 DUNGEON_EVIDENCE_WINDOW_SEC = 90.0
 
 # Cooldown after switching in-game characters before polling missions/growth guide or running detectors.
-CHAR_SWITCH_SETTLE_SEC = 3.0
+CHAR_SWITCH_SETTLE_SEC = 5.0
+
+# Hold-off durations for stale game-client caches after switching characters
+STALE_CLIENT_HOLD_SEC = 45.0
+CONFIRM_STATIC_MIN_ELAPSED_SEC = 7.5
+CONFIRM_STATIC_TIMEOUT_SEC = 20.0
 
 CURRENCY_KEYWORDS: Tuple[str, ...] = ("은동전", "마족 공물", "골드", "데카", "날개", "주화")
 
@@ -198,6 +203,9 @@ class HomeworkManager:
             "char_name": None,          # last auto-switched character
             "telemetry_char": None,     # character the transient state below belongs to
             "char_switched_at": 0.0,
+            "stale_suspect_sig": "",
+            "stale_suspect_until": 0.0,
+            "confirmed_polls": {},
             "dungeon_state": "",
             "dungeon_run": None,        # {active, handled, name, ended_at}
             "abyss_result_playing": False,
@@ -376,6 +384,8 @@ class HomeworkManager:
                 "current_char_index": int(loaded_dat.get("current_char_index") or 0),
                 "characters": loaded_dat.get("characters") if isinstance(loaded_dat.get("characters"), dict) else {},
             }
+            if isinstance(loaded_dat.get("last_session_telemetry"), dict):
+                self.data["last_session_telemetry"] = loaded_dat["last_session_telemetry"]
 
             self._ensure_character_data_locked()
             if not cfg_exists or not dat_exists:
@@ -763,6 +773,10 @@ class HomeworkManager:
 
             if daily_reset_done or weekly_reset_done:
                 self._last_extended_poll_ts = 0.0
+                self.data.pop("last_session_telemetry", None)
+                self._prev_state["stale_suspect_sig"] = ""
+                self._prev_state["stale_suspect_until"] = 0.0
+                self._prev_state.get("confirmed_polls", {}).clear()
                 if hasattr(self, "cli") and self.cli is not None:
                     try:
                         self.cli.invalidate_cache()
@@ -1165,6 +1179,71 @@ class HomeworkManager:
 
     # --- Auto-mark primitives --------------------------------------------------------
 
+    @staticmethod
+    def _build_telemetry_signature(daily_missions: List[Any], growth_guide: Dict[str, Any]) -> str:
+        """Builds a canonical signature of daily missions and growth guide to detect stale client caches."""
+        dm_parts = []
+        for m in daily_missions or []:
+            if not isinstance(m, dict):
+                continue
+            dm_parts.append((
+                str(m.get("Title") or ""),
+                int(m.get("CurrentCount") or 0),
+                bool(m.get("IsCompleted", False)),
+                bool(m.get("IsRewardReceived", False)),
+            ))
+        dm_parts.sort()
+
+        gg_parts = []
+        contents = growth_guide.get("Contents") if isinstance(growth_guide, dict) else []
+        for g in contents or []:
+            if not isinstance(g, dict):
+                continue
+            rem = g.get("RemainingCount")
+            gg_parts.append((
+                str(g.get("DayType") or "").lower(),
+                str(g.get("Target") or ""),
+                bool(g.get("IsCompleted", False)),
+                int(rem) if rem is not None else -1,
+            ))
+        gg_parts.sort()
+
+        if not dm_parts and not gg_parts:
+            return ""
+        return json.dumps({"dm": dm_parts, "gg": gg_parts}, ensure_ascii=False, separators=(",", ":"))
+
+    def _record_auto_marked_key_locked(self, cdata: Dict[str, Any], category: str, keyword: str) -> None:
+        period = get_monday_str() if category == "weekly" else get_logical_date_str()
+        reg_key = "auto_marked_weekly" if category == "weekly" else "auto_marked_daily"
+        reg = cdata.get(reg_key)
+        if not isinstance(reg, dict) or reg.get("period") != period:
+            reg = {"period": period, "keys": []}
+            cdata[reg_key] = reg
+        mark_key = f"{category}:{keyword}"
+        if mark_key not in reg["keys"]:
+            reg["keys"].append(mark_key)
+            self._data_dirty = True
+
+    def _get_today_counter_locked(self, cdata: Dict[str, Any], key: str) -> Optional[int]:
+        today = get_logical_date_str()
+        snap = cdata.get("progress_snapshot")
+        if not isinstance(snap, dict) or snap.get("date") != today:
+            return None
+        val = snap.get("counts", {}).get(key)
+        return int(val) if val is not None else None
+
+    def _set_today_counter_locked(self, cdata: Dict[str, Any], key: str, count: int) -> None:
+        today = get_logical_date_str()
+        snap = cdata.get("progress_snapshot")
+        if not isinstance(snap, dict) or snap.get("date") != today:
+            snap = {"date": today, "counts": {}}
+            cdata["progress_snapshot"] = snap
+            self._data_dirty = True
+        counts = snap.setdefault("counts", {})
+        if counts.get(key) != count:
+            counts[key] = count
+            self._data_dirty = True
+
     def _mark_once_locked(self, char_name: str, category: str, keyword: str, reason: str) -> None:
         """
         Auto-marks a task from a *state* signal (e.g. a mission that stays completed) only
@@ -1192,17 +1271,8 @@ class HomeworkManager:
         current logical day. The snapshot is persisted so character switches and app
         restarts within the same day do not lose the baseline.
         """
-        today = get_logical_date_str()
-        snap = cdata.get("progress_snapshot")
-        if not isinstance(snap, dict) or snap.get("date") != today:
-            snap = {"date": today, "counts": {}}
-            cdata["progress_snapshot"] = snap
-            self._data_dirty = True
-        counts = snap.setdefault("counts", {})
-        prev = counts.get(key)
-        if prev != count:
-            counts[key] = count
-            self._data_dirty = True
+        prev = self._get_today_counter_locked(cdata, key)
+        self._set_today_counter_locked(cdata, key, count)
         return prev is not None and count > prev
 
     def _notify_async(self, enabled: bool, title: str, description: str, color: int) -> None:
@@ -1273,8 +1343,31 @@ class HomeworkManager:
             if self._prev_state.get("telemetry_char") != target_char_name:
                 return
 
+            now = time.time()
             cdata = self.data.setdefault("characters", {}).setdefault(target_char_name, {})
             cdata["updated_at"] = datetime.now(KST_TZ).strftime("%H:%M:%S")
+
+            incoming_sig = self._build_telemetry_signature(
+                telemetry.get("daily_missions", []),
+                telemetry.get("growth_guide", {}),
+            )
+            suspect_sig = str(self._prev_state.get("stale_suspect_sig") or "")
+            suspect_until = float(self._prev_state.get("stale_suspect_until") or 0.0)
+            is_stale_client_cache = bool(
+                incoming_sig and suspect_sig and incoming_sig == suspect_sig and now < suspect_until
+            )
+
+            if is_stale_client_cache:
+                # Game client is still holding the previous character's mission/growth-guide buffer.
+                # Update only direct my_info/inventory stats and wait for client buffer to refresh.
+                if self._update_character_stats_locked(target_char_name, cdata, my_info, inventory, {}):
+                    self.save_config()
+                    self.save_data()
+                return
+
+            if suspect_sig and (not incoming_sig or incoming_sig != suspect_sig or now >= suspect_until):
+                self._prev_state["stale_suspect_sig"] = ""
+                self._prev_state["stale_suspect_until"] = 0.0
 
             stats_dirty = self._update_character_stats_locked(target_char_name, cdata, my_info, inventory, telemetry)
 
@@ -1290,17 +1383,56 @@ class HomeworkManager:
                     self.save_data()
                 return
 
+            # Require 2 consistent non-empty polls >= 7.5s apart (or > 20s since switch)
+            # before trusting static pre-completed state flags after switching characters.
+            switched_at = float(self._prev_state.get("char_switched_at") or 0.0)
+            if switched_at <= 0.0:
+                allow_static_marks = True
+            else:
+                cp_map = self._prev_state.setdefault("confirmed_polls", {})
+                cp = cp_map.get(target_char_name)
+                if incoming_sig:
+                    if isinstance(cp, dict) and cp.get("sig") == incoming_sig:
+                        cp["count"] = int(cp.get("count") or 0) + 1
+                    else:
+                        cp = {"sig": incoming_sig, "first_ts": now, "count": 1}
+                        cp_map[target_char_name] = cp
+                    allow_static_marks = bool(
+                        (cp["count"] >= 2 and (now - float(cp.get("first_ts") or now)) >= CONFIRM_STATIC_MIN_ELAPSED_SEC)
+                        or (now - switched_at) >= CONFIRM_STATIC_TIMEOUT_SEC
+                    )
+                else:
+                    allow_static_marks = bool((now - switched_at) >= CONFIRM_STATIC_TIMEOUT_SEC)
+
             self._data_dirty = stats_dirty
             act = activity if isinstance(activity, dict) else {}
             env = environment if isinstance(environment, dict) else {}
 
-            dungeon_evidence = self._detect_from_daily_missions_locked(target_char_name, cdata, telemetry["daily_missions"])
+            dungeon_evidence = self._detect_from_daily_missions_locked(
+                target_char_name, cdata, telemetry["daily_missions"], allow_static_marks=allow_static_marks
+            )
             abyss_evidence = self._detect_from_weekly_missions_locked(target_char_name, cdata, telemetry["weekly_missions"])
             dungeon_evidence |= self._detect_from_quests_locked(target_char_name, cdata, telemetry["quests"])
             self._detect_dungeon_events_locked(target_char_name, act, env, dungeon_evidence, abyss_evidence)
-            self._detect_from_growth_guide_locked(target_char_name, cdata, telemetry.get("growth_guide", {}))
+            self._detect_from_growth_guide_locked(
+                target_char_name, cdata, telemetry.get("growth_guide", {}), allow_static_marks=allow_static_marks
+            )
             self._detect_gathering_locked(target_char_name, act)
             self._detect_altering_locked(target_char_name, telemetry["altering_summary"])
+
+            if incoming_sig:
+                prev_last = self.data.get("last_session_telemetry")
+                if (
+                    not isinstance(prev_last, dict)
+                    or prev_last.get("char_name") != target_char_name
+                    or prev_last.get("snapshot_sig") != incoming_sig
+                ):
+                    self.data["last_session_telemetry"] = {
+                        "char_name": target_char_name,
+                        "updated_ts": now,
+                        "snapshot_sig": incoming_sig,
+                    }
+                    self._data_dirty = True
 
             if self._data_dirty:
                 self.save_config()
@@ -1413,13 +1545,50 @@ class HomeworkManager:
         # so the previous character's dungeon/quest state never triggers marks for the new one.
         prev_tel_char = self._prev_state.get("telemetry_char")
         if target and target != prev_tel_char:
-            self._reset_transient_state(target, is_switch=(prev_tel_char is not None))
+            self._reset_transient_state(target, prev_char=prev_tel_char)
         return target
 
-    def _reset_transient_state(self, char_name: str, is_switch: bool = False) -> None:
+    def _reset_transient_state(self, char_name: str, is_switch: Optional[bool] = None, prev_char: Optional[str] = None) -> None:
+        now = time.time()
+        suspect_sig = ""
+        suspect_until = 0.0
+
+        if is_switch is None:
+            is_switch = prev_char is not None
+
+        if prev_char and prev_char != char_name:
+            tel = getattr(self, "_live_telemetry", {})
+            if isinstance(tel, dict) and tel.get("char_name") == prev_char:
+                suspect_sig = self._build_telemetry_signature(
+                    tel.get("daily_missions", []),
+                    tel.get("growth_guide", {}),
+                )
+            if not suspect_sig:
+                last_sess = self.data.get("last_session_telemetry")
+                if isinstance(last_sess, dict) and last_sess.get("char_name") == prev_char:
+                    suspect_sig = str(last_sess.get("snapshot_sig") or "")
+            if suspect_sig:
+                suspect_until = now + STALE_CLIENT_HOLD_SEC
+        elif prev_char is None:
+            # Cross-restart check: if the game was very recently running a DIFFERENT character,
+            # protect against stale game-client mission/growth-guide buffers on first login.
+            last_sess = self.data.get("last_session_telemetry")
+            if (
+                isinstance(last_sess, dict)
+                and last_sess.get("char_name")
+                and last_sess.get("char_name") != char_name
+                and (now - float(last_sess.get("updated_ts") or 0.0)) < 600.0
+            ):
+                is_switch = True
+                suspect_sig = str(last_sess.get("snapshot_sig") or "")
+                if suspect_sig:
+                    suspect_until = now + STALE_CLIENT_HOLD_SEC
+
         self._prev_state.update({
             "telemetry_char": char_name,
-            "char_switched_at": time.time() if is_switch else 0.0,
+            "char_switched_at": now if is_switch else 0.0,
+            "stale_suspect_sig": suspect_sig,
+            "stale_suspect_until": suspect_until,
             "dungeon_state": "",
             "dungeon_run": None,
             "abyss_result_playing": False,
@@ -1428,6 +1597,7 @@ class HomeworkManager:
             "last_interaction": "",
             "altering_ready": None,
         })
+        self._prev_state.setdefault("confirmed_polls", {}).pop(char_name, None)
         self._prev_state.setdefault("hunting_spoils", {})[char_name] = False
         self._prev_state.setdefault("growth_guide_daily_rem", {})[char_name] = None
         self._last_extended_poll_ts = 0.0
@@ -1526,7 +1696,13 @@ class HomeworkManager:
 
     # --- Detectors -------------------------------------------------------------------
 
-    def _detect_from_daily_missions_locked(self, char_name: str, cdata: Dict[str, Any], missions: List[Any]) -> bool:
+    def _detect_from_daily_missions_locked(
+        self,
+        char_name: str,
+        cdata: Dict[str, Any],
+        missions: List[Any],
+        allow_static_marks: bool = True,
+    ) -> bool:
         """
         Daily missions reset at 06:00 together with daily homework, so their state is
         authoritative for the current day. Mission titles are flavour text
@@ -1536,6 +1712,8 @@ class HomeworkManager:
         """
         claimed = 0
         dungeon_count = 0
+        bh_count = 0
+        bh_done = False
         for m in missions or []:
             if not isinstance(m, dict):
                 continue
@@ -1544,13 +1722,33 @@ class HomeworkManager:
             done = bool(m.get("IsCompleted")) or bool(m.get("IsRewardReceived"))
             if m.get("IsRewardReceived"):
                 claimed += 1
-            if "검은구멍" in text and (done or cur > 0):
-                self._mark_once_locked(char_name, "daily", "검은 구멍", "일일 미션: 검은 구멍 입장 확인")
+            if "검은구멍" in text:
+                bh_count = max(bh_count, cur, 1 if done else 0)
+                if done or cur > 0:
+                    bh_done = True
             if "던전" in text and "토벌" in text and "심층" not in text:
                 dungeon_count = max(dungeon_count, cur)
 
-        if claimed >= DAILY_MISSION_REWARD_THRESHOLD:
+        prev_bh = self._get_today_counter_locked(cdata, "daily_mission:blackhole")
+        self._set_today_counter_locked(cdata, "daily_mission:blackhole", bh_count)
+        if prev_bh is not None and prev_bh == 0 and bh_count > 0:
+            self._auto_mark_task_locked(char_name, "daily", "검은 구멍", True, "일일 미션: 검은 구멍 입장 확인")
+            self._record_auto_marked_key_locked(cdata, "daily", "검은 구멍")
+        elif bh_done and allow_static_marks:
+            self._mark_once_locked(char_name, "daily", "검은 구멍", "일일 미션: 검은 구멍 입장 확인")
+
+        prev_claimed = self._get_today_counter_locked(cdata, "daily_mission:claimed")
+        self._set_today_counter_locked(cdata, "daily_mission:claimed", claimed)
+        if (
+            prev_claimed is not None
+            and prev_claimed < DAILY_MISSION_REWARD_THRESHOLD
+            and claimed >= DAILY_MISSION_REWARD_THRESHOLD
+        ):
+            self._auto_mark_task_locked(char_name, "daily", "일일 미션", True, f"일일 미션 보상 {claimed}개 수령")
+            self._record_auto_marked_key_locked(cdata, "daily", "일일 미션")
+        elif claimed >= DAILY_MISSION_REWARD_THRESHOLD and allow_static_marks:
             self._mark_once_locked(char_name, "daily", "일일 미션", f"일일 미션 보상 {claimed}개 수령")
+
         return self._counter_increased_locked(cdata, "daily_mission:dungeon", dungeon_count)
 
     def _detect_from_weekly_missions_locked(self, char_name: str, cdata: Dict[str, Any], missions: List[Any]) -> bool:
@@ -1567,6 +1765,7 @@ class HomeworkManager:
         char_name: str,
         cdata: Dict[str, Any],
         guide: Dict[str, Any],
+        allow_static_marks: bool = True,
     ) -> None:
         """
         Processes character-specific growth guide contents:
@@ -1618,13 +1817,22 @@ class HomeworkManager:
                             )
                         daily_rem_tracker[char_name] = rem_count
 
-                    if is_completed:
+                    if is_completed and allow_static_marks:
                         self._mark_once_locked(
                             char_name, "daily", "검은 구멍",
                             "성장 가이드: 일일 검은 구멍 완료"
                         )
                 elif target == "요일 던전":
-                    if is_completed:
+                    dd_val = 1 if is_completed else 0
+                    prev_dd = self._get_today_counter_locked(cdata, "growth_guide:day_dungeon")
+                    self._set_today_counter_locked(cdata, "growth_guide:day_dungeon", dd_val)
+                    if prev_dd is not None and prev_dd == 0 and is_completed:
+                        self._auto_mark_task_locked(
+                            char_name, "daily", "요일 던전", True,
+                            "성장 가이드: 일일 요일 던전 완료"
+                        )
+                        self._record_auto_marked_key_locked(cdata, "daily", "요일 던전")
+                    elif is_completed and allow_static_marks:
                         self._mark_once_locked(
                             char_name, "daily", "요일 던전",
                             "성장 가이드: 일일 요일 던전 완료"
@@ -1637,7 +1845,7 @@ class HomeworkManager:
                     continue
 
                 is_done = is_completed or (rem_count is not None and rem_count <= 0)
-                if is_done:
+                if is_done and allow_static_marks:
                     reason = f"성장 가이드: 주간 {target} 완료"
                     if rem_count is not None and rem_count <= 0:
                         reason += " (남은 0회)"
