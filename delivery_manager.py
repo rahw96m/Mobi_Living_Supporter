@@ -2799,7 +2799,9 @@ class DeliveryManager:
                 "override_current": t.get("override_current"),
                 "is_completed": t.get("is_completed", False)
             })
-        return self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
+        res = self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
+        res["plan_source"] = "custom_targets"
+        return res
 
     def find_craft_recipe(self, item_name: str) -> Optional[Dict[str, Any]]:
         """Finds craft recipe for the exact item_name."""
@@ -3484,6 +3486,7 @@ class DeliveryManager:
         (skipping any facility that still has in-progress or waiting works).
         If preferred_facility is provided, processes that facility first.
         """
+        self._last_collect_blocked_reason: Optional[str] = None
         try:
             works_info = self.cli.get_altering_works()
         except Exception as e:
@@ -3552,6 +3555,7 @@ class DeliveryManager:
                 if max_w > 0 and (cur_w / max_w) >= limit_ratio:
                     pct = (cur_w / max_w) * 100
                     limit_pct = limit_ratio * 100
+                    self._last_collect_blocked_reason = "overweight"
                     self.log(f"[가방 과적 경고] 가방 무게({cur_w:.1f}/{max_w:.1f}, {pct:.1f}%)가 {limit_pct:.0f}% 기준에 도달하여 가공품 수령을 안전하게 멈춥니다.", "warn", callback)
                     break
             except Exception:
@@ -3575,6 +3579,15 @@ class DeliveryManager:
                     alarm_store.delete_alarm(f"{fac}_{it}")
                 time.sleep(0.35)
             except Exception as ex:
+                ex_str = str(ex)
+                ex_data = ex.response_data if isinstance(ex, MabinogiCLIError) and isinstance(ex.response_data, dict) else {}
+                if "continuous_run_limit" in ex_str or ex_data.get("kind") == "continuous_run_limit":
+                    self._last_collect_blocked_reason = "continuous_run_limit"
+                    self.log(
+                        f"     '{fac}' 수령 중 연속 실행 확인 팝업 감지: 인게임에서 '확인' 버튼을 눌러주시면 자동으로 수령을 재개합니다.",
+                        "warn", callback
+                    )
+                    break
                 self.log(f"     '{fac}' 수령 중 알림/오류: {ex}", "warn", callback)
         if collected_facilities:
             self.notify_altering_updated()
@@ -3730,69 +3743,47 @@ class DeliveryManager:
         remaining_needed = needed_target
         max_batch_limit = None
 
-        while remaining_needed > 0:
-            crafts_needed = math.ceil(remaining_needed / produced_per_craft)
-            batch = crafts_needed if max_batch_limit is None else min(crafts_needed, max_batch_limit)
-            self.log(
-                f"[제작 시작] '{item_name}' {batch}회 제작 시도... "
-                f"(필요: {remaining_needed}개, 1회당 산출: {produced_per_craft}개)",
-                "action",
-                callback
-            )
-            try:
-                res = self.cli.execute_crafting(item_name, craft_count=batch)
-                produced_now = 0
-                crit_now = 0
-                for r in res.get("rewards", []):
-                    if r.get("Name") == item_name:
-                        produced_now += r.get("Amount", 0)
-                for r in res.get("criticalRewards", []):
-                    if r.get("Name") == item_name:
-                        c_amt = r.get("Amount", 0)
-                        produced_now += c_amt
-                        crit_now += c_amt
+        try:
+            while remaining_needed > 0:
+                crafts_needed = math.ceil(remaining_needed / produced_per_craft)
+                batch = crafts_needed if max_batch_limit is None else min(crafts_needed, max_batch_limit)
+                self.log(
+                    f"[제작 시작] '{item_name}' {batch}회 제작 시도... "
+                    f"(필요: {remaining_needed}개, 1회당 산출: {produced_per_craft}개)",
+                    "action",
+                    callback
+                )
+                try:
+                    res = self.cli.execute_crafting(item_name, craft_count=batch)
+                    produced_now = 0
+                    crit_now = 0
+                    for r in res.get("rewards", []):
+                        if r.get("Name") == item_name:
+                            produced_now += r.get("Amount", 0)
+                    for r in res.get("criticalRewards", []):
+                        if r.get("Name") == item_name:
+                            c_amt = r.get("Amount", 0)
+                            produced_now += c_amt
+                            crit_now += c_amt
 
-                items_made = max(produced_now, batch * produced_per_craft)
-                total_produced += items_made
-                crit_msg = f" [✨ 대성공 보너스 +{crit_now}개!]" if crit_now > 0 else ""
-                self.log(f"[제작 성공] {batch}회 제작 완료 (산출: +{items_made}개{crit_msg} / 누적: {total_produced}/{needed_target}개)", "success", callback)
+                    items_made = max(produced_now, batch * produced_per_craft)
+                    total_produced += items_made
+                    crit_msg = f" [✨ 대성공 보너스 +{crit_now}개!]" if crit_now > 0 else ""
+                    self.log(f"[제작 성공] {batch}회 제작 완료 (산출: +{items_made}개{crit_msg} / 누적: {total_produced}/{needed_target}개)", "success", callback)
 
-                remaining_needed = max(0, needed_target - total_produced)
-                if remaining_needed <= 0:
-                    self.log(f"[목표 달성] '{item_name}' 필요 수량({needed_target}개) 제작이 완료되어 추가 제작을 종료합니다.", "success", callback)
-                    break
-            except MabinogiCLIError as err:
-                data = err.response_data or {}
-                err_code = data.get("error") if isinstance(data, dict) else ""
+                    remaining_needed = max(0, needed_target - total_produced)
+                    if remaining_needed <= 0:
+                        self.log(f"[목표 달성] '{item_name}' 필요 수량({needed_target}개) 제작이 완료되어 추가 제작을 종료합니다.", "success", callback)
+                        break
+                except MabinogiCLIError as err:
+                    data = err.response_data or {}
+                    err_code = data.get("error") if isinstance(data, dict) else ""
 
-                if err_code == "invalid_count":
-                    max_count = data.get("maxCount", 1)
-                    max_batch_limit = max_count
-                    batch = min(crafts_needed, max_count)
-                    self.log(f"1회 최대 제작량 제한({max_count}회)으로 분할 제작합니다.", "warn", callback)
-                    try:
-                        res = self.cli.execute_crafting(item_name, craft_count=batch)
-                        produced_now = 0
-                        for r in res.get("rewards", []):
-                            if r.get("Name") == item_name:
-                                produced_now += r.get("Amount", 0)
-                        for r in res.get("criticalRewards", []):
-                            if r.get("Name") == item_name:
-                                produced_now += r.get("Amount", 0)
-                        items_made = max(produced_now, batch * produced_per_craft)
-                        total_produced += items_made
-                        remaining_needed = max(0, needed_target - total_produced)
-                        self.log(f"[분할 제작 성공] {batch}회 완료 (산출: +{items_made}개 / 누적: {total_produced}/{needed_target}개)", "success", callback)
-                        if remaining_needed <= 0:
-                            break
-                        continue
-                    except Exception as retry_err:
-                        self.log(f"분할 제작 시도 중 오류: {retry_err}", "warn", callback)
-                        raise retry_err
-                elif err_code == "not_enough_ingredient":
-                    if batch > 1:
-                        batch = max(1, batch // 2)
-                        self.log(f"재료 부족으로 제작 수량을 {batch}회로 낮추어 재시도합니다.", "warn", callback)
+                    if err_code == "invalid_count":
+                        max_count = data.get("maxCount", 1)
+                        max_batch_limit = max_count
+                        batch = min(crafts_needed, max_count)
+                        self.log(f"1회 최대 제작량 제한({max_count}회)으로 분할 제작합니다.", "warn", callback)
                         try:
                             res = self.cli.execute_crafting(item_name, craft_count=batch)
                             produced_now = 0
@@ -3805,90 +3796,204 @@ class DeliveryManager:
                             items_made = max(produced_now, batch * produced_per_craft)
                             total_produced += items_made
                             remaining_needed = max(0, needed_target - total_produced)
-                            self.log(f"[감소 제작 성공] {batch}회 완료 (산출: +{items_made}개)", "success", callback)
+                            self.log(f"[분할 제작 성공] {batch}회 완료 (산출: +{items_made}개 / 누적: {total_produced}/{needed_target}개)", "success", callback)
                             if remaining_needed <= 0:
                                 break
                             continue
-                        except Exception:
-                            pass
-                    # Self-healing for crafting:
-                    recipe = self.get_recipe_ingredients(item_name)
-                    healed = False
-                    if recipe:
-                        for ing_name, per_craft in recipe.items():
-                            inv_cnt = self.cli.count_item(ing_name, include_storage=False)
-                            if inv_cnt < per_craft:
-                                deficit_for_one = per_craft - inv_cnt
-                                is_gath, _ = self.is_gatherable(ing_name)
-                                if is_gath:
-                                    self.log(
-                                        f"[전송기 보충 채집] 가방에 '{ing_name}'이(가) {inv_cnt}개 남아 1회분({per_craft}개) 합산 결제가 지연되었습니다. "
-                                        f"가방 보충을 위해 부족분 {deficit_for_one}개를 즉시 현장 채집합니다.",
-                                        "action",
-                                        callback
-                                    )
-                                    gather_res = self.auto_gather(ing_name, deficit_for_one, is_delivery=False, callback=callback)
-                                    if gather_res.get("gained", 0) > 0 or gather_res.get("status") == "success":
-                                        healed = True
-                    if healed:
-                        try:
-                            res = self.cli.execute_crafting(item_name, craft_count=1)
-                            produced_now = 0
-                            for r in res.get("rewards", []):
-                                if r.get("Name") == item_name:
-                                    produced_now += r.get("Amount", 0)
-                            for r in res.get("criticalRewards", []):
-                                if r.get("Name") == item_name:
-                                    produced_now += r.get("Amount", 0)
-                            items_made = max(produced_now, produced_per_craft)
-                            total_produced += items_made
-                            remaining_needed = max(0, needed_target - total_produced)
-                            self.log(f"[전송기 보충 후 제작 성공] 1회 제작 완료 (산출: +{items_made}개)", "success", callback)
-                            if remaining_needed <= 0:
-                                break
-                            continue
-                        except MabinogiCLIError as retry_err:
-                            self.log(f"보충 후 제작 재시도 실패 ({retry_err})", "warn", callback)
+                        except Exception as retry_err:
+                            self.log(f"분할 제작 시도 중 오류: {retry_err}", "warn", callback)
                             raise retry_err
+                    elif err_code == "not_enough_ingredient":
+                        if batch > 1:
+                            batch = max(1, batch // 2)
+                            self.log(f"재료 부족으로 제작 수량을 {batch}회로 낮추어 재시도합니다.", "warn", callback)
+                            try:
+                                res = self.cli.execute_crafting(item_name, craft_count=batch)
+                                produced_now = 0
+                                for r in res.get("rewards", []):
+                                    if r.get("Name") == item_name:
+                                        produced_now += r.get("Amount", 0)
+                                for r in res.get("criticalRewards", []):
+                                    if r.get("Name") == item_name:
+                                        produced_now += r.get("Amount", 0)
+                                items_made = max(produced_now, batch * produced_per_craft)
+                                total_produced += items_made
+                                remaining_needed = max(0, needed_target - total_produced)
+                                self.log(f"[감소 제작 성공] {batch}회 완료 (산출: +{items_made}개)", "success", callback)
+                                if remaining_needed <= 0:
+                                    break
+                                continue
+                            except Exception:
+                                pass
+                        # Self-healing for crafting:
+                        recipe = self.get_recipe_ingredients(item_name)
+                        healed = False
+                        if recipe:
+                            for ing_name, per_craft in recipe.items():
+                                inv_cnt = self.cli.count_item(ing_name, include_storage=False)
+                                if inv_cnt < per_craft:
+                                    deficit_for_one = per_craft - inv_cnt
+                                    is_gath, _ = self.is_gatherable(ing_name)
+                                    if is_gath:
+                                        self.log(
+                                            f"[전송기 보충 채집] 가방에 '{ing_name}'이(가) {inv_cnt}개 남아 1회분({per_craft}개) 합산 결제가 지연되었습니다. "
+                                            f"가방 보충을 위해 부족분 {deficit_for_one}개를 즉시 현장 채집합니다.",
+                                            "action",
+                                            callback
+                                        )
+                                        gather_res = self.auto_gather(ing_name, deficit_for_one, is_delivery=False, callback=callback)
+                                        if gather_res.get("gained", 0) > 0 or gather_res.get("status") == "success":
+                                            healed = True
+                        if healed:
+                            try:
+                                res = self.cli.execute_crafting(item_name, craft_count=1)
+                                produced_now = 0
+                                for r in res.get("rewards", []):
+                                    if r.get("Name") == item_name:
+                                        produced_now += r.get("Amount", 0)
+                                for r in res.get("criticalRewards", []):
+                                    if r.get("Name") == item_name:
+                                        produced_now += r.get("Amount", 0)
+                                items_made = max(produced_now, produced_per_craft)
+                                total_produced += items_made
+                                remaining_needed = max(0, needed_target - total_produced)
+                                self.log(f"[전송기 보충 후 제작 성공] 1회 제작 완료 (산출: +{items_made}개)", "success", callback)
+                                if remaining_needed <= 0:
+                                    break
+                                continue
+                            except MabinogiCLIError as retry_err:
+                                self.log(f"보충 후 제작 재시도 실패 ({retry_err})", "warn", callback)
+                                raise retry_err
+                        else:
+                            raise err
                     else:
                         raise err
-                else:
-                    raise err
+        finally:
+            # Always record any produced items (including partial crafts before an error)
+            if total_produced > 0:
+                if item_name in delivery_target_store.targets:
+                    t = delivery_target_store.targets[item_name]
+                    prev = int(t.get("current", 0))
+                    new_cur = prev + total_produced
+                    goal = int(t.get("goal", 1))
+                    t["current"] = new_cur
+                    if t.get("override_current") is not None:
+                        t["override_current"] = new_cur
+                    t["needed"] = max(0, goal - new_cur)
+                    t["is_completed"] = (new_cur >= goal)
+                    t["last_crafted_at"] = time.time()
+                    t["updated_at"] = int(time.time() * 1000)
+                    delivery_target_store.targets[item_name] = t
+                    delivery_target_store.save()
+                    self.log(f"[납품 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 -> 현재 {new_cur}/{goal}개", "info", callback)
 
-        # Update delivery_target_store if this item is in registered targets
-        if item_name in delivery_target_store.targets and total_produced > 0:
-            t = delivery_target_store.targets[item_name]
-            prev = int(t.get("current", 0))
-            new_cur = prev + total_produced
-            goal = int(t.get("goal", 1))
+                if item_name in custom_target_store.targets:
+                    ct = custom_target_store.targets[item_name]
+                    prev_c = int(ct.get("current", 0))
+                    new_cur_c = prev_c + total_produced
+                    goal_c = int(ct.get("goal", 1))
+                    ct["current"] = new_cur_c
+                    if ct.get("override_current") is not None:
+                        ct["override_current"] = new_cur_c
+                    ct["needed"] = max(0, goal_c - new_cur_c)
+                    ct["is_completed"] = (new_cur_c >= goal_c)
+                    ct["updated_at"] = int(time.time() * 1000)
+                    custom_target_store.targets[item_name] = ct
+                    custom_target_store.save()
+                    self.log(f"[개별 제작 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 -> 현재 {new_cur_c}/{goal_c}개", "info", callback)
+
+        return total_produced
+
+    @staticmethod
+    def _record_task_progress(tasks: List[Dict[str, Any]], item_name: str, delta_qty: int) -> None:
+        """Applies crafted/gathered progress directly to in-memory batch tasks so BOM never stays stale."""
+        if delta_qty <= 0 or not item_name:
+            return
+        for t in tasks:
+            if t.get("item_name") != item_name:
+                continue
+            prev_cur = int(t.get("current", 0) or 0)
+            goal = int(t.get("goal", 1) or 1)
+            prev_needed = int(t.get("needed", max(0, goal - prev_cur)) or 0)
+            new_cur = prev_cur + delta_qty
+            new_needed = max(0, prev_needed - delta_qty)
+            if t.get("quest_title") != "개별 지정 제작" and t.get("override_current") is None:
+                new_needed = min(new_needed, max(0, goal - new_cur))
             t["current"] = new_cur
             if t.get("override_current") is not None:
                 t["override_current"] = new_cur
-            t["needed"] = max(0, goal - new_cur)
-            t["is_completed"] = (new_cur >= goal)
-            t["last_crafted_at"] = time.time()
-            t["updated_at"] = int(time.time() * 1000)
-            delivery_target_store.targets[item_name] = t
-            delivery_target_store.save()
-            self.log(f"[납품 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 -> 현재 {new_cur}/{goal}개", "info", callback)
+            t["needed"] = new_needed
+            t["is_completed"] = (new_needed <= 0)
 
-        # Update custom_target_store if this item is in registered custom targets
-        if item_name in custom_target_store.targets and total_produced > 0:
-            ct = custom_target_store.targets[item_name]
-            prev_c = int(ct.get("current", 0))
-            new_cur_c = prev_c + total_produced
-            goal_c = int(ct.get("goal", 1))
-            ct["current"] = new_cur_c
-            if ct.get("override_current") is not None:
-                ct["override_current"] = new_cur_c
-            ct["needed"] = max(0, goal_c - new_cur_c)
-            ct["is_completed"] = (new_cur_c >= goal_c)
-            ct["updated_at"] = int(time.time() * 1000)
-            custom_target_store.targets[item_name] = ct
-            custom_target_store.save()
-            self.log(f"[개별 제작 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 -> 현재 {new_cur_c}/{goal_c}개", "info", callback)
+    def _refresh_custom_tasks_from_inventory(self, tasks: List[Dict[str, Any]]) -> None:
+        """Updates non-overridden ad-hoc tasks against live inventory without losing recorded equipment progress."""
+        for t in tasks:
+            if t.get("override_current") is not None:
+                continue
+            item_name = t.get("item_name", "")
+            if not item_name:
+                continue
+            is_custom_t = (t.get("quest_title") == "개별 지정 제작")
+            goal = int(t.get("goal", 1) or 1)
+            prev_cur = int(t.get("current", 0) or 0)
+            live_cnt = self.cli.count_item(item_name, include_storage=is_custom_t)
+            # Keep max with prev_cur because get_items may omit crafted equipment
+            new_cur = max(prev_cur, live_cnt)
+            new_needed = max(0, goal - new_cur)
+            t["current"] = new_cur
+            t["needed"] = new_needed
+            t["is_completed"] = (new_needed <= 0)
 
-        return total_produced
+    def _reanalyze_execution_plan(
+        self,
+        plan_source: str,
+        tasks: List[Dict[str, Any]],
+        alter_order: str,
+        session_crafted_items: Optional[set] = None,
+    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """Invalidates CLI caches and recomputes the live batch BOM using current targets & stock."""
+        self.cli.invalidate_cache()
+        prev_by_item = {t.get("item_name"): t for t in tasks if t.get("item_name")}
+
+        if plan_source == "weekly_delivery":
+            fresh_plan = self.analyze_batch_plan(custom_tasks=None, alter_order=alter_order)
+            # Guard unregistered quest-only crafted equipment omitted by get_items/quest tracker
+            if session_crafted_items:
+                needs_patch = False
+                for t_new in fresh_plan.get("tasks", []):
+                    nm = t_new.get("item_name")
+                    prev_t = prev_by_item.get(nm)
+                    if nm in session_crafted_items and prev_t and int(t_new.get("needed", 0) or 0) > int(prev_t.get("needed", 0) or 0):
+                        t_new["current"] = max(int(t_new.get("current", 0) or 0), int(prev_t.get("current", 0) or 0))
+                        t_new["needed"] = int(prev_t.get("needed", 0) or 0)
+                        t_new["is_completed"] = (t_new["needed"] <= 0)
+                        needs_patch = True
+                if needs_patch:
+                    fresh_plan = self.analyze_batch_plan(custom_tasks=fresh_plan.get("tasks", []), alter_order=alter_order)
+                    fresh_plan["plan_source"] = "weekly_delivery"
+        elif plan_source == "custom_targets":
+            fresh_plan = self.analyze_custom_plan(alter_order=alter_order)
+        else:
+            self._refresh_custom_tasks_from_inventory(tasks)
+            fresh_plan = self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
+
+        return fresh_plan, fresh_plan.get("tasks", tasks)
+
+    def _sleep_with_abort(
+        self,
+        seconds: float,
+        status_reporter: Optional[Callable[[str], None]] = None,
+        status_text: str = "",
+    ) -> None:
+        """Sleeps in short increments while honoring abort_requested and reporting status."""
+        wake_time = time.time() + max(0.0, seconds)
+        while time.time() < wake_time:
+            if self.abort_requested:
+                break
+            rem = max(0.0, wake_time - time.time())
+            if status_reporter and status_text:
+                status_reporter(status_text)
+            time.sleep(min(1.0, max(0.2, rem)))
 
     # =========================================================================
     # UNIFIED BATCH PRODUCTION PLANNER (통합 일괄 납품 플래너)
@@ -3947,6 +4052,7 @@ class DeliveryManager:
 
         if not tasks_to_plan:
             return {
+                "plan_source": "custom_tasks" if custom_tasks is not None else "weekly_delivery",
                 "tasks": [],
                 "intermediate_requirements": [],
                 "raw_materials": [],
@@ -4433,6 +4539,7 @@ class DeliveryManager:
             estimated_eta_text = "즉시 완료"
 
         return {
+            "plan_source": "custom_tasks" if custom_tasks is not None else "weekly_delivery",
             "tasks": tasks_to_plan,
             "targets": tasks_to_plan,
             "custom_tasks": tasks_to_plan,
@@ -4637,6 +4744,8 @@ class DeliveryManager:
         intermediate_reqs = plan.get("intermediate_requirements", [])
         tasks = plan.get("tasks", [])
         raw_mats = plan.get("raw_materials", [])
+        plan_source = plan.get("plan_source") or ("custom_tasks" if tasks else "weekly_delivery")
+        session_crafted_items: set = set()
 
         # Stage 1: Collect any completed altering works across all facilities first!
         self.log("[사전 가공품 수령] 모든 시설의 완료된 가공품을 수령하여 슬롯을 비우고 재료를 확보합니다.", "action", callback)
@@ -4644,9 +4753,8 @@ class DeliveryManager:
         if collected_facilities:
             collected_facilities_all.extend(collected_facilities)
             self.log("[BOM 재계산] 완료 가공품 수령으로 재고가 변동되어 최적 필요 수량을 재계산합니다.", "info", callback)
-            plan = self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
+            plan, tasks = self._reanalyze_execution_plan(plan_source, tasks, alter_order, session_crafted_items)
             intermediate_reqs = plan.get("intermediate_requirements", [])
-            tasks = plan.get("tasks", [])
             raw_mats = plan.get("raw_materials", [])
 
         if self.abort_requested:
@@ -4714,6 +4822,8 @@ class DeliveryManager:
                     try:
                         g_res = self.auto_gather(g_name, g_deficit, callback=callback)
                         gained = g_res.get("gained", 0) if isinstance(g_res, dict) else 0
+                        if gained > 0:
+                            self._record_task_progress(tasks, g_name, gained)
                         gathered_list.append({
                             "item": g_name,
                             "gained": gained,
@@ -4959,6 +5069,8 @@ class DeliveryManager:
         new_collected = self.collect_completed_altering_works(callback=callback)
         if new_collected:
             collected_facilities_all.extend(new_collected)
+            plan, tasks = self._reanalyze_execution_plan(plan_source, tasks, alter_order, session_crafted_items)
+            raw_mats = plan.get("raw_materials", raw_mats)
 
         # Stage 4: Immediate Batch Crafting for any ready tasks!
         self.log("[납품 완제품 제작 단계] 현재 가방/창고 상태에서 즉시 제작 가능한 납품 아이템을 확인합니다.", "action", callback)
@@ -5052,6 +5164,9 @@ class DeliveryManager:
                 self.log(f"[완제품 제작 시작] '{item_name}' {needed}개 제작 진행... (현재 보유: {cur_owned}개{storage_info}, 목표: {goal}개)", "action", callback)
                 try:
                     crafted_count = self.auto_craft(item_name, needed, callback=callback)
+                    if crafted_count > 0:
+                        session_crafted_items.add(item_name)
+                        self._record_task_progress(tasks, item_name, crafted_count)
                     craft_results.append({"item_name": item_name, "crafted": crafted_count, "status": "success"})
                     self.log(f"'{item_name}' {crafted_count}개 제작 완료!", "success", callback)
                 except Exception as e:
@@ -5072,10 +5187,15 @@ class DeliveryManager:
                 t_goal = int(t.get("goal", 1))
                 is_custom_t = bool(t.get("quest_title") == "개별 지정 제작")
                 has_ovr = (t.get("override_current") is not None)
-                cur_o = self.get_effective_owned(t_name, include_storage=is_custom_t)
-                needed_cnt = int(t.get("needed", 0)) if (is_custom_t or has_ovr) else max(0, t_goal - cur_o)
-                if needed_cnt > 0 and cur_o < t_goal:
-                    return False
+                if is_custom_t or has_ovr:
+                    if int(t.get("needed", 0) or 0) > 0:
+                        return False
+                else:
+                    if t.get("needed") is not None and int(t.get("needed", 0) or 0) <= 0:
+                        continue
+                    cur_o = self.get_effective_owned(t_name, include_storage=False)
+                    if max(0, t_goal - cur_o) > 0 and cur_o < t_goal:
+                        return False
             return True
 
         # Goal Fulfillment Mode Loop (목표 완수 모드: 전 단계 수령 -> 다음 가공 -> 완제품까지 자율 완주)
@@ -5083,6 +5203,7 @@ class DeliveryManager:
             enable_prevent_sleep()
             self.log("[목표 완수 모드 가동] PC 절전 방지 활성화. 가공 완료 수령 -> 다음 티어 가공 -> 완제품 제작까지 연속 진행합니다.", "action", callback)
             cycle = 1
+            pending_craft_after_alter = False
             try:
                 while not self.abort_requested:
                     if _are_all_tasks_fulfilled():
@@ -5127,11 +5248,18 @@ class DeliveryManager:
                         continue
 
                     completed_count = int(works_info.get("completedCount", 0) or 0)
+                    new_colls: List[str] = []
+                    collect_failed_this_cycle = False
                     if completed_count > 0:
                         self.log(f"[완료 가공품 감지] 총 {completed_count}건의 완료 가공품을 일괄 수령합니다.", "action", callback)
                         new_colls = self.collect_completed_altering_works(callback=callback)
+                        if not new_colls:
+                            collect_failed_this_cycle = True
+                    if new_colls or pending_craft_after_alter:
+                        pending_craft_after_alter = False
                         if new_colls:
                             collected_facilities_all.extend(new_colls)
+                        if not self.abort_requested:
                             self.cli.invalidate_cache()
 
                             # Try crafting any newly ready tasks with fresh materials
@@ -5145,7 +5273,9 @@ class DeliveryManager:
                                 has_ovr = (t.get("override_current") is not None)
                                 cur_o = self.get_effective_owned(item_name, include_storage=is_custom_t)
                                 needed_cnt = int(t.get("needed", 0)) if (is_custom_t or has_ovr) else max(0, goal - cur_o)
-                                if needed_cnt <= 0 or cur_o >= goal:
+                                if not is_custom_t and not has_ovr and t.get("needed") is not None:
+                                    needed_cnt = min(needed_cnt, int(t.get("needed", needed_cnt) or 0))
+                                if needed_cnt <= 0 or (not is_custom_t and not has_ovr and cur_o >= goal):
                                     continue
 
                                 recipe = self.get_recipe_ingredients(item_name)
@@ -5162,6 +5292,9 @@ class DeliveryManager:
                                 if can_craft:
                                     try:
                                         c_cnt = self.auto_craft(item_name, needed_cnt, callback=callback)
+                                        if c_cnt > 0:
+                                            session_crafted_items.add(item_name)
+                                            self._record_task_progress(tasks, item_name, c_cnt)
                                         craft_results.append({"item_name": item_name, "crafted": c_cnt, "status": "success"})
                                         self.log(f"'{item_name}' {c_cnt}개 추가 제작 완료!", "success", callback)
                                     except Exception as ce:
@@ -5171,8 +5304,26 @@ class DeliveryManager:
                                 self.log("[목표 완수 성공!] 모든 목표가 달성되었습니다!", "success", callback)
                                 break
 
-                    # 5. Try queuing next-tier alters into free slots
-                    plan_fresh = self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
+                    if collect_failed_this_cycle and getattr(self, "_last_collect_blocked_reason", None) == "continuous_run_limit":
+                        self.log("[연속 실행 팝업 대기] 게임 내 확인 팝업을 누를 때까지 15초 대기 후 수령을 재시도합니다.", "warn", callback)
+                        self._sleep_with_abort(
+                            15,
+                            status_reporter=status_reporter,
+                            status_text=f"[목표 완수 모드 {cycle}회차] 게임 내 '연속 실행 확인' 팝업 확인 대기 중..."
+                        )
+                        cycle += 1
+                        continue
+
+                    if _are_all_tasks_fulfilled():
+                        self.log("[목표 완수 성공!] 모든 목표 아이템 수량이 100% 달성되었습니다!", "success", callback)
+                        break
+
+                    # 5. Try queuing next-tier alters into free slots (refresh live targets & inventory first)
+                    plan_fresh, tasks = self._reanalyze_execution_plan(plan_source, tasks, alter_order, session_crafted_items)
+                    raw_mats = plan_fresh.get("raw_materials", raw_mats)
+                    if plan_fresh.get("all_completed"):
+                        self.log("[목표 완수 성공!] 모든 목표 아이템 수량이 100% 달성되었습니다!", "success", callback)
+                        break
                     fresh_inter = plan_fresh.get("intermediate_requirements", [])
                     works_info = self.cli.get_altering_works()
                     current_q_works = works_info.get("works", [])
@@ -5215,6 +5366,11 @@ class DeliveryManager:
                                 fac_used[fac] += reg_cnt
                                 if reg_cnt > 0:
                                     registered_any_new = True
+                                    alt_status = alt_res.get("status") if isinstance(alt_res, dict) else ""
+                                    if alt_status not in ("waiting_in_background", "slot_full_skipped", "ingredient_missing_skipped"):
+                                        # Short <=45s work was collected synchronously by auto_alter; trigger craft check!
+                                        pending_craft_after_alter = True
+                                        self.cli.invalidate_cache()
                                     altered_list.append({
                                         "item": mat_name,
                                         "recipe": rec_name,
@@ -5232,6 +5388,9 @@ class DeliveryManager:
                     pending_works = [w for w in all_works if not w.get("IsCompleted") and w.get("State") in ("InProgress", "NotStarted")]
 
                     if not pending_works:
+                        if pending_craft_after_alter:
+                            cycle += 1
+                            continue
                         if not registered_any_new:
                             self.log("[목표 완수 종료] 더 이상 진행 가능한 가공 작업이 없습니다 (원자재 소진 또는 대기열 없음).", "info", callback)
                             break
@@ -5254,7 +5413,8 @@ class DeliveryManager:
                     wait_minutes = math.ceil(wait_seconds / 60)
 
                     # --- [스마트 파이프라인] 가공 대기 시간 중 차기 배치 예측 선채집 ---
-                    plan_current = self.analyze_batch_plan(custom_tasks=tasks, alter_order=alter_order)
+                    plan_current, tasks = self._reanalyze_execution_plan(plan_source, tasks, alter_order, session_crafted_items)
+                    raw_mats = plan_current.get("raw_materials", raw_mats)
                     next_demands = self.calculate_slot_filling_gather_demands(plan_current, max_slots_per_facility=MAX_SLOTS, lookahead_batches=2)
 
                     if next_demands and min_fac_remaining >= 25 and not self.abort_requested:
@@ -5286,6 +5446,8 @@ class DeliveryManager:
                             try:
                                 g_res = self.auto_gather(n_name, n_qty, callback=callback)
                                 gained = g_res.get("gained", 0) if isinstance(g_res, dict) else 0
+                                if gained > 0:
+                                    self._record_task_progress(tasks, n_name, gained)
                                 gathered_list.append({
                                     "item": n_name,
                                     "gained": gained,
@@ -5308,7 +5470,7 @@ class DeliveryManager:
                     try:
                         recheck_works = self.cli.get_altering_works()
                         self.notify_altering_updated(recheck_works)
-                        if int(recheck_works.get("completedCount", 0) or 0) > 0:
+                        if not collect_failed_this_cycle and int(recheck_works.get("completedCount", 0) or 0) > 0:
                             # Already has completed works, proceed immediately to collect
                             cycle += 1
                             continue
@@ -5355,6 +5517,8 @@ class DeliveryManager:
         else:
             status_str = "waiting_in_background" if queued_any_long else "completed"
             title_str = "주간 납품 작업 완료"
+
+        special_needed = [r for r in raw_mats if r.get("deficit", 0) > 0 and (r.get("is_special_obtain") or not r.get("is_gatherable"))]
 
         summary = self.format_and_log_summary(
             summary_title=title_str,
