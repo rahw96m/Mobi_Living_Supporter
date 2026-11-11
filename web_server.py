@@ -4417,7 +4417,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         font-size: 12px;
       }
       .btn-mcb-start,
-      .btn-solid-core,
+      .btn-solid-core:not(.btn-sm),
       .btn-danger-abort {
         padding: 0 16px !important;
         font-size: 14px !important;
@@ -4469,6 +4469,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       cursor: pointer;
       transition: all 0.12s ease;
       font-family: var(--font-sans);
+      box-sizing: border-box;
+    }
+    .top-mode-btn > span:first-child {
+      white-space: nowrap;
     }
     .top-mode-btn::before, .top-mode-btn::after {
       content: none !important;
@@ -4494,6 +4498,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       background: var(--tab-pill-bg);
       color: var(--text-muted);
       font-family: var(--font-mono);
+      white-space: nowrap;
     }
     .top-mode-btn.active .top-mode-pill {
       background: var(--invert-text) !important;
@@ -4765,7 +4770,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     #hw-mcb-briefing {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px 8px;
       font-size: var(--fs-md);
       font-weight: 600;
       color: var(--text-bright);
@@ -4774,7 +4779,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       flex-wrap: wrap;
       width: 100%;
       padding-bottom: 8px;
-      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+      border-bottom: 1px dashed var(--line-subtle);
     }
     .hw-mcb-controls-row {
       display: flex;
@@ -4833,6 +4838,115 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: 700;
       color: var(--text-bright);
       font-family: var(--font-mono);
+    }
+
+    /* Narrow-Window / Split-Screen Responsive Overrides (<= 820px & <= 540px) */
+    @media (max-width: 820px) {
+      body {
+        padding: 10px 12px 28px;
+      }
+      .container {
+        padding: 0;
+      }
+      header {
+        position: static;
+        top: auto;
+      }
+      .master-command-bar {
+        position: static;
+        top: auto;
+      }
+      .logo-area {
+        width: 100%;
+      }
+      .top-mode-switcher {
+        margin-left: 0;
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .top-mode-btn {
+        width: 100%;
+        min-width: 0;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+      .top-mode-pill {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 11px;
+      }
+      .header-actions {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 4px 10px;
+      }
+      #master-command-bar .mcb-mode-tabs {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      #master-command-bar .mcb-mode-tab {
+        flex: 1 1 auto;
+        min-width: 0;
+        white-space: nowrap;
+        justify-content: center;
+      }
+      #homework-master-command-bar .mcb-mode-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        overflow-x: visible;
+        gap: 6px;
+      }
+      #homework-master-command-bar .mcb-mode-tab {
+        width: 100%;
+        min-width: 0;
+        justify-content: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 5px 6px;
+        font-size: 12px;
+      }
+      .hw-mcb-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .hw-mcb-controls-row .mcb-options-row {
+        gap: 6px 12px;
+      }
+      .hw-mcb-controls-row .mcb-right {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: stretch;
+        margin-left: 0;
+        gap: 6px;
+      }
+      #btn-hw-focus-mode,
+      #btn-hw-rollback {
+        flex: 1 1 0;
+        min-width: 0;
+        justify-content: center;
+        white-space: nowrap;
+      }
+      #btn-hw-complete-step {
+        flex: 1 0 100%;
+        width: 100%;
+        max-width: 100%;
+      }
+    }
+    @media (max-width: 540px) {
+      .title h1 {
+        font-size: 18px;
+      }
+      #homework-master-command-bar .mcb-mode-tab {
+        font-size: 11px;
+        padding: 5px 4px;
+      }
     }
   </style>
 </head>
@@ -6634,6 +6748,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     window.addEventListener('resize', updateStickyHeaderOffset);
     window.addEventListener('orientationchange', updateStickyHeaderOffset);
+    if (window.ResizeObserver) {
+      document.addEventListener('DOMContentLoaded', () => {
+        const header = document.querySelector('header');
+        if (header) {
+          new ResizeObserver(updateStickyHeaderOffset).observe(header);
+        }
+      });
+    }
 
     // ==========================================
     // Modern CLI Text Helpers (Gauge & Spinner)
@@ -12417,7 +12539,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const catKey = step.cat_key || (step.cat_title && step.cat_title.includes('집중') ? 'focus' : (step.cat_title && step.cat_title.includes('주간') ? 'weekly' : 'daily'));
           const catTagClass = `hw-cat-tag-${catKey}`;
           const gaugeStr = typeof makeTextGauge === 'function' ? makeTextGauge(step.cat_done, step.cat_total, 5) : '';
-          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <span class="badge-dim ${catTagClass}" style="margin: 0 4px;">${escapeHtml(step.cat_title)}</span> <strong style="color: var(--text-bright); display: inline-flex; align-items: center;">${formatTaskNameHtml(step.task_name)}</strong> <span class="cli-gauge" style="margin-left: 4px;">${gaugeStr}</span> <span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span>`;
+          briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> 현재 추천 순서: <span class="badge-dim ${catTagClass}" style="margin: 0 2px;">${escapeHtml(step.cat_title)}</span> <strong style="color: var(--text-bright); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">${formatTaskNameHtml(step.task_name)}</strong> <span class="hw-briefing-progress" style="display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;"><span class="cli-gauge">${gaugeStr}</span><span class="mono-num" style="color: var(--text-muted);">(${step.cat_done}/${step.cat_total})</span></span>`;
         } else {
           briefingEl.innerHTML = `<span class="sym-prefix">&gt;</span>${modeTag}<strong>[${escapeHtml(actChar.name)}${escapeHtml(clsText)}]</strong> <span class="badge">${focusMode ? '=== 집중 숙제 100% 달성 ===' : '=== 일일·주간 숙제 100% 달성 ==='}</span>`;
         }
