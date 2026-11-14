@@ -1043,6 +1043,34 @@ class RegisteredDeliveryStore:
         self._lock = threading.RLock()
         self.load()
 
+    def get_ingame_character_id(self) -> str:
+        """Returns the matched in-game character ID if known, else falls back to active_character_id."""
+        with self._lock:
+            if not self.multi_character:
+                return ""
+            self._ensure_active_character_locked()
+            if self.matched_ingame_character_id and self.matched_ingame_character_id in self.characters:
+                return self.matched_ingame_character_id
+            return self.active_character_id
+
+    def get_ingame_character_name(self) -> str:
+        """Returns the display name of the logged-in character profile."""
+        with self._lock:
+            if not self.multi_character:
+                return ""
+            cid = self.get_ingame_character_id()
+            if cid and cid in self.characters:
+                return self.characters[cid].get("name", cid)
+            return "현재 캐릭터"
+
+    def _can_update_ingame_targets_locked(self) -> bool:
+        """Returns True when an in-game character target store can safely receive live updates."""
+        if not self.multi_character:
+            return True
+        if self.matched_ingame_character_id and self.matched_ingame_character_id in self.characters:
+            return True
+        return self.is_active_character_ingame()
+
     @property
     def targets(self) -> Dict[str, Dict[str, Any]]:
         with self._lock:
@@ -1059,6 +1087,15 @@ class RegisteredDeliveryStore:
             else:
                 self._ensure_active_character_locked()
                 self.characters[self.active_character_id]["targets"] = value if isinstance(value, dict) else {}
+
+    @property
+    def ingame_targets(self) -> Dict[str, Dict[str, Any]]:
+        """Targets dictionary for the character currently logged into the game (independent of viewed tab)."""
+        with self._lock:
+            if not self.multi_character:
+                return self._flat_targets
+            cid = self.get_ingame_character_id()
+            return self.characters[cid]["targets"]
 
     def _check_weekly_reset_locked(self) -> bool:
         """
@@ -1679,7 +1716,14 @@ class RegisteredDeliveryStore:
                 keys.insert(idx_t, item)
             return self.reorder_targets(keys, sync_order_all_characters=sync_order_all_characters)
 
-    def add_or_update(self, item_name: str, goal: int, current: int = 0, quest_title: str = "주간 납품") -> Dict[str, Any]:
+    def add_or_update(
+        self,
+        item_name: str,
+        goal: int,
+        current: int = 0,
+        quest_title: str = "주간 납품",
+        use_ingame_character: bool = False,
+    ) -> Dict[str, Any]:
         with self._lock:
             key = item_name.strip()
             needed = max(0, int(goal) - int(current))
@@ -1693,7 +1737,8 @@ class RegisteredDeliveryStore:
                 "override_current": None,
                 "updated_at": int(time.time() * 1000)
             }
-            self.targets[key] = data
+            target_map = self.ingame_targets if use_ingame_character else self.targets
+            target_map[key] = data
             self.save()
             return data
 
@@ -1763,6 +1808,16 @@ class RegisteredDeliveryStore:
     def get_all(self) -> List[Dict[str, Any]]:
         with self._lock:
             return [dict(t) for t in self.targets.values()]
+
+    def get_all_for_character(self, char_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns a shallow copy list of targets for `char_id` (or `active_character_id` if omitted)."""
+        with self._lock:
+            if not self.multi_character:
+                return [dict(t) for t in self._flat_targets.values()]
+            self._ensure_active_character_locked()
+            cid = char_id if (char_id and char_id in self.characters) else self.active_character_id
+            t_map = self.characters[cid].get("targets") or {}
+            return [dict(t) for t in t_map.values()]
 
 delivery_target_store = RegisteredDeliveryStore()
 
@@ -2635,11 +2690,91 @@ class DeliveryManager:
         self._cached_quests_time = time.time()
         return list(res_list)
 
+    def _ensure_ingame_character_synced(self, force_refresh: bool = False) -> str:
+        """
+        Ensures `delivery_target_store.matched_ingame_character_id` reflects the currently
+        logged-in character without forcibly switching the user's viewed UI tab.
+        """
+        try:
+            if force_refresh or not delivery_target_store.matched_ingame_character_id:
+                if hasattr(self.cli, "get_my_info"):
+                    cinfo = self.cli.get_my_info(bypass_cache=force_refresh)
+                    if isinstance(cinfo, dict) and cinfo:
+                        delivery_target_store.on_ingame_character_seen(cinfo, allow_auto_switch=False)
+        except Exception:
+            pass
+        return delivery_target_store.get_ingame_character_id()
+
+    def _apply_progress_to_registered_stores(
+        self,
+        item_name: str,
+        delta: int,
+        action_label: str,
+        mark_last_crafted: bool = False,
+        callback: Optional[LogCallback] = None,
+    ) -> None:
+        """
+        Applies crafted/gathered quantity gains to the logged-in character's weekly delivery
+        targets (`ingame_targets`, regardless of viewed tab) and to custom craft targets.
+        """
+        if delta <= 0 or not item_name:
+            return
+
+        self._ensure_ingame_character_synced(force_refresh=False)
+        with delivery_target_store._lock:
+            if delivery_target_store._can_update_ingame_targets_locked():
+                ingame_map = delivery_target_store.ingame_targets
+                d_key = (
+                    item_name
+                    if item_name in ingame_map
+                    else next((k for k in ingame_map.keys() if k.strip() == item_name.strip()), None)
+                )
+                if d_key is not None:
+                    t = ingame_map[d_key]
+                    prev = int(t.get("current", 0))
+                    new_cur = prev + delta
+                    goal = int(t.get("goal", 1))
+                    t["current"] = new_cur
+                    if t.get("override_current") is not None:
+                        t["override_current"] = new_cur
+                    t["needed"] = max(0, goal - new_cur)
+                    t["is_completed"] = (new_cur >= goal)
+                    if mark_last_crafted:
+                        t["last_crafted_at"] = time.time()
+                    t["updated_at"] = int(time.time() * 1000)
+                    ingame_map[d_key] = t
+                    delivery_target_store.save()
+                    ingame_name = delivery_target_store.get_ingame_character_name()
+                    char_tag = f"[{ingame_name}] " if ingame_name else ""
+                    self.log(f"[납품 목표 갱신] {char_tag}'{item_name}' {action_label} 반영 -> 현재 {new_cur}/{goal}개", "info", callback)
+
+        with custom_target_store._lock:
+            c_map = custom_target_store.targets
+            c_key = (
+                item_name
+                if item_name in c_map
+                else next((k for k in c_map.keys() if k.strip() == item_name.strip()), None)
+            )
+            if c_key is not None:
+                ct = c_map[c_key]
+                prev_c = int(ct.get("current", 0))
+                new_cur_c = prev_c + delta
+                goal_c = int(ct.get("goal", 1))
+                ct["current"] = new_cur_c
+                if ct.get("override_current") is not None:
+                    ct["override_current"] = new_cur_c
+                ct["needed"] = max(0, goal_c - new_cur_c)
+                ct["is_completed"] = (new_cur_c >= goal_c)
+                ct["updated_at"] = int(time.time() * 1000)
+                c_map[c_key] = ct
+                custom_target_store.save()
+                self.log(f"[개별 제작 목표 갱신] '{item_name}' {action_label} 반영 -> 현재 {new_cur_c}/{goal_c}개", "info", callback)
+
     def get_effective_owned(self, item_name: str, include_storage: bool = True) -> int:
         """
         Returns how many of item_name the player owns (in bag, character storage, and account storage).
         For equipment/finished goods (which get_items omits), checks active quest objective count if available,
-        or falls back to persistent registered target count if present.
+        or falls back to the in-game character's persistent registered target count if present.
         """
         total_count = self.cli.count_item(item_name, include_storage=include_storage)
         if total_count > 0:
@@ -2650,26 +2785,24 @@ class DeliveryManager:
             if task.item_name == item_name:
                 quest_current = max(quest_current, task.current)
 
-        # Fallback to persistent registered target count if recorded
+        # Fallback to persistent registered target count on the logged-in character
         store_current = 0
-        if item_name in delivery_target_store.targets:
-            store_current = int(delivery_target_store.targets[item_name].get("current", 0))
+        with delivery_target_store._lock:
+            if delivery_target_store._can_update_ingame_targets_locked():
+                ingame_map = delivery_target_store.ingame_targets
+                if item_name in ingame_map:
+                    store_current = int(ingame_map[item_name].get("current", 0))
 
         return max(quest_current, store_current)
 
-    def get_registered_deliveries_with_status(self) -> List[Dict[str, Any]]:
-        """
-        Returns all registered weekly delivery targets, with real-time current counts
-        queried from the game client.
-        CRITICAL: For direct delivery targets (items to be handed in directly, e.g. 마법 유탄 부품, 우유, 달걀),
-        warehouse/storage (창고) counts are EXCLUDED from current owned count so only inventory (가방) count
-        is counted towards completion. Storage counts remain displayed in breakdown for user reference.
-        Never overwrites a known positive count with 0 when an item is unpinned or not returned by get_items.
-        Never resurrects targets deleted by the user while status polling was in progress.
-        """
-        targets = delivery_target_store.get_all()
-        is_ingame_char = delivery_target_store.is_active_character_ingame()
-        active_delivery_tasks = {t.item_name: t for t in self.detect_delivery_quests()} if is_ingame_char else {}
+    def _sync_single_character_targets(
+        self,
+        char_id: Optional[str],
+        sync_live: bool,
+        active_delivery_tasks: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Refreshes target status & recipes for one character profile (querying CLI only when `sync_live=True`)."""
+        targets = delivery_target_store.get_all_for_character(char_id)
         dirty = False
 
         for t in targets:
@@ -2677,7 +2810,7 @@ class DeliveryManager:
             goal = int(t.get("goal", 1))
             prev_current = int(t.get("current", 0))
 
-            if is_ingame_char:
+            if sync_live:
                 breakdown = self.cli.get_item_location_breakdown(item_name)
                 inv_count = breakdown["inventory"]
 
@@ -2703,7 +2836,7 @@ class DeliveryManager:
                 t["account_storage_count"] = breakdown["account_storage"]
                 t["storage_count"] = breakdown["storage_total"]
             else:
-                # Viewing an offline character tab: do NOT overwrite its bag progress with the logged-in character's bag
+                # Offline character tab: do NOT overwrite its bag progress with the logged-in character's bag
                 if t.get("override_current") is not None:
                     current = int(t["override_current"])
                 else:
@@ -2729,20 +2862,55 @@ class DeliveryManager:
 
             # Guard against resurrecting items deleted while this polling cycle was running
             with delivery_target_store._lock:
-                if item_name not in delivery_target_store.targets and item_name.strip() not in [k.strip() for k in delivery_target_store.targets.keys()]:
+                if delivery_target_store.multi_character and char_id and char_id in delivery_target_store.characters:
+                    t_map = delivery_target_store.characters[char_id]["targets"]
+                else:
+                    t_map = delivery_target_store.targets
+                if item_name not in t_map and item_name.strip() not in [k.strip() for k in t_map.keys()]:
                     continue
-                delivery_target_store.targets[item_name] = t
+                t_map[item_name] = t
 
         if dirty:
             delivery_target_store.save()
-        return delivery_target_store.get_all()
+        return delivery_target_store.get_all_for_character(char_id)
+
+    def get_registered_deliveries_with_status(self, for_ingame: bool = False) -> List[Dict[str, Any]]:
+        """
+        Returns registered weekly delivery targets with real-time bag counts for the logged-in
+        character and preserved stored counts for offline viewed characters.
+        When `for_ingame=True`, returns the logged-in character's targets regardless of viewed tab.
+        """
+        if not delivery_target_store.multi_character:
+            active_tasks = {t.item_name: t for t in self.detect_delivery_quests()}
+            return self._sync_single_character_targets(None, True, active_tasks)
+
+        with delivery_target_store._lock:
+            delivery_target_store._ensure_active_character_locked()
+            active_cid = delivery_target_store.active_character_id
+            ingame_cid = delivery_target_store.get_ingame_character_id()
+            can_sync_ingame = delivery_target_store._can_update_ingame_targets_locked()
+
+        active_delivery_tasks = {t.item_name: t for t in self.detect_delivery_quests()} if can_sync_ingame else {}
+
+        # Always keep the logged-in character's targets synced from live inventory/quests
+        ingame_targets = self._sync_single_character_targets(
+            ingame_cid, sync_live=can_sync_ingame, active_delivery_tasks=active_delivery_tasks
+        )
+        if for_ingame or active_cid == ingame_cid:
+            return ingame_targets
+
+        # Viewing a different offline character tab: preserve its stored progress
+        return self._sync_single_character_targets(
+            active_cid, sync_live=False, active_delivery_tasks={}
+        )
 
     def add_detected_quests_to_targets(self) -> List[Dict[str, Any]]:
         """
         Scans currently active quests via detect_delivery_quests() and adds or updates
-        them in the persistent registered delivery targets store.
+        them in the logged-in character's registered delivery targets store.
         Excludes warehouse/storage counts for delivery targets (counts only bag inventory).
         """
+        self._ensure_ingame_character_synced(force_refresh=True)
         detected = self.detect_delivery_quests()
         added = []
         for q in detected:
@@ -2752,7 +2920,8 @@ class DeliveryManager:
                 item_name=q.item_name,
                 goal=q.goal,
                 current=cur,
-                quest_title=q.quest_title
+                quest_title=q.quest_title,
+                use_ingame_character=True,
             )
             added.append(entry)
         return added
@@ -3505,37 +3674,14 @@ class DeliveryManager:
                 callback
             )
 
-        # Update delivery_target_store if this item is in registered targets
-        if item_name in delivery_target_store.targets and total_gained > 0:
-            t = delivery_target_store.targets[item_name]
-            prev = int(t.get("current", 0))
-            new_cur = prev + total_gained
-            goal = int(t.get("goal", 1))
-            t["current"] = new_cur
-            if t.get("override_current") is not None:
-                t["override_current"] = new_cur
-            t["needed"] = max(0, goal - new_cur)
-            t["is_completed"] = (new_cur >= goal)
-            t["updated_at"] = int(time.time() * 1000)
-            delivery_target_store.targets[item_name] = t
-            delivery_target_store.save()
-            self.log(f"[납품 목표 갱신] '{item_name}' 채집 완료({total_gained}개 획득) 반영 -> 현재 {new_cur}/{goal}개", "info", callback)
-
-        # Update custom_target_store if this item is in registered custom targets
-        if item_name in custom_target_store.targets and total_gained > 0:
-            ct = custom_target_store.targets[item_name]
-            prev_c = int(ct.get("current", 0))
-            new_cur_c = prev_c + total_gained
-            goal_c = int(ct.get("goal", 1))
-            ct["current"] = new_cur_c
-            if ct.get("override_current") is not None:
-                ct["override_current"] = new_cur_c
-            ct["needed"] = max(0, goal_c - new_cur_c)
-            ct["is_completed"] = (new_cur_c >= goal_c)
-            ct["updated_at"] = int(time.time() * 1000)
-            custom_target_store.targets[item_name] = ct
-            custom_target_store.save()
-            self.log(f"[개별 제작 목표 갱신] '{item_name}' 채집 완료({total_gained}개 획득) 반영 -> 현재 {new_cur_c}/{goal_c}개", "info", callback)
+        if total_gained > 0:
+            self._apply_progress_to_registered_stores(
+                item_name,
+                total_gained,
+                f"채집 완료({total_gained}개 획득)",
+                mark_last_crafted=False,
+                callback=callback,
+            )
 
         return {
             "status": "overweight" if stopped_by_overweight else ("completed" if (total_gained >= required_count or final_count >= target_count) else "partial"),
@@ -3945,36 +4091,13 @@ class DeliveryManager:
         finally:
             # Always record any produced items (including partial crafts before an error)
             if total_produced > 0:
-                if item_name in delivery_target_store.targets:
-                    t = delivery_target_store.targets[item_name]
-                    prev = int(t.get("current", 0))
-                    new_cur = prev + total_produced
-                    goal = int(t.get("goal", 1))
-                    t["current"] = new_cur
-                    if t.get("override_current") is not None:
-                        t["override_current"] = new_cur
-                    t["needed"] = max(0, goal - new_cur)
-                    t["is_completed"] = (new_cur >= goal)
-                    t["last_crafted_at"] = time.time()
-                    t["updated_at"] = int(time.time() * 1000)
-                    delivery_target_store.targets[item_name] = t
-                    delivery_target_store.save()
-                    self.log(f"[납품 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 -> 현재 {new_cur}/{goal}개", "info", callback)
-
-                if item_name in custom_target_store.targets:
-                    ct = custom_target_store.targets[item_name]
-                    prev_c = int(ct.get("current", 0))
-                    new_cur_c = prev_c + total_produced
-                    goal_c = int(ct.get("goal", 1))
-                    ct["current"] = new_cur_c
-                    if ct.get("override_current") is not None:
-                        ct["override_current"] = new_cur_c
-                    ct["needed"] = max(0, goal_c - new_cur_c)
-                    ct["is_completed"] = (new_cur_c >= goal_c)
-                    ct["updated_at"] = int(time.time() * 1000)
-                    custom_target_store.targets[item_name] = ct
-                    custom_target_store.save()
-                    self.log(f"[개별 제작 목표 갱신] '{item_name}' 제작 완료(+{total_produced}개 산출) 반영 -> 현재 {new_cur_c}/{goal_c}개", "info", callback)
+                self._apply_progress_to_registered_stores(
+                    item_name,
+                    total_produced,
+                    f"제작 완료(+{total_produced}개 산출)",
+                    mark_last_crafted=True,
+                    callback=callback,
+                )
 
         return total_produced
 
@@ -4030,7 +4153,7 @@ class DeliveryManager:
         prev_by_item = {t.get("item_name"): t for t in tasks if t.get("item_name")}
 
         if plan_source == "weekly_delivery":
-            fresh_plan = self.analyze_batch_plan(custom_tasks=None, alter_order=alter_order)
+            fresh_plan = self.analyze_batch_plan(custom_tasks=None, alter_order=alter_order, for_ingame=True)
             # Guard unregistered quest-only crafted equipment omitted by get_items/quest tracker
             if session_crafted_items:
                 needs_patch = False
@@ -4043,7 +4166,7 @@ class DeliveryManager:
                         t_new["is_completed"] = (t_new["needed"] <= 0)
                         needs_patch = True
                 if needs_patch:
-                    fresh_plan = self.analyze_batch_plan(custom_tasks=fresh_plan.get("tasks", []), alter_order=alter_order)
+                    fresh_plan = self.analyze_batch_plan(custom_tasks=fresh_plan.get("tasks", []), alter_order=alter_order, for_ingame=True)
                     fresh_plan["plan_source"] = "weekly_delivery"
         elif plan_source == "custom_targets":
             fresh_plan = self.analyze_custom_plan(alter_order=alter_order)
@@ -4073,10 +4196,15 @@ class DeliveryManager:
     # UNIFIED BATCH PRODUCTION PLANNER (통합 일괄 납품 플래너)
     # =========================================================================
 
-    def analyze_batch_plan(self, custom_tasks: Optional[List[Dict[str, Any]]] = None, alter_order: Optional[str] = None) -> Dict[str, Any]:
+    def analyze_batch_plan(
+        self,
+        custom_tasks: Optional[List[Dict[str, Any]]] = None,
+        alter_order: Optional[str] = None,
+        for_ingame: bool = False,
+    ) -> Dict[str, Any]:
         """
         Full Recursive Bill-of-Materials (BOM) Batch Planner:
-        1. Determines active/registered tasks to produce.
+        1. Determines active/registered tasks to produce (for viewed tab or `for_ingame=True` logged-in char).
         2. Queries inventory, character storage, account storage, and altering works once.
         3. Recursively expands intermediate materials down to field gatherables:
            - Correctly traverses multi-tier dependencies (e.g. 합금강괴 -> 강철괴 -> 철괴 -> 철 광석).
@@ -4090,13 +4218,28 @@ class DeliveryManager:
         if alter_order not in ("high_tier", "low_tier"):
             alter_order = "high_tier"
 
+        if for_ingame:
+            self._ensure_ingame_character_synced(force_refresh=True)
+
+        with delivery_target_store._lock:
+            target_cid = (
+                delivery_target_store.get_ingame_character_id()
+                if for_ingame
+                else delivery_target_store.active_character_id
+            )
+            can_read_live_quests = (
+                delivery_target_store._can_update_ingame_targets_locked()
+                if for_ingame
+                else delivery_target_store.is_active_character_ingame()
+            )
+
         tasks_to_plan: List[Dict[str, Any]] = []
 
         if custom_tasks is not None:
             tasks_to_plan = custom_tasks
         else:
             # 1. First check registered targets
-            registered = self.get_registered_deliveries_with_status()
+            registered = self.get_registered_deliveries_with_status(for_ingame=for_ingame)
             existing_items = set()
             if registered:
                 for t in registered:
@@ -4110,8 +4253,8 @@ class DeliveryManager:
                         "override_current": t.get("override_current"),
                         "is_completed": t.get("is_completed", False)
                     })
-            # 2. Automatically merge active quests in Quest Tracker that are not yet in registered list (only when active character is logged in)
-            if delivery_target_store.is_active_character_ingame():
+            # 2. Automatically merge active quests in Quest Tracker that are not yet in registered list
+            if can_read_live_quests:
                 active_quests = self.detect_delivery_quests()
                 for q in active_quests:
                     if q.item_name not in existing_items:
@@ -4127,6 +4270,8 @@ class DeliveryManager:
         if not tasks_to_plan:
             return {
                 "plan_source": "custom_tasks" if custom_tasks is not None else "weekly_delivery",
+                "character_id": target_cid,
+                "for_ingame": bool(for_ingame),
                 "tasks": [],
                 "intermediate_requirements": [],
                 "raw_materials": [],
@@ -4235,7 +4380,7 @@ class DeliveryManager:
                 bd_stock = get_stock(clean_it)
                 if t.get("override_current") is not None:
                     cur_bag = int(t["override_current"])
-                elif custom_tasks is None and not delivery_target_store.is_active_character_ingame():
+                elif custom_tasks is None and not can_read_live_quests:
                     cur_bag = int(t.get("current", 0))
                 else:
                     cur_bag = bd_stock["inventory"]
@@ -4688,6 +4833,8 @@ class DeliveryManager:
 
         return {
             "plan_source": "custom_tasks" if custom_tasks is not None else "weekly_delivery",
+            "character_id": target_cid,
+            "for_ingame": bool(for_ingame),
             "tasks": tasks_to_plan,
             "targets": tasks_to_plan,
             "custom_tasks": tasks_to_plan,
@@ -4897,6 +5044,22 @@ class DeliveryManager:
         raw_mats = plan.get("raw_materials", [])
         plan_source = plan.get("plan_source") or ("custom_tasks" if tasks else "weekly_delivery")
         session_crafted_items: set = set()
+
+        ingame_cid = delivery_target_store.get_ingame_character_id()
+        if plan_source == "weekly_delivery" and (
+            (plan.get("character_id") and plan.get("character_id") != ingame_cid)
+            or (plan.get("for_ingame") is False and not delivery_target_store.is_active_character_ingame())
+        ):
+            plan = self.analyze_batch_plan(custom_tasks=None, alter_order=alter_order, for_ingame=True)
+            intermediate_reqs = plan.get("intermediate_requirements", [])
+            tasks = plan.get("tasks", [])
+            raw_mats = plan.get("raw_materials", [])
+        if plan_source == "weekly_delivery" and not delivery_target_store.is_active_character_ingame():
+            self.log(
+                f"[접속 캐릭터 기준 실행] 다른 캐릭터 탭을 조회 중이지만 작업 및 결과 반영은 접속 중인 '{delivery_target_store.get_ingame_character_name()}' 캐릭터에 적용됩니다.",
+                "info",
+                callback,
+            )
 
         # Stage 1: Collect any completed altering works across all facilities first!
         self.log("[사전 가공품 수령] 모든 시설의 완료된 가공품을 수령하여 슬롯을 비우고 재료를 확보합니다.", "action", callback)
@@ -5712,6 +5875,7 @@ class DeliveryManager:
     def resolve_and_produce(self, item_name: str, target_count: int, callback: Optional[LogCallback] = None) -> Dict[str, Any]:
         """Single-item production pipeline with recursive BOM and upfront gathering support."""
         self.reset_abort()
+        self._ensure_ingame_character_synced(force_refresh=True)
         self.log(f"[개별 제작 파이프라인 시작] 목표: '{item_name}' {target_count}개", "info", callback)
 
         start_time = time.time()
@@ -6475,9 +6639,11 @@ class DeliveryManager:
     def ensure_character_ready_for_action(self, callback: Optional[LogCallback] = None) -> None:
         """
         Checks character state via get_activity() before starting a pipeline:
+        - Syncs matched in-game character without altering the viewed UI tab.
         - Raises if dead/reviving or in dungeon/battlefield.
         - Automatically stands up if sitting on a chair or ground (/앉기), or stops instrument performance.
         """
+        self._ensure_ingame_character_synced(force_refresh=True)
         try:
             activity = self.cli.get_activity()
         except Exception:

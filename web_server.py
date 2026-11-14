@@ -625,14 +625,22 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/delivery_targets":
             global cached_delivery_targets
             if is_busy:
-                with status_lock:
-                    targets = cached_delivery_targets if cached_delivery_targets is not None else delivery_target_store.get_all()
-                    self._send_json({
-                        "targets": targets,
-                        "characters_info": delivery_target_store.get_characters_summary(),
-                        "is_busy": True
-                    })
-                    return
+                targets = delivery_target_store.get_all()
+                recipes_cache = getattr(manager_instance, "recipes", {}) or {}
+                for t in targets:
+                    goal = int(t.get("goal", 1))
+                    cur = int(t.get("current", 0))
+                    t["needed"] = max(0, goal - cur)
+                    t["is_completed"] = (cur >= goal)
+                    rec = t.get("recipe") or recipes_cache.get(t.get("item_name", ""), {})
+                    t["recipe"] = rec
+                    t["is_recipe_known"] = bool(rec)
+                self._send_json({
+                    "targets": targets,
+                    "characters_info": delivery_target_store.get_characters_summary(),
+                    "is_busy": True
+                })
+                return
             try:
                 targets = manager_instance.get_registered_deliveries_with_status()
                 with status_lock:
@@ -1269,11 +1277,18 @@ class RequestHandler(BaseHTTPRequestHandler):
                         current_task_info = msg
 
                     plan = None
+                    ingame_cid = delivery_target_store.get_ingame_character_id()
                     with status_lock:
-                        if cached_batch_plan is not None and (time.time() - cached_batch_plan_time) < 6.0 and cached_batch_plan_order == alter_order:
+                        if (
+                            cached_batch_plan is not None
+                            and (time.time() - cached_batch_plan_time) < 6.0
+                            and cached_batch_plan_order == alter_order
+                            and delivery_target_store.is_active_character_ingame()
+                            and (not cached_batch_plan.get("character_id") or cached_batch_plan.get("character_id") == ingame_cid)
+                        ):
                             plan = copy.deepcopy(cached_batch_plan)
                     if plan is None:
-                        plan = manager_instance.analyze_batch_plan(alter_order=alter_order)
+                        plan = manager_instance.analyze_batch_plan(alter_order=alter_order, for_ingame=True)
                     res = manager_instance.execute_batch_deliveries(
                         plan, callback=add_log, alter_order=alter_order,
                         goal_fulfillment_mode=goal_fulfillment_mode,
@@ -1566,7 +1581,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     return
                 existing_entry = delivery_target_store.targets.get(item_name, {})
                 prev_cur = int(existing_entry.get("current", 0))
-                eff_cur = prev_cur if is_busy else manager_instance.get_effective_owned(item_name, include_storage=False)
+                can_read_live = (not is_busy) and delivery_target_store.is_active_character_ingame()
+                eff_cur = manager_instance.get_effective_owned(item_name, include_storage=False) if can_read_live else prev_cur
                 if req_current is not None and str(req_current).strip() != "":
                     try:
                         cur = max(0, int(req_current))
@@ -2099,7 +2115,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                         else:
                             prev_entry = prev_targets.get(item_name, {})
                             prev_cur = int(prev_entry.get("current", 0))
-                            eff_cur = prev_cur if is_busy else manager_instance.get_effective_owned(item_name)
+                            can_read_live = (not is_busy) and delivery_target_store.is_active_character_ingame()
+                            eff_cur = manager_instance.get_effective_owned(item_name) if can_read_live else prev_cur
                             cur = max(prev_cur, eff_cur)
                         delivery_target_store.add_or_update(item_name, goal, cur, quest_title)
                         loaded_count += 1
