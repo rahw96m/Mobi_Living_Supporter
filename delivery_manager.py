@@ -474,7 +474,7 @@ KNOWN_GATHERABLE_ITEMS: Set[str] = {
     "사과", "황금 사과", "우유", "황금 우유", "양파", "옥수수", "달걀", "황금 달걀", "감자", "묵직한 감자",
     "콩", "쌀", "귀리", "밀", "긴 줄기", "황금 줄기", "찻잎", "헤이즐넛", "황금 헤이즐넛",
     "숨숨꽃", "생채기꽃", "화살꽃", "새초롱꽃", "라벤더 꽃", "진정초", "끈적 풀", "끈기 풀", "파스닙", "양배추", "호박",
-    "파란 수국", "얼음", "조개", "점토", "돌멩이", "물이 든 병", "빈 병",
+    "파란 수국", "얼음", "조개", "점토", "돌멩이", "물이 든 병",
     # 버섯 계열
     "새록 버섯", "새록 버섯 포자", "튼튼 버섯", "튼튼 버섯 포자",
     "쑥쑥 버섯", "쑥쑥 버섯 포자", "깔끔 버섯", "깔끔 버섯 포자", "증폭 버섯", "증폭 버섯 포자",
@@ -633,9 +633,33 @@ def is_wood_family(item_name: str) -> bool:
 
 # 채집이나 시설 가공으로 얻을 수 없고 상점(식료품점/잡화점) 구매 또는 몬스터 사냥으로 확보해야 하는 재료 목록
 KNOWN_NON_GATHERABLE_MATERIALS: Set[str] = {
-    "소금", "설탕", "마요네즈", "밀랍", "후추", "식용유", "버터",
+    "빈 병", "소금", "설탕", "마요네즈", "밀랍", "후추", "식용유", "버터",
+    "치즈", "초콜릿", "레몬", "고기",
     "분해된 장비 부품", "연금술 부스러기", "협곡의 마나석", "마나석",
     "마력 기폭제", "마나 에센스"
+}
+
+# 상점(잡화점/식료품점 등) 구매로 확보 가능한 재료 및 획득 안내 매핑
+SHOP_PURCHASE_MATERIALS: Dict[str, str] = {
+    "빈 병": "잡화점/식료품점 상점 구매",
+    "소금": "식료품점 상점 구매",
+    "설탕": "식료품점 상점 구매",
+    "후추": "식료품점 상점 구매",
+    "식용유": "식료품점 상점 구매",
+    "버터": "식료품점 상점 구매",
+    "치즈": "식료품점 상점 구매",
+    "초콜릿": "식료품점 상점 구매",
+    "레몬": "식료품점 상점 구매",
+    "고기": "식료품점 상점 구매 또는 사냥",
+    "밀랍": "잡화점/식료품점 구매 또는 채집 부산물",
+    "마요네즈": "요리 가공 또는 식료품점 구매",
+}
+
+# 필드 채집 시 가방에 소모성 준비물(1:1 등)을 보유하고 있어야 채집이 가능한 품목 정의
+GATHER_PREREQUISITE_ITEMS: Dict[str, Dict[str, int]] = {
+    "우유": {"빈 병": 1},
+    "황금 우유": {"빈 병": 1},
+    "물이 든 병": {"빈 병": 1},
 }
 
 def is_non_gatherable_material(item_name: str) -> bool:
@@ -2361,7 +2385,9 @@ class DeliveryManager:
             lines.append("")
             lines.append(f"[별도 확보 필요 재료] 상점 구매 또는 사냥으로 직접 확보 필요한 재료 {len(special_materials)}종:")
             for sm in special_materials:
-                lines.append(f"   • {sm['item_name']}: {sm['deficit']}개 부족 (가방 {sm.get('inventory_count', 0)}개 / 필요 {sm.get('total_needed', 0)}개) -> 잡화점/식료품점 구매 또는 사냥 필요")
+                guide = sm.get("obtain_guide") or "잡화점/식료품점 구매 또는 사냥 필요"
+                used_note = f" [{sm['used_for']}]" if sm.get("used_for") else ""
+                lines.append(f"   • {sm['item_name']}{used_note}: {sm['deficit']}개 부족 (가방 {sm.get('inventory_count', 0)}개 / 필요 {sm.get('total_needed', 0)}개) -> {guide}")
 
         # 3. Alter
         lines.append("")
@@ -3036,6 +3062,43 @@ class DeliveryManager:
             return True, True
         return False, False
 
+    def _validate_gather_prerequisites(
+        self,
+        item_name: str,
+        required_count: int = 1,
+        callback: Optional[LogCallback] = None,
+        raise_on_empty: bool = False,
+        warn_partial: bool = False,
+    ) -> Tuple[bool, Optional[str]]:
+        """Checks consumable bag prerequisites (e.g. 빈 병 for 우유/물이 든 병)."""
+        clean_name = item_name.split("(")[0].strip()
+        prereqs = GATHER_PREREQUISITE_ITEMS.get(clean_name)
+        if not prereqs:
+            return True, None
+        for p_name, per_unit in prereqs.items():
+            unit_req = max(1, int(per_unit))
+            bag_cnt = self.cli.count_item(p_name, include_storage=False, bypass_cache=True)
+            if bag_cnt < unit_req:
+                if raise_on_empty:
+                    tot_cnt = self.cli.count_item(p_name, include_storage=True, bypass_cache=True)
+                    stor_cnt = max(0, tot_cnt - bag_cnt)
+                    if stor_cnt > 0:
+                        msg = f"'{item_name}' 채집에 필요한 '{p_name}'이(가) 가방에 없습니다 (창고 {stor_cnt}개 보유). 가방으로 꺼내거나 잡화점·식료품점에서 구매해주세요."
+                    else:
+                        msg = f"'{item_name}' 채집에 필요한 '{p_name}'이(가) 가방에 없습니다 (필요: {required_count * unit_req}개). 잡화점·식료품점에서 '{p_name}'을(를) 먼저 구매해주세요."
+                    self.log(f"[채집 준비물 부족] {msg}", "warn", callback)
+                    raise MabinogiCLIError(msg)
+                return False, p_name
+            if warn_partial and bag_cnt < required_count * unit_req:
+                possible_units = bag_cnt // unit_req
+                self.log(
+                    f"[채집 준비물 안내] '{item_name}' {required_count}개 채집에는 '{p_name}' {required_count * unit_req}개가 필요하지만 "
+                    f"현재 가방에 {bag_cnt}개만 있어 최대 {possible_units}개까지 채집 가능합니다.",
+                    "warn",
+                    callback
+                )
+        return True, None
+
     def auto_gather(self, item_name: str, required_count: int, callback: Optional[LogCallback] = None, is_delivery: bool = False, **kwargs) -> Dict[str, Any]:
         """
         Gathers only the required deficient amount of item_name:
@@ -3061,6 +3124,9 @@ class DeliveryManager:
             raise MabinogiCLIError(f"'{item_name}'은(는) 필드 채집 목록에 없습니다.")
         if not tool_ok:
             raise MabinogiCLIError(f"'{item_name}' 채집 도구가 없거나 내구도가 0입니다.")
+
+        # Validate consumable prerequisites (e.g. 빈 병 for 우유 / 황금 우유 / 물이 든 병)
+        self._validate_gather_prerequisites(item_name, required_count, callback=callback, raise_on_empty=True, warn_partial=True)
 
         # Zero-overhead snapshot from cached locations map to track byproducts later
         try:
@@ -3171,10 +3237,14 @@ class DeliveryManager:
             gather_target_item = current_cand["gather_target"]
             species_label = current_cand.get("species", gather_target_item)
 
-            # Check tool status before launching or re-launching
+            # Check tool status & bag prerequisites before launching or re-launching
             is_gath, tool_ok = self.is_gatherable(gather_target_item)
             if not tool_ok:
                 self.log(f"'{species_label}'({gather_target_item}) 채집 도구가 소모되었거나 내구도가 0입니다. 채집을 중단합니다.", "warn", callback)
+                break
+            prereq_ok, missing_prereq = self._validate_gather_prerequisites(item_name, required_count, callback=callback, raise_on_empty=False)
+            if not prereq_ok:
+                self.log(f"[채집 준비물 소진] 가방의 '{missing_prereq}'이(가) 모두 소진되어 '{item_name}' 채집을 중단합니다.", "warn", callback)
                 break
 
             # 0. Safety check: bag weight before starting gather round (98% limit)
@@ -3357,6 +3427,10 @@ class DeliveryManager:
 
             # Check if this round gained any items
             curr_count = self.cli.count_item(item_name, include_storage=False, bypass_cache=True)
+            prereq_ok_after, missing_prereq_after = self._validate_gather_prerequisites(item_name, required_count, callback=callback, raise_on_empty=False)
+            if not prereq_ok_after:
+                self.log(f"[채집 준비물 소진] 가방의 '{missing_prereq_after}'이(가) 모두 소진되어 '{item_name}' 채집을 중단합니다.", "warn", callback)
+                break
             round_gained = curr_count - round_initial_count
             if round_gained <= 0:
                 consecutive_zero_gains += 1
@@ -4294,6 +4368,31 @@ class DeliveryManager:
                     if net_def > 0:
                         raw_gather_demands[clean_mat] += net_def
 
+        # 4.5. Resolve Gathering Prerequisite Consumables (e.g. 우유 / 황금 우유 / 물이 든 병 -> 빈 병 in bag)
+        prereq_demands: Dict[str, int] = defaultdict(int)
+        prereq_consumers: Dict[str, List[str]] = defaultdict(list)
+        for g_name, g_def in list(raw_gather_demands.items()):
+            if g_def > 0 and g_name in GATHER_PREREQUISITE_ITEMS:
+                for p_name, p_per in GATHER_PREREQUISITE_ITEMS[g_name].items():
+                    p_req = int(g_def) * max(1, int(p_per))
+                    if p_req > 0:
+                        prereq_demands[p_name] += p_req
+                        prereq_consumers[p_name].append(f"{g_name} {int(g_def)}개 채집용")
+
+        remaining_prereq_bag: Dict[str, int] = {}
+        for p_name, p_req in prereq_demands.items():
+            raw_total_demands[p_name] += p_req
+            bd_p = get_stock(p_name)
+            if p_name in virtual_stock:
+                bag_avail = max(0, min(bd_p["inventory"], virtual_stock[p_name]))
+                virtual_stock[p_name] = max(0, virtual_stock[p_name] - min(bag_avail, p_req))
+            else:
+                bag_avail = bd_p["inventory"]
+            remaining_prereq_bag[p_name] = bag_avail
+            p_deficit = max(0, p_req - bag_avail)
+            if p_deficit > 0:
+                raw_gather_demands[p_name] += p_deficit
+
         # 5. Build Intermediate Requirements Analysis
         if alter_order == "low_tier":
             sorted_alters = sorted(alter_plan.values(), key=lambda x: (x["tier"], x["item_name"]))
@@ -4359,15 +4458,38 @@ class DeliveryManager:
             bd = get_stock(raw_name)
             is_gath, tool_ok = self.is_gatherable(raw_name)
             is_special = is_non_gatherable_material(raw_name) or not is_gath
+            is_shop = (raw_name in SHOP_PURCHASE_MATERIALS)
+            obtain_guide = SHOP_PURCHASE_MATERIALS.get(raw_name, "")
+            used_for = ", ".join(prereq_consumers.get(raw_name, []))
+            if is_shop and actual_def > 0 and used_for and bd["storage_total"] > 0 and bd["inventory"] < tot_needed:
+                obtain_guide = f"가방 이동 또는 {obtain_guide}"
+
+            missing_prereq_item = ""
+            missing_prereq_count = 0
+            gatherable_now: Optional[int] = None
+
+            if not is_special and raw_name in GATHER_PREREQUISITE_ITEMS and actual_def > 0:
+                p_name, p_per = next(iter(GATHER_PREREQUISITE_ITEMS[raw_name].items()))
+                p_per = max(1, int(p_per))
+                avail_p = remaining_prereq_bag.get(p_name, get_stock(p_name)["inventory"])
+                possible_gather = min(actual_def, avail_p // p_per)
+                remaining_prereq_bag[p_name] = max(0, avail_p - possible_gather * p_per)
+                missing_p_cnt = max(0, actual_def - possible_gather) * p_per
+                gatherable_now = possible_gather
+                if missing_p_cnt > 0:
+                    missing_prereq_item = p_name
+                    missing_prereq_count = missing_p_cnt
 
             if is_special:
                 status = "satisfied" if actual_def == 0 else "special_obtain"
             elif actual_def == 0:
                 status = "satisfied"
-            elif tool_ok:
-                status = "ready_to_gather"
-            else:
+            elif not tool_ok:
                 status = "tool_missing"
+            elif missing_prereq_count > 0 and (gatherable_now or 0) == 0:
+                status = "prereq_missing"
+            else:
+                status = "ready_to_gather"
 
             raw_materials_analysis.append({
                 "item_name": raw_name,
@@ -4380,6 +4502,12 @@ class DeliveryManager:
                 "deficit": actual_def,
                 "is_gatherable": is_gath and not is_special,
                 "is_special_obtain": is_special,
+                "is_shop_purchase": is_shop,
+                "obtain_guide": obtain_guide,
+                "used_for": used_for,
+                "missing_prereq_item": missing_prereq_item,
+                "missing_prereq_count": missing_prereq_count,
+                "gatherable_now": gatherable_now,
                 "tool_ok": tool_ok if not is_special else True,
                 "status": status
             })
@@ -4504,6 +4632,18 @@ class DeliveryManager:
             r_name = r_mat["item_name"]
             if r_mat.get("status") == "tool_missing" and r_mat.get("deficit", 0) > 0:
                 preflight_warnings.append(f"⚠️ [도구 점검] '{r_name}' 채집 도구가 없거나 내구도가 0입니다.")
+            if r_mat.get("is_shop_purchase") and r_mat.get("deficit", 0) > 0:
+                used_suffix = f" ({r_mat['used_for']})" if r_mat.get("used_for") else ""
+                guide_txt = r_mat.get("obtain_guide") or "상점 구매 필요"
+                preflight_warnings.append(
+                    f"🛒 [상점 구매 필요] '{r_name}' {r_mat['deficit']}개 부족{used_suffix} -> {guide_txt}"
+                )
+            elif r_mat.get("missing_prereq_count", 0) > 0:
+                p_nm = r_mat.get("missing_prereq_item") or "준비물"
+                p_cnt = r_mat.get("missing_prereq_count", 0)
+                preflight_warnings.append(
+                    f"⚠️ [채집 준비물 부족] '{r_name}' 채집에 필요한 '{p_nm}' {p_cnt}개가 가방에 부족합니다."
+                )
             if r_name in locked_items_set and r_mat.get("total_owned", 0) > 0:
                 r_mat["is_locked"] = True
                 preflight_warnings.append(f"🔒 [재료 잠금] '{r_name}' 아이템이 잠금 상태여서 제작/가공 소모가 차단될 수 있습니다.")
@@ -4520,7 +4660,11 @@ class DeliveryManager:
                 preflight_warnings.append(f"⛔ [가공 조건 미충족] '{i_name}': {rsn_ko}")
 
         # 9. Spirit Wings Estimate & Lightweight ETA Calculation (Zero extra CLI calls)
-        gather_trips = sum(math.ceil(r.get("deficit", 0) / 100.0) for r in raw_materials_analysis if r.get("deficit", 0) > 0 and r.get("is_gatherable"))
+        gather_trips = sum(
+            math.ceil((r["gatherable_now"] if r.get("gatherable_now") is not None else r.get("deficit", 0)) / 100.0)
+            for r in raw_materials_analysis
+            if r.get("is_gatherable") and (r["gatherable_now"] if r.get("gatherable_now") is not None else r.get("deficit", 0)) > 0
+        )
         craft_calls = 0
         for t in tasks_to_plan:
             if t.get("needed", 0) > 0 and not t.get("is_gather_item") and not t.get("is_alter_item"):
@@ -4529,7 +4673,11 @@ class DeliveryManager:
         if estimated_wings > 0 and wings_count > 0 and wings_count < estimated_wings:
             preflight_warnings.append(f"🪶 [정령의 날개 부족 주의] 예상 소모량 약 {estimated_wings:,}개 / 현재 보유 {wings_count:,}개")
 
-        total_gather_items = sum(r.get("deficit", 0) for r in raw_materials_analysis if r.get("deficit", 0) > 0 and r.get("is_gatherable"))
+        total_gather_items = sum(
+            (r["gatherable_now"] if r.get("gatherable_now") is not None else r.get("deficit", 0))
+            for r in raw_materials_analysis
+            if r.get("is_gatherable") and (r["gatherable_now"] if r.get("gatherable_now") is not None else r.get("deficit", 0)) > 0
+        )
         estimated_eta_seconds = int(total_gather_items * 2.2 + total_works_to_queue * 12 + craft_calls * 8)
         if estimated_eta_seconds >= 60:
             estimated_eta_text = f"약 {math.ceil(estimated_eta_seconds / 60)}분"
@@ -4576,11 +4724,14 @@ class DeliveryManager:
         if not raw_mats:
             return {}
 
-        # 1. Total remaining deficits across all gatherable raw materials
+        # 1. Total remaining deficits across all gatherable raw materials (capped by consumable bag prerequisites if any)
         total_deficits: Dict[str, int] = {}
         for r in raw_mats:
             if r.get("is_gatherable") and r.get("deficit", 0) > 0 and not r.get("is_special_obtain"):
-                total_deficits[r["item_name"]] = int(r["deficit"])
+                g_now = r.get("gatherable_now")
+                eff_def = int(g_now) if g_now is not None else int(r["deficit"])
+                if eff_def > 0:
+                    total_deficits[r["item_name"]] = eff_def
 
         if not total_deficits:
             return {}
@@ -4775,12 +4926,20 @@ class DeliveryManager:
             )
             return {"status": "aborted", "message": "사용자에 의해 작업이 중지되었습니다.", "summary": summary}
 
-        # Stage 1.5: Warn about non-gatherable / shop materials
+        # Stage 1.5: Warn about non-gatherable / shop materials (including gather consumables like 빈 병)
         special_needed = [r for r in raw_mats if r.get("deficit", 0) > 0 and (r.get("is_special_obtain") or not r.get("is_gatherable"))]
         if special_needed:
             self.log(f"[별도 확보 필요 안내] 상점 구매 또는 드랍으로 획득해야 하는 재료 {len(special_needed)}종이 부족합니다.", "warn", callback)
             for sm in special_needed:
-                self.log(f"   • '{sm['item_name']}': 필요 {sm['total_needed']}개 / 보유 {sm['total_owned']}개 ({sm['deficit']}개 부족) -> 잡화점/식료품점 구매 또는 사냥으로 별도 확보 필요", "warn", callback)
+                guide = sm.get("obtain_guide") or "잡화점/식료품점 구매 또는 사냥으로 별도 확보 필요"
+                used_note = f" [{sm['used_for']}]" if sm.get("used_for") else ""
+                bag_note = ""
+                if sm.get("used_for") and sm.get("storage_count", 0) > 0:
+                    bag_note = f" (가방 {sm.get('inventory_count', 0)}개 / 창고 {sm.get('storage_count', 0)}개)"
+                self.log(
+                    f"   • '{sm['item_name']}'{used_note}: 필요 {sm['total_needed']}개 / 보유 {sm['total_owned']}개 ({sm['deficit']}개 부족){bag_note} -> {guide}",
+                    "warn", callback
+                )
 
         # Stage 2: Slot-Aware Smart Gathering (당장 가공 슬롯을 채울 만큼만 1차 맞춤 채집)
         if raw_mats:
@@ -5606,6 +5765,23 @@ class DeliveryManager:
                         return {"status": "aborted", "message": "사용자에 의해 작업이 중지되었습니다.", "summary": summary}
                     g_name = rm["item_name"]
                     g_deficit = rm["deficit"]
+                    if rm.get("gatherable_now") is not None:
+                        eff_g_def = int(rm["gatherable_now"])
+                        if eff_g_def <= 0:
+                            p_nm = rm.get("missing_prereq_item") or "준비물"
+                            p_cnt = rm.get("missing_prereq_count") or g_deficit
+                            self.log(
+                                f"[채집 건너뜀] '{g_name}' 채집에 필요한 '{p_nm}' {p_cnt}개가 가방에 부족합니다. 상점 구매 또는 창고 이동 후 다시 시도해주세요.",
+                                "warn", callback
+                            )
+                            continue
+                        if eff_g_def < g_deficit:
+                            p_nm = rm.get("missing_prereq_item") or "준비물"
+                            self.log(
+                                f"[부분 채집 안내] '{g_name}' 총 부족분 {g_deficit}개 중 '{p_nm}' 가방 보유분만큼 {eff_g_def}개만 먼저 채집합니다.",
+                                "warn", callback
+                            )
+                        g_deficit = eff_g_def
                     is_gath, tool_ok = self.is_gatherable(g_name)
                     if not is_gath:
                         self.log(f"'{g_name}'은(는) 필드 채집이 불가능하여 건너뜁니다.", "warn", callback)

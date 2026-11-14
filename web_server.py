@@ -41,6 +41,64 @@ from homework_manager import HomeworkManager
 BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 EXE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 
+WEATHER_KO_MAP = {
+    "sunny": "맑음",
+    "clear": "맑음",
+    "fine": "맑음",
+    "fair": "맑음",
+    "mostlysunny": "맑음",
+    "mostlyclear": "맑음",
+    "partlycloudy": "흐림",
+    "cloudy": "흐림",
+    "clouds": "흐림",
+    "mostlycloudy": "흐림",
+    "overcast": "먹구름",
+    "rain": "비",
+    "rainy": "비",
+    "lightrain": "약한 비",
+    "drizzle": "이슬비",
+    "sprinkle": "가랑비",
+    "heavyrain": "폭우",
+    "downpour": "폭우",
+    "shower": "소나기",
+    "torrentialrain": "폭우",
+    "thunder": "뇌우",
+    "thunderstorm": "뇌우",
+    "storm": "폭풍",
+    "stormy": "폭풍",
+    "lightning": "번개",
+    "snow": "눈",
+    "snowy": "눈",
+    "lightsnow": "약한 눈",
+    "flurries": "눈날림",
+    "heavysnow": "폭설",
+    "blizzard": "눈보라",
+    "snowstorm": "눈보라",
+    "fog": "안개",
+    "foggy": "안개",
+    "mist": "안개",
+    "misty": "안개",
+    "haze": "연무",
+    "wind": "바람",
+    "windy": "강풍",
+    "breeze": "산들바람",
+    "strongwind": "강풍",
+    "gale": "강풍",
+    "sandstorm": "모래폭풍",
+    "dust": "황사",
+    "duststorm": "모래폭풍",
+    "hail": "우박",
+    "sleet": "진눈깨비",
+}
+
+def translate_weather_ko(weather_val: Any) -> str:
+    """Translates English environment weather strings into Korean display names."""
+    raw = str(weather_val or "").strip()
+    if not raw:
+        return ""
+    norm = "".join(ch for ch in raw.lower() if ch.isalnum())
+    return WEATHER_KO_MAP.get(norm, raw)
+
 _ICON_BYTES_CACHE: Dict[str, Any] = {}
 _HTML_PAGE_BYTES: Any = None
 
@@ -383,6 +441,8 @@ def get_cached_status() -> Dict[str, Any]:
             env_info = cli_instance.get_current_environment()
         except Exception:
             env_info = {}
+        if isinstance(env_info, dict) and env_info.get("Weather") and not env_info.get("WeatherDisplayName"):
+            env_info["WeatherDisplayName"] = translate_weather_ko(env_info.get("Weather", ""))
 
         if char_confirmed and char_info_now:
             try:
@@ -4489,21 +4549,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: 700;
       box-shadow: var(--badge-shadow) !important;
     }
-    .top-mode-pill {
-      font-size: var(--fs-sm);
-      font-weight: 700;
-      padding: 0 5px;
-      border-radius: 0;
-      border: none;
-      background: var(--tab-pill-bg);
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      white-space: nowrap;
-    }
-    .top-mode-btn.active .top-mode-pill {
-      background: var(--invert-text) !important;
-      color: var(--invert-bg) !important;
-    }
 
     /* Homework Support Specific Layouts (Monochrome Living Support Style) */
     #hw-character-tabs-list {
@@ -4869,17 +4914,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
       .top-mode-btn {
         width: 100%;
         min-width: 0;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 3px;
-        padding: 6px 8px;
-        font-size: 12px;
-      }
-      .top-mode-pill {
-        max-width: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-size: 11px;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        font-size: 13px;
       }
       .header-actions {
         width: 100%;
@@ -4962,11 +5001,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="top-mode-switcher" role="tablist" aria-label="지원도구 메인 모드 전환">
             <button type="button" id="btn-top-mode-living" class="top-mode-btn active" onclick="switchTopAppMode('living')" title="주간 납품 18개 품목, 빠른 재료 가공, 개별 아이템 제작 파이프라인">
               <span>생활 지원</span>
-              <span class="top-mode-pill" id="top-living-summary-pill">납품·가공·제작</span>
             </button>
             <button type="button" id="btn-top-mode-homework" class="top-mode-btn" onclick="switchTopAppMode('homework')" title="6캐릭터 일일·집중·주간 숙제 체크리스트, 주간 매트릭스, 인게임 미션·던전 자동 감지 및 정각 결계 알림">
               <span>숙제 지원</span>
-              <span class="top-mode-pill" id="top-hw-summary-pill">캐릭터 숙제</span>
             </button>
           </div>
         </div>
@@ -6369,7 +6406,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span class="sym-prefix">&gt;</span>프로그램 실행 전 꼭 확인해야 할 3가지
           </div>
           <p style="color: var(--text-muted); margin-top: 0;">
-            모비노기 생활 지원도구는 마비노기 모바일 PC 클라이언트가 자체 지원하는 넥슨 공식 AI 에이전트 CLI와 연동하여 동작합니다.
+            모비노기 지원도구는 마비노기 모바일 PC 클라이언트가 자체 지원하는 넥슨 공식 AI 에이전트 CLI와 연동하여 동작합니다.
           </p>
 
           <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px;">
@@ -6392,7 +6429,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <div style="padding: 12px 14px; background: var(--bg-panel); border: 1px solid var(--line); border-left: 3px solid var(--text-bright);">
               <div style="font-weight: 700; color: var(--text-bright); margin-bottom: 4px;">③ 프로그램 실행 및 대시보드 자동 연결</div>
               <div style="color: var(--text-muted); font-size: var(--fs-sm);">
-                압축을 푼 폴더의 <strong>'모비노기_생활_지원도구.exe'</strong>를 실행하면 브라우저 대시보드가 자동으로 열립니다.<br>
+                압축을 푼 폴더의 <strong>'모비노기_지원도구.exe'</strong>를 실행하면 브라우저 대시보드가 자동으로 열립니다.<br>
                 상단 헤더에 내 캐릭터 <strong>직업과 레벨(예: 화염술사 (Lv.100))</strong> 및 <strong>보유 날개 수량</strong>이 초록 불로 정상 표시되는지 확인하세요!
               </div>
             </div>
@@ -8852,7 +8889,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
           alert('[완료] 브라우저 푸시 알림이 허용되었습니다. 가공이 완료되면 알림창이 뜹니다.');
-          new Notification('모비노기 생활 지원도구', { body: '주간 납품 가공 완료 알림이 활성화되었습니다.' });
+          new Notification('모비노기 지원도구', { body: '주간 납품 가공 완료 알림이 활성화되었습니다.' });
         } else {
           alert('알림 권한이 거부되었거나 설정되지 않았습니다.');
         }
@@ -9301,8 +9338,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 `[${al.facility}] 모든 가공 완료`,
                 `[${al.facility}] 걸어둔 모든 가공 작업(${completedCount}건)이 완료되었습니다! 지금 바로 수령하세요.`
               );
-              document.title = `[${al.facility} 전체 가공 완료] 모비노기 생활 지원도구`;
-              setTimeout(() => { document.title = '모비노기 생활 지원도구'; }, 8000);
+              document.title = `[${al.facility} 전체 가공 완료] 모비노기 지원도구`;
+              setTimeout(() => { document.title = '모비노기 지원도구'; }, 8000);
             } else if (now >= al.targetTimestamp) {
               // 캐시에 목록이 없거나 작업 완료 후 시간 도달
               al.notified = true;
@@ -9312,8 +9349,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 `[${al.facility}] 가공 완료`,
                 `[${al.facility}] 시설의 모든 가공 작업이 완료되었습니다. (${al.item})`
               );
-              document.title = `[${al.facility} 가공 완료] 모비노기 생활 지원도구`;
-              setTimeout(() => { document.title = '모비노기 생활 지원도구'; }, 8000);
+              document.title = `[${al.facility} 가공 완료] 모비노기 지원도구`;
+              setTimeout(() => { document.title = '모비노기 지원도구'; }, 8000);
             } else {
               hasActiveUnnotified = true;
             }
@@ -10391,6 +10428,59 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     // 3. Batch Planner: Aggregate BOM & Single-Click Pipeline
+    function renderRawMaterialBomRows(rawMaterials) {
+      if (!rawMaterials || rawMaterials.length === 0) return '';
+      let rows = '';
+      rawMaterials.forEach(rm => {
+        let statusBadge = '';
+        const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
+        const isShop = Boolean(rm.is_shop_purchase);
+        const missingPrereqCnt = Number(rm.missing_prereq_count || 0);
+        const isRmSatisfied = (rm.deficit === 0 && missingPrereqCnt === 0);
+        const guideTitle = rm.obtain_guide ? ` title="${rm.obtain_guide}"` : '';
+
+        if (isRmSatisfied) {
+          statusBadge = '<span style="font-weight:700; white-space:nowrap;">=== 준비 완료 ===</span>';
+        } else if (isShop) {
+          const shopGuide = rm.obtain_guide || '상점 구매 필요';
+          statusBadge = `<span class="mono-num" style="color:#F59E0B; font-weight:700; white-space:nowrap;" title="${shopGuide}">&gt; 상점 구매 필요 (${rm.deficit}개 부족)</span>`;
+        } else if (isSpecial) {
+          statusBadge = `<span class="mono-num" style="color:var(--text-muted); font-weight:700; white-space:nowrap;">&gt; 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
+        } else if (missingPrereqCnt > 0) {
+          const prereqName = rm.missing_prereq_item || '빈 병';
+          const canGatherNow = Number(rm.gatherable_now || 0);
+          const partialNote = canGatherNow > 0 ? ` (${canGatherNow}개 즉시 채집 가능)` : '';
+          statusBadge = `<span class="mono-num" style="color:#F59E0B; font-weight:700; white-space:nowrap;">[!] ${prereqName} 부족 (${missingPrereqCnt}개 구매 필요)${partialNote}</span>`;
+        } else if (rm.tool_ok) {
+          statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">&gt; ${rm.deficit}개 자동 채집</span>`;
+        } else {
+          statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">[!] 도구 필요 (${rm.deficit}개 부족)</span>`;
+        }
+
+        const rmInvCnt = rm.inventory_count || 0;
+        const rmStoreCnt = rm.storage_count || 0;
+        const rmBagStorageText = `<span class="mono-num">${rmInvCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${rmStoreCnt}개)</span>`;
+
+        const typeBadge = isShop
+          ? `<span class="badge-dim"${guideTitle}>상점구매</span>`
+          : (isSpecial ? `<span class="badge-dim"${guideTitle}>별도확보</span>` : '<span class="badge-dim">채집</span>');
+        const rowClass = isSpecial ? 'row-special' : 'row-gather';
+        const rmLockTag = rm.is_locked ? ` <span class="badge-dim" style="color:#F59E0B;" title="인게임 잠금 설정된 재료">[잠금주의]</span>` : '';
+        const usedForTag = rm.used_for ? ` <span class="badge-dim" style="margin-left:4px;">${rm.used_for}</span>` : '';
+
+        rows += `
+          <tr class="${rowClass} ${isRmSatisfied ? 'row-satisfied' : ''}">
+            <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot ${isSpecial ? 'dot-special' : 'dot-gather'}"></span>${rm.item_name}${usedForTag}${rmLockTag}</td>
+            <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
+            <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
+            <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
+            <td style="white-space:nowrap;">${statusBadge}</td>
+          </tr>
+        `;
+      });
+      return rows;
+    }
+
     async function loadBatchPlan() {
       try {
         const res = await fetch(`/api/batch_plan?alter_order=${encodeURIComponent(currentAlterOrder)}`);
@@ -10470,40 +10560,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
 
           if (plan.raw_materials && plan.raw_materials.length > 0) {
-            plan.raw_materials.forEach(rm => {
-              let statusBadge = '';
-              const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
-              const isRmSatisfied = (rm.deficit === 0);
-              if (isRmSatisfied) {
-                statusBadge = '<span style="font-weight:700; white-space:nowrap;">=== 준비 완료 ===</span>';
-              } else if (isSpecial) {
-                statusBadge = `<span class="mono-num" style="color:var(--text-muted); font-weight:700; white-space:nowrap;">> 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
-              } else if (rm.tool_ok) {
-                statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">> ${rm.deficit}개 자동 채집</span>`;
-              } else {
-                statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">[!] 도구 필요 (${rm.deficit}개 부족)</span>`;
-              }
-
-              const rmInvCnt = rm.inventory_count || 0;
-              const rmStoreCnt = rm.storage_count || 0;
-              const rmBagStorageText = `<span class="mono-num">${rmInvCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${rmStoreCnt}개)</span>`;
-
-              const typeBadge = isSpecial
-                ? '<span class="badge-dim">기타</span>'
-                : '<span class="badge-dim">채집</span>';
-              const rowClass = isSpecial ? 'row-special' : 'row-gather';
-              const rmLockTag = rm.is_locked ? ` <span class="badge-dim" style="color:#F59E0B;" title="인게임 잠금 설정된 재료">[잠금주의]</span>` : '';
-
-              rowsHtml += `
-                <tr class="${rowClass} ${isRmSatisfied ? 'row-satisfied' : ''}">
-                  <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot ${isSpecial ? 'dot-special' : 'dot-gather'}"></span>${rm.item_name}${rmLockTag}</td>
-                  <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
-                  <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
-                  <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
-                  <td style="white-space:nowrap;">${statusBadge}</td>
-                </tr>
-              `;
-            });
+            rowsHtml += renderRawMaterialBomRows(plan.raw_materials);
           }
 
           if (reqs.length === 0 && (!plan.raw_materials || plan.raw_materials.length === 0)) {
@@ -11206,39 +11263,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         // Raw materials
         if (rawMaterials.length > 0) {
-          rawMaterials.forEach(rm => {
-            let statusBadge = '';
-            const isSpecial = rm.is_special_obtain || !rm.is_gatherable;
-            const isRmSatisfied = (rm.deficit === 0);
-            if (isRmSatisfied) {
-              statusBadge = '<span style="font-weight:700; white-space:nowrap;">=== 준비 완료 ===</span>';
-            } else if (isSpecial) {
-              statusBadge = `<span class="mono-num" style="color:var(--text-muted); font-weight:700; white-space:nowrap;">> 별도 확보 필요 (${rm.deficit}개 부족)</span>`;
-            } else if (rm.tool_ok) {
-              statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">> ${rm.deficit}개 자동 채집</span>`;
-            } else {
-              statusBadge = `<span class="mono-num" style="color:var(--text-main); font-weight:700; white-space:nowrap;">[!] 도구 필요 (${rm.deficit}개 부족)</span>`;
-            }
-
-            const rmInvCnt = rm.inventory_count || 0;
-            const rmStoreCnt = rm.storage_count || 0;
-            const rmBagStorageText = `<span class="mono-num">${rmInvCnt}개</span><span class="mono-num" style="color:var(--text-muted); font-size:11px;">(${rmStoreCnt}개)</span>`;
-
-            const typeBadge = isSpecial
-              ? '<span class="badge-dim">기타</span>'
-              : '<span class="badge-dim">채집</span>';
-            const rowClass = isSpecial ? 'row-special' : 'row-gather';
-
-            rowsHtml += `
-              <tr class="${rowClass} ${isRmSatisfied ? 'row-satisfied' : ''}">
-                <td style="font-weight:700; color:var(--text-main); white-space:nowrap;"><span class="bom-dot ${isSpecial ? 'dot-special' : 'dot-gather'}"></span>${rm.item_name}</td>
-                <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
-                <td class="mono-num" style="font-weight:700; color:var(--text-main); text-align:right; white-space:nowrap;">${rm.total_needed}개</td>
-                <td style="text-align:center; white-space:nowrap;">${rmBagStorageText}</td>
-                <td style="white-space:nowrap;">${statusBadge}</td>
-              </tr>
-            `;
-          });
+          rowsHtml += renderRawMaterialBomRows(rawMaterials);
         }
 
         tbody.innerHTML = rowsHtml;
@@ -11581,13 +11606,32 @@ HTML_PAGE = r"""<!DOCTYPE html>
           if (wasWeightOver !== currentIsWeightOver) {
             updateMasterCommandBar();
           }
+          const WEATHER_KO_JS = {
+            sunny: '맑음', clear: '맑음', fine: '맑음', fair: '맑음', mostlysunny: '맑음', mostlyclear: '맑음',
+            partlycloudy: '흐림', cloudy: '흐림', clouds: '흐림', mostlycloudy: '흐림', overcast: '먹구름',
+            rain: '비', rainy: '비', lightrain: '약한 비', drizzle: '이슬비', sprinkle: '가랑비',
+            heavyrain: '폭우', downpour: '폭우', shower: '소나기', torrentialrain: '폭우',
+            thunder: '뇌우', thunderstorm: '뇌우', storm: '폭풍', stormy: '폭풍', lightning: '번개',
+            snow: '눈', snowy: '눈', lightsnow: '약한 눈', flurries: '눈날림',
+            heavysnow: '폭설', blizzard: '눈보라', snowstorm: '눈보라',
+            fog: '안개', foggy: '안개', mist: '안개', misty: '안개', haze: '연무',
+            wind: '바람', windy: '강풍', breeze: '산들바람', strongwind: '강풍', gale: '강풍',
+            sandstorm: '모래폭풍', dust: '황사', duststorm: '모래폭풍',
+            hail: '우박', sleet: '진눈깨비'
+          };
+          function translateWeatherKo(val) {
+            const raw = String(val || '').trim();
+            if (!raw) return '';
+            const norm = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return WEATHER_KO_JS[norm] || raw;
+          }
           const envPill = document.getElementById('pill-env');
           if (envPill) {
             const env = data.environment || {};
             const region = char.CurrentRegionDisplayName || char.RegionDisplayName || env.RegionName || env.MapName || '';
             const chNum = char.ChannelNumber || env.ChannelNumber || '';
             const erinnTime = env.ErinnNow || env.ErinnTime || '';
-            const weather = env.WeatherDisplayName || env.Weather || '';
+            const weather = translateWeatherKo(env.WeatherDisplayName || env.Weather || '');
             const satiety = char.SatietyValue ?? char.Satiety;
             let envParts = [];
             if (region) envParts.push(`${region}${chNum ? ' ' + chNum + 'ch' : ''}`);
@@ -12421,30 +12465,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (omenBarrier || hw.omen_barrier) {
         updateOmenBarrierUI(omenBarrier || hw.omen_barrier, hw.settings);
       }
-      updateTopSwitcherPills(hw);
       renderHomeworkDashboard(hw, isPolling);
-    }
-
-    function updateTopSwitcherPills(hw) {
-      const hwPill = document.getElementById('top-hw-summary-pill');
-      if (hwPill && hw && hw.characters) {
-        const actName = hw.active_character || '';
-        const actChar = (hw.characters || []).find(c => c.name === actName) || hw.characters[0];
-        if (actChar && actChar.progress) {
-          const dp = actChar.progress.daily || { done: 0, total: 0 };
-          const wp = actChar.progress.weekly || { done: 0, total: 0 };
-          hwPill.innerText = `${actChar.name} · 일일 ${dp.done}/${dp.total} · 주간 ${wp.done}/${wp.total}`;
-        }
-      }
-      const livPill = document.getElementById('top-living-summary-pill');
-      const dcInfo = window.deliveryCharactersInfo;
-      if (livPill && dcInfo) {
-        const actId = dcInfo.active_character_id;
-        const c = (dcInfo.characters || []).find(x => x.id === actId);
-        if (c) {
-          livPill.innerText = c.weekly_delivered ? `${c.name} · 납품완료✓` : `${c.name} · 납품 ${c.completed_count || 0}/${c.target_count || c.total_count || 18}`;
-        }
-      }
     }
 
     function updateOmenBarrierUI(omen, hwSettings) {
