@@ -675,6 +675,23 @@ class HomeworkManager:
             self.save_config()
             self.save_data()
 
+    def _remove_char_from_task_mapping_locked(self, char_name: str):
+        """Remove a deleted character from per-task character filter lists."""
+        remaining_names = {c.get("name") for c in self.config.get("characters", []) if c.get("name")}
+        mapping = self.config.get("task_character_Mapping", {})
+        for cat in ("daily", "focus", "weekly"):
+            cmap = mapping.get(cat, {})
+            if not isinstance(cmap, dict):
+                continue
+            for tname in list(cmap.keys()):
+                clist = cmap.get(tname)
+                if isinstance(clist, list):
+                    filtered = [c for c in clist if c != char_name and c in remaining_names]
+                    if remaining_names and set(filtered) >= remaining_names:
+                        cmap.pop(tname, None)
+                    else:
+                        cmap[tname] = filtered
+
     def on_delivery_character_deleted(self, deleted_name: str):
         """Called when a character is deleted in Weekly Delivery mode."""
         with self._lock:
@@ -684,6 +701,7 @@ class HomeworkManager:
                 return
             self.config["characters"] = [hc for hc in chars if hc["name"] != del_base]
             self.data.get("characters", {}).pop(del_base, None)
+            self._remove_char_from_task_mapping_locked(del_base)
             self._ensure_character_data_locked()
             # Sync active index to delivery_store's new active character
             act_cid = self.delivery_store.active_character_id
@@ -849,8 +867,8 @@ class HomeworkManager:
             mapping = self.config.get("task_character_Mapping", {}).get(category, {})
             result = []
             for t in all_tasks:
-                allowed = mapping.get(t, [])
-                if not allowed or char_name in allowed:
+                allowed = mapping.get(t, None)
+                if allowed is None or (isinstance(allowed, list) and char_name in allowed):
                     result.append(t)
             return result
 
@@ -2867,6 +2885,7 @@ class HomeworkManager:
             removed = chars.pop(index)
             rname = removed["name"]
             self.data.get("characters", {}).pop(rname, None)
+            self._remove_char_from_task_mapping_locked(rname)
 
             deliv_cid = self._find_delivery_char_id_by_name(rname)
             if deliv_cid:
@@ -2973,7 +2992,15 @@ class HomeworkManager:
                 target_t = (task_name or "").strip()
                 if not target_t or target_t not in t_list:
                     return False, "대상 숙제 항목을 찾을 수 없습니다."
-                cmap[target_t] = [c for c in (target_characters or []) if c]
+                all_char_names = [c.get("name") for c in self.config.get("characters", []) if c.get("name")]
+                if target_characters is None:
+                    cmap.pop(target_t, None)
+                else:
+                    cleaned_targets = list(dict.fromkeys(c for c in target_characters if c and c in all_char_names))
+                    if all_char_names and all(c in cleaned_targets for c in all_char_names):
+                        cmap.pop(target_t, None)
+                    else:
+                        cmap[target_t] = cleaned_targets
                 self.save_config()
                 return True, f"'{target_t}' 캐릭터별 적용 필터가 저장되었습니다."
 
@@ -3105,7 +3132,7 @@ class HomeworkManager:
         return {"ok": ok, "message": msg, "state": self.get_dashboard_state()}
 
     def set_task_target_characters(self, category: str, task_name: str, target_chars: Optional[List[str]]) -> Dict[str, Any]:
-        ok, msg = self.manage_task_item("set_targets", category, task_name=task_name, target_characters=target_chars or [])
+        ok, msg = self.manage_task_item("set_targets", category, task_name=task_name, target_characters=target_chars)
         return {"ok": ok, "message": msg, "state": self.get_dashboard_state()}
 
     def reset_category_default_tasks(self, category: str) -> Dict[str, Any]:

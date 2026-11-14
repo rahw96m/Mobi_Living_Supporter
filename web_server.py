@@ -13413,13 +13413,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (!cachedHomeworkState) return;
       const allChars = (cachedHomeworkState.characters || []).map(c => c.name);
       const targetMap = (cachedHomeworkState.task_character_mapping && cachedHomeworkState.task_character_mapping[catKey]) || {};
-      let currentList = Array.isArray(targetMap[taskName]) ? [...targetMap[taskName]] : [...allChars];
+      let currentList = Array.isArray(targetMap[taskName])
+        ? targetMap[taskName].filter(x => allChars.includes(x))
+        : [...allChars];
       if (checked) {
         if (!currentList.includes(charName)) currentList.push(charName);
       } else {
         currentList = currentList.filter(x => x !== charName);
       }
-      const targetPayload = (currentList.length >= allChars.length) ? null : currentList;
+      const allSelected = allChars.length > 0 && allChars.every(c => currentList.includes(c));
+      const targetPayload = allSelected ? null : currentList;
       try {
         const res = await fetch('/api/homework/task_crud', {
           method: 'POST',
